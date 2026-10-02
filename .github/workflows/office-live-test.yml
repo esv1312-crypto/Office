@@ -1,0 +1,26 @@
+name: AI-OFFICE LIVE GEMINI TEST
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    if: contains(github.event.head_commit.message, '[office live test]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send real root task to AI-OFFICE
+        env:
+          TASK: >-
+            Проведи аудит текущего проекта AI-ОФИС. Определи 3 наиболее важных
+            технических риска в текущей архитектуре, раздели работу между
+            подходящими специалистами, получи результаты от каждого, затем
+            сформируй общий вывод. Проверяющий должен отдельно проверить каждый
+            вывод по имеющимся данным и вернуть PASS или FAIL с доказательствами.
+            Если проверка FAIL — запусти восстановление и повторную проверку.
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 120 -X POST             https://ai-office-runtime-8pir.onrender.com/api/tasks             -H 'Content-Type: application/json'             --data "$(python -c 'import json,os; print(json.dumps({"task":os.environ["TASK"],"employeeId":"chief"}))')"
