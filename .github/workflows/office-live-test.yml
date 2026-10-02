@@ -1,6 +1,7 @@
-name: AI-OFFICE LIVE GEMINI TEST
+name: AI-OFFICE LIVE TEST
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -9,29 +10,24 @@ permissions:
 
 jobs:
   launch:
-    if: contains(github.event.head_commit.message, '[office live test]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[office live test]')
     runs-on: ubuntu-latest
     steps:
       - name: Send real root task to AI-OFFICE
         env:
           TASK: >-
-            Научись работать с несколькими легальными бесплатными AI-моделями и
-            бесплатными API-провайдерами без использования чужих или утёкших ключей.
-            Исследуй доступные бесплатные варианты для Gemini, OpenRouter,
-            Cloudflare Workers AI, Claude и OpenAI API. Определи, какие из них
-            реально можно подключить к AI-ОФИСУ без обязательной оплаты, какие
-            лимиты и ограничения у них есть, и какие адаптеры нужны в нашем
-            AI Gateway. Затем раздели работу между подходящими специалистами:
-            аналитик исследует варианты и ограничения, программист проектирует
-            и при возможности реализует универсальные адаптеры/конфигурацию,
-            проверяющий независимо проверяет выводы и безопасность. Не используй
-            и не ищи украденные, опубликованные чужие или сомнительные API-ключи.
-            Цель — чтобы офис умел выбирать доступную бесплатную модель,
-            переключаться между провайдерами при исчерпании квоты и при этом
-            никогда не переходить на платный API без явного разрешения.
-            Сформируй конкретный план внедрения и, где возможно без секретов,
-            внеси изменения в репозиторий. После выполнения проведи независимую
-            проверку и верни PASS или FAIL с доказательствами.
+            Проведи реальный smoke-test AI-OFFICE после обновления.
+            Проверь multi-provider gateway и resource manager.
+            Определи доступные легальные бесплатные AI-провайдеры из конфигурации,
+            не используй чужие или утёкшие ключи и не выполняй платных запросов.
+            Если основной провайдер недоступен из-за квоты/ошибки, используй следующий
+            настроенный бесплатный провайдер. Раздели работу между аналитиком,
+            программистом и проверяющим. В конце выполни независимую проверку и
+            верни PASS или FAIL с доказательствами: provider, fallback, worker results,
+            verification и итоговое состояние задачи.
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --max-time 120 -X POST             https://ai-office-runtime-8pir.onrender.com/api/tasks             -H 'Content-Type: application/json'             --data "$(python -c 'import json,os; print(json.dumps({"task":os.environ["TASK"],"employeeId":"chief"}))')"
+          curl --fail --silent --show-error --max-time 120 -X POST \
+            https://ai-office-runtime-8pir.onrender.com/api/tasks \
+            -H 'Content-Type: application/json' \
+            --data "$(python -c 'import json,os; print(json.dumps({"task":os.environ["TASK"],"employeeId":"chief"}))')"
