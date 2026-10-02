@@ -63,7 +63,7 @@ app.post("/api/tasks", async (req,res) => {
     record.status = "running";
     emit("task.started",{taskId:id});
     const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-5.6-mini",
+      model: process.env.OPENAI_MODEL || "gpt-6-luna",
       input: [
         {role:"system", content:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
         {role:"user", content:task}
