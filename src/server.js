@@ -1,5 +1,6 @@
 import express from "express";
 import OpenAI from "openai";
+import { inspectFreeProviders, chooseNextProvider } from "./free-ai-resource-manager.js";
 
 const app = express();
 app.use(express.json({limit:"1mb"}));
@@ -910,6 +911,7 @@ app.post("/api/tools/execute", async (req,res)=>{
   }
 });
 
+\napp.get("/api/resource-manager", (_req,res)=>res.json({\n  ok:true,\n  manager:"free-ai-resource-manager",\n  policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},\n  ...inspectFreeProviders(),\n  gatewayOrder:providerOrder()\n}));\n
 app.get("/api/gateway", (_req,res)=>res.json({
   ok:true,
   freeOnly:freeOnly(),
