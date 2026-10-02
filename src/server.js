@@ -43,23 +43,19 @@ async function callGemini(model, task) {
   let response;
   try {
     response = await fetch(url, {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    signal: controller.signal,
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{text:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."}]
-      },
-      contents: [{role:"user", parts:[{text:task}]}]
-    })
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      signal:controller.signal,
+      body:JSON.stringify({
+        systemInstruction:{parts:[{text:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."}]},
+        contents:[{role:"user",parts:[{text:task}]}]
+      })
     });
   } catch (error) {
     clearTimeout(timeout);
     if (error?.name === "AbortError") {
-      const timeoutError = new Error("Gemini request timed out");
-      timeoutError.status = 408;
-      timeoutError.transient = true;
-      throw timeoutError;
+      const e = new Error("Gemini request timed out");
+      e.status = 408; e.transient = true; throw e;
     }
     throw error;
   }
@@ -72,119 +68,115 @@ async function callGemini(model, task) {
     error.transient = isTransientGeminiError(response.status, message);
     throw error;
   }
-  const text = (data?.candidates?.[0]?.content?.parts || [])
-    .map(part => part.text || "")
-    .join("")
-    .trim();
+  const text = (data?.candidates?.[0]?.content?.parts || []).map(part => part.text || "").join("").trim();
   if (!text) throw new Error("Gemini returned an empty response");
   return {text, model};
 }
 
 async function generateWithGemini(task) {
-  const configured = (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash")
-    .split(",").map(x => x.trim()).filter(Boolean);
-  const models = [...new Set(configured)];
+  const models = [...new Set((process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean))];
   let lastError;
-
-  for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
-    const model = models[modelIndex];
-    for (let attempt = 0; attempt < 3; attempt++) {
+  for (let modelIndex=0; modelIndex<models.length; modelIndex++) {
+    const model=models[modelIndex];
+    for (let attempt=0; attempt<3; attempt++) {
       try {
-        emit("ai.attempt", {provider:"gemini", model, attempt:attempt + 1});
-        const result = await callGemini(model, task);
-        emit("ai.success", {provider:"gemini", model, attempt:attempt + 1});
+        emit("ai.attempt",{provider:"gemini",model,attempt:attempt+1});
+        const result=await callGemini(model,task);
+        emit("ai.success",{provider:"gemini",model,attempt:attempt+1});
         return result;
-      } catch (error) {
-        lastError = error;
-        if (!error?.transient || attempt === 2) break;
-        const delay = Math.min(8000, 1000 * (2 ** attempt)) + Math.floor(Math.random() * 500);
-        emit("ai.retry", {provider:"gemini", model, attempt:attempt + 1, delayMs:delay, error:error.message});
+      } catch(error) {
+        lastError=error;
+        if (!error?.transient || attempt===2) break;
+        const delay=Math.min(8000,1000*(2**attempt))+Math.floor(Math.random()*500);
+        emit("ai.retry",{provider:"gemini",model,attempt:attempt+1,delayMs:delay,error:error.message});
         await sleep(delay);
       }
     }
-    if (modelIndex < models.length - 1) {
-      emit("ai.fallback", {provider:"gemini", from:model, to:models[modelIndex + 1], error:lastError?.message});
-    }
+    if (modelIndex<models.length-1) emit("ai.fallback",{provider:"gemini",from:model,to:models[modelIndex+1],error:lastError?.message});
   }
-
   throw lastError || new Error("Gemini request failed");
 }
 
 async function generateWithOpenAI(task) {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const model = process.env.OPENAI_MODEL || "gpt-6-luna";
-  const response = await client.responses.create({
+  const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
+  const model=process.env.OPENAI_MODEL || "gpt-6-luna";
+  const response=await client.responses.create({
     model,
-    input: [
-      {role:"system", content:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
-      {role:"user", content:task}
+    input:[
+      {role:"system",content:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
+      {role:"user",content:task}
     ]
   });
-  return {text: response.output_text || "", model};
+  return {text:response.output_text || "",model};
 }
 
-app.get("/", (_req,res) => res.json({
-  service:"ai-office-runtime",
-  status:"online",
-  provider: aiProvider(),
-  mode: aiConfigured() ? "ai" : "control-plane",
-  startedAt,
-  tasks: tasks.size,
-  events: events.length
+function taskSnapshot(record) {
+  return {...record};
+}
+
+async function executeTask(record) {
+  try {
+    record.status="running";
+    record.startedAt=new Date().toISOString();
+    emit("task.started",{taskId:record.id,provider:record.provider});
+
+    const result=record.provider==="gemini"
+      ? await generateWithGemini(record.task)
+      : await generateWithOpenAI(record.task);
+
+    record.model=result.model;
+    record.status="completed";
+    record.result=result.text;
+    record.completedAt=new Date().toISOString();
+    emit("task.completed",{taskId:record.id,provider:record.provider,model:record.model});
+  } catch(error) {
+    record.status="failed";
+    record.error=error?.message || String(error);
+    record.failedAt=new Date().toISOString();
+    emit("task.failed",{taskId:record.id,provider:record.provider,error:record.error});
+  }
+}
+
+app.get("/", (_req,res)=>res.json({
+  service:"ai-office-runtime",status:"online",provider:aiProvider(),
+  mode:aiConfigured()?"ai":"control-plane",startedAt,tasks:tasks.size,events:events.length
 }));
 
-app.get("/health", (_req,res) => res.json({
-  ok:true,
-  service:"ai-office-runtime",
-  provider: aiProvider(),
-  aiConfigured:aiConfigured(),
-  startedAt
+app.get("/health", (_req,res)=>res.json({
+  ok:true,service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),startedAt
 }));
 
-app.get("/api/state", (_req,res) => res.json({
-  service:"ai-office-runtime",
-  provider: aiProvider(),
-  aiConfigured:aiConfigured(),
-  tasks:[...tasks.values()],
-  events:events.slice(0,100)
+app.get("/api/state", (_req,res)=>res.json({
+  service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),
+  tasks:[...tasks.values()].map(taskSnapshot),events:events.slice(0,100)
 }));
 
-app.post("/api/tasks", async (req,res) => {
-  const task = String(req.body?.task || "").trim();
-  if (!task) return res.status(400).json({ok:false,error:"task is required"});
+app.post("/api/tasks", (req,res)=>{
+  const task=String(req.body?.task || "").trim();
+  if(!task) return res.status(400).json({ok:false,error:"task is required"});
 
-  const id = crypto.randomUUID();
-  const record = {id, task, status:"accepted", createdAt:new Date().toISOString(), provider:aiProvider()};
-  tasks.set(id, record);
+  const id=crypto.randomUUID();
+  const record={id,task,status:"accepted",createdAt:new Date().toISOString(),provider:aiProvider()};
+  tasks.set(id,record);
   emit("task.accepted",{taskId:id,task,provider:record.provider});
 
-  if (!aiConfigured()) {
-    record.status = "waiting_for_ai";
+  if(!aiConfigured()) {
+    record.status="waiting_for_ai";
     emit("task.waiting_for_ai",{taskId:id,provider:record.provider});
-    return res.status(202).json({ok:true,task:record});
+    return res.status(202).json({ok:true,task:taskSnapshot(record)});
   }
 
-  try {
-    record.status = "running";
-    emit("task.started",{taskId:id,provider:record.provider});
-    const result = record.provider === "gemini"
-      ? await generateWithGemini(task)
-      : await generateWithOpenAI(task);
-    record.model = result.model;
-    record.status = "completed";
-    record.result = result.text;
-    record.completedAt = new Date().toISOString();
-    emit("task.completed",{taskId:id,provider:record.provider,model:record.model});
-    res.json({ok:true,task:record});
-  } catch (error) {
-    record.status = "failed";
-    record.error = error?.message || String(error);
-    emit("task.failed",{taskId:id,provider:record.provider,error:record.error});
-    res.status(500).json({ok:false,task:record});
-  }
+  void executeTask(record);
+  return res.status(202).json({ok:true,task:taskSnapshot(record)});
 });
 
-app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
+app.get("/api/tasks/:id",(req,res)=>{
+  const record=tasks.get(req.params.id);
+  if(!record) return res.status(404).json({ok:false,error:"task not found"});
+  res.json({ok:true,task:taskSnapshot(record)});
+});
+
+app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   emit("office.started",{provider:aiProvider(),aiConfigured:aiConfigured()});
-  console.log("AI-OFFICE runtime listening on", process.env.PORT || 10000, "provider:", aiProvider());
+  console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider());
 });
