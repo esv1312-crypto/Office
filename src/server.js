@@ -337,10 +337,86 @@ async function executeWorkerTask(record) {
     emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model});
     return result.text;
   } catch(error) {
-    transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
-    emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
+    const message=error?.message || String(error);
+    transitionTask(record,"failed",{error:message,failedAt:new Date().toISOString()});
+    emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:message});
     return null;
   }
+}
+
+function replacementCandidates(failedRecord) {
+  const currentRole=failedRecord?.role;
+  const all=employees().filter(e=>e.id!=="chief" && e.id!==failedRecord.employeeId);
+  const sameRole=all.filter(e=>e.role===currentRole);
+  const sameSkills=all.filter(e=>Array.isArray(e.skills) && Array.isArray(getEmployee(failedRecord.employeeId)?.skills)
+    && e.skills.some(skill=>getEmployee(failedRecord.employeeId).skills.includes(skill)));
+  return [...sameRole,...sameSkills,...all].filter((e,i,a)=>a.findIndex(x=>x.id===e.id)===i);
+}
+
+async function recoverFailedWorker(parent, failedRecord) {
+  const max=Number(process.env.MAX_WORKER_REPLACEMENTS || 2);
+  parent.workerRecoveryAttempts=Number(parent.workerRecoveryAttempts || 0);
+  parent.workerRecoveryHistory=Array.isArray(parent.workerRecoveryHistory) ? parent.workerRecoveryHistory : [];
+  if (parent.workerRecoveryAttempts >= max) return false;
+
+  const candidates=replacementCandidates(failedRecord);
+  for (const candidate of candidates) {
+    if (parent.workerRecoveryAttempts >= max) break;
+    parent.workerRecoveryAttempts += 1;
+    const replacement=createTaskRecord({
+      task:failedRecord.task,
+      employeeId:candidate.id,
+      parentTaskId:parent.id,
+      kind:"replacement"
+    });
+    replacement.replacesTaskId=failedRecord.id;
+    replacement.replacementAttempt=parent.workerRecoveryAttempts;
+    tasks.set(replacement.id,replacement);
+    emit("replacement.requested",{
+      taskId:parent.id,
+      failedTaskId:failedRecord.id,
+      replacementTaskId:replacement.id,
+      attempt:parent.workerRecoveryAttempts,
+      maxAttempts:max,
+      failedEmployeeId:failedRecord.employeeId,
+      replacementEmployeeId:candidate.id,
+      replacementRole:candidate.role
+    });
+    await executeWorkerTask(replacement);
+    parent.workerRecoveryHistory.push({
+      attempt:parent.workerRecoveryAttempts,
+      failedTaskId:failedRecord.id,
+      replacementTaskId:replacement.id,
+      replacementEmployeeId:candidate.id,
+      status:replacement.status,
+      error:replacement.error || null
+    });
+    if (replacement.status==="completed") {
+      emit("replacement.success",{
+        taskId:parent.id,
+        failedTaskId:failedRecord.id,
+        replacementTaskId:replacement.id,
+        replacementEmployeeId:candidate.id,
+        attempt:parent.workerRecoveryAttempts
+      });
+      return replacement;
+    }
+    emit("replacement.failed",{
+      taskId:parent.id,
+      failedTaskId:failedRecord.id,
+      replacementTaskId:replacement.id,
+      replacementEmployeeId:candidate.id,
+      attempt:parent.workerRecoveryAttempts,
+      error:replacement.error || "replacement failed"
+    });
+  }
+  emit("replacement.exhausted",{
+    taskId:parent.id,
+    failedTaskId:failedRecord.id,
+    attempts:parent.workerRecoveryAttempts,
+    maxAttempts:max
+  });
+  return false;
 }
 
 
@@ -605,9 +681,22 @@ async function executeRootTask(record) {
     await Promise.all(children.map(child=>executeWorkerTask(child)));
 
     const failed=children.filter(x=>x.status==="failed");
-    record.workerResults=children.map(x=>({taskId:x.id,employeeId:x.employeeId,status:x.status,result:x.result,error:x.error}));
+    for (const failedChild of failed) {
+      const replacement=await recoverFailedWorker(record,failedChild);
+      if (replacement) {
+        failedChild.replacedBy=replacement.id;
+        failedChild.replacementStatus="recovered";
+      } else {
+        failedChild.replacementStatus="exhausted";
+      }
+    }
 
-    if(failed.length) throw new Error("One or more subtasks failed");
+    const finalChildren=[...children,...[...tasks.values()].filter(x=>x.parentTaskId===record.id && x.kind==="replacement")];
+    record.workerResults=finalChildren.map(x=>({taskId:x.id,employeeId:x.employeeId,status:x.status,result:x.result,error:x.error,replacesTaskId:x.replacesTaskId || null}));
+
+    const stillFailed=finalChildren.filter(x=>x.kind==="subtask" && x.status==="failed" && x.replacementStatus!=="recovered");
+    const failedReplacement=finalChildren.filter(x=>x.kind==="replacement" && x.status==="failed");
+    if(stillFailed.length || failedReplacement.length) throw new Error("Worker and replacement attempts failed");
 
     transitionTask(record,"running",{waitingReason:null});
     const synthesisPrompt=[
