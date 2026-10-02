@@ -32,10 +32,10 @@ function transitionTask(record, nextStatus, extra = {}) {
 }
 
 const DEFAULT_EMPLOYEES = [
-  {id:"chief",name:"Руководитель",role:"coordinator",provider:"gemini",model:"gemini-3.8-flash",skills:["planning","delegation","coordination"]},
+  {id:"chief",name:"Руководитель",role:"coordinator",provider:"auto",model:"gemini-3.8-flash",skills:["planning","delegation","coordination"]},
   {id:"developer",name:"Программист",role:"developer",provider:"gemini",model:"gemini-3.8-flash",skills:["coding","github","debugging"]},
-  {id:"analyst",name:"Аналитик",role:"analyst",provider:"gemini",model:"gemini-3.7-flash",skills:["analysis","research","requirements"]},
-  {id:"verifier",name:"Проверяющий",role:"verifier",provider:"gemini",model:"gemini-3.6-flash",skills:["testing","verification","evidence"]},
+  {id:"analyst",name:"Аналитик",role:"analyst",provider:"auto",model:"gemini-3.7-flash",skills:["analysis","research","requirements"]},
+  {id:"verifier",name:"Проверяющий",role:"verifier",provider:"auto",model:"gemini-3.6-flash",skills:["testing","verification","evidence"]},
   {id:"executor",name:"Исполнитель",role:"executor",provider:"gemini",model:"gemini-3.6-flash",skills:["execution","operations","recovery"]}
 ];
 
@@ -47,14 +47,32 @@ function emit(type, data = {}) {
   return event;
 }
 
-function aiProvider() {
-  return (process.env.AI_PROVIDER || (process.env.OPENAI_API_KEY ? "openai" : "none")).toLowerCase();
+function freeOnly() {
+  return String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
 }
 
-function aiConfigured(provider = aiProvider()) {
+function providerOrder() {
+  return (process.env.AI_PROVIDER_ORDER || "gemini,openrouter,cloudflare")
+    .split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
+}
+
+function aiProvider() {
+  return providerOrder()[0] || "none";
+}
+
+function aiConfigured(provider) {
   if (provider === "gemini") return Boolean(process.env.GEMINI_API_KEY);
-  if (provider === "openai") return Boolean(process.env.OPENAI_API_KEY);
+  if (provider === "openrouter") return Boolean(process.env.OPENROUTER_API_KEY);
+  if (provider === "cloudflare") return Boolean(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID);
+  if (provider === "openai") return !freeOnly() && Boolean(process.env.OPENAI_API_KEY);
   return false;
+}
+
+function gatewayProviders(preferred) {
+  const order=providerOrder();
+  const first=String(preferred || "").toLowerCase();
+  const candidates=first && first !== "auto" ? [first,...order] : order;
+  return [...new Set(candidates)].filter(p=>aiConfigured(p));
 }
 
 function employees() {
@@ -150,6 +168,67 @@ async function generateWithGemini(task, preferredModel) {
   throw lastError || new Error("Gemini request failed");
 }
 
+async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={}}) {
+  emit("ai.start",{provider,model});
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
+  try {
+    const response=await fetch(baseUrl,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey,...headers},
+      signal:controller.signal,
+      body:JSON.stringify({
+        model,
+        messages:[
+          {role:"system",content:"You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
+          {role:"user",content:task}
+        ]
+      })
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) {
+      const e=new Error(data?.error?.message || ("HTTP "+response.status));
+      e.status=response.status;
+      e.transient=response.status===408 || response.status===409 || response.status===429 || response.status>=500;
+      throw e;
+    }
+    const text=String(data?.choices?.[0]?.message?.content || "").trim();
+    if(!text) throw new Error(provider+" returned an empty response");
+    return {text,model};
+  } catch(error) {
+    if(error?.name==="AbortError") {
+      const e=new Error(provider+" request timed out"); e.status=408; e.transient=true; throw e;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateWithOpenRouter(task, preferredModel) {
+  const model=preferredModel || process.env.OPENROUTER_MODEL || "openrouter/free";
+  return callOpenAICompatible({
+    provider:"openrouter",
+    baseUrl:"https://openrouter.ai/api/v1/chat/completions",
+    apiKey:process.env.OPENROUTER_API_KEY,
+    model,task,
+    headers:{
+      "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
+      "X-Title":"AI-OFFICE"
+    }
+  });
+}
+
+async function generateWithCloudflare(task, preferredModel) {
+  const model=preferredModel || process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+  return callOpenAICompatible({
+    provider:"cloudflare",
+    baseUrl:"https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID)+"/ai/v1/chat/completions",
+    apiKey:process.env.CLOUDFLARE_API_TOKEN,
+    model,task
+  });
+}
+
 async function generateWithOpenAI(task, preferredModel) {
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
   const model=preferredModel || process.env.OPENAI_MODEL || "gpt-6-luna";
@@ -166,15 +245,37 @@ async function generateWithOpenAI(task, preferredModel) {
 
 async function generateViaGateway(task, employee) {
   const brain=resolveBrain(employee);
-  emit("gateway.route",{employeeId:employee.id,role:employee.role,provider:brain.provider,model:brain.model});
-  if (!aiConfigured(brain.provider)) {
-    const e=new Error("AI provider is not configured: " + brain.provider);
+  const providers=gatewayProviders(brain.provider);
+  if(!providers.length) {
+    const e=new Error("No configured AI provider is available in FREE_ONLY="+freeOnly());
     e.code="AI_NOT_CONFIGURED";
     throw e;
   }
-  if (brain.provider==="gemini") return generateWithGemini(task, brain.model);
-  if (brain.provider==="openai") return generateWithOpenAI(task, brain.model);
-  throw new Error("Unsupported AI provider: " + brain.provider);
+  let lastError;
+  for(const provider of providers) {
+    const model=provider==="gemini" ? brain.model
+      : provider==="openrouter" ? (process.env.OPENROUTER_MODEL || null)
+      : provider==="cloudflare" ? (process.env.CLOUDFLARE_MODEL || null)
+      : (process.env.OPENAI_MODEL || null);
+    emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,freeOnly:freeOnly()});
+    try {
+      let result;
+      if(provider==="gemini") result=await generateWithGemini(task,model);
+      else if(provider==="openrouter") result=await generateWithOpenRouter(task,model);
+      else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
+      else if(provider==="openai") {
+        if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"});
+        result=await generateWithOpenAI(task,model);
+      } else throw new Error("Unsupported AI provider: "+provider);
+      emit("gateway.success",{employeeId:employee.id,provider,model:result.model,freeOnly:freeOnly()});
+      return result;
+    } catch(error) {
+      lastError=error;
+      emit("gateway.provider_failed",{employeeId:employee.id,provider,error:error?.message||String(error),transient:Boolean(error?.transient),freeOnly:freeOnly()});
+      emit("gateway.fallback",{from:provider,to:providers[providers.indexOf(provider)+1] || null,reason:error?.message||String(error)});
+    }
+  }
+  throw lastError || new Error("All configured AI providers failed");
 }
 
 
@@ -769,7 +870,8 @@ app.get("/", (_req,res)=>res.json({
 }));
 
 app.get("/health", (_req,res)=>res.json({
-  ok:true,service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),startedAt,
+  ok:true,service:"ai-office-runtime",provider:aiProvider(),providerOrder:providerOrder(),freeOnly:freeOnly(),
+  aiConfigured:providerOrder().some(aiConfigured),startedAt,
   employees:employees().length,
   tools:Object.keys(TOOL_REGISTRY).length,
   githubToolsEnabled:process.env.GITHUB_TOOLS_ENABLED === "true"
@@ -809,9 +911,14 @@ app.post("/api/tools/execute", async (req,res)=>{
 });
 
 app.get("/api/gateway", (_req,res)=>res.json({
-  ok:true,providers:{
+  ok:true,
+  freeOnly:freeOnly(),
+  order:providerOrder(),
+  providers:{
     gemini:{configured:aiConfigured("gemini"),models:(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean)},
-    openai:{configured:aiConfigured("openai"),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
+    openrouter:{configured:aiConfigured("openrouter"),models:[process.env.OPENROUTER_MODEL || "openrouter/free"]},
+    cloudflare:{configured:aiConfigured("cloudflare"),models:[process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct"]},
+    openai:{configured:aiConfigured("openai"),blockedByFreeOnly:freeOnly(),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
   }
 }));
 
