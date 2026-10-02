@@ -205,7 +205,7 @@ function createTaskRecord({task, employeeId = "chief", parentTaskId = null, kind
   };
 }
 
-async function executeTask(record) {
+async function executeWorkerTask(record) {
   try {
     transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
     const employee=getEmployee(record.employeeId);
@@ -221,8 +221,97 @@ async function executeTask(record) {
     record.model=result.model;
     transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
     emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model});
+    return result.text;
   } catch(error) {
     transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
+    emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
+    return null;
+  }
+}
+
+function parsePlannerJson(text) {
+  const raw=String(text || "").trim();
+  const fenced=raw.match(/\`\`\`(?:json)?\\s*([\\s\\S]*?)\\s*\`\`\`/i);
+  const candidate=fenced ? fenced[1] : raw;
+  try { return JSON.parse(candidate); } catch (_) {}
+  const start=candidate.indexOf("{");
+  const end=candidate.lastIndexOf("}");
+  if(start>=0 && end>start) {
+    try { return JSON.parse(candidate.slice(start,end+1)); } catch (_) {}
+  }
+  return null;
+}
+
+function buildPlanningPrompt(task) {
+  return [
+    "You are the Chief of Staff of AI-OFFICE.",
+    "Create an execution plan for the user task below.",
+    "Return ONLY valid JSON, no markdown.",
+    'Schema: {"summary":"string","subtasks":[{"employeeId":"developer|analyst|verifier|executor","task":"string"}],"verificationChecklist":["string"]}',
+    "Use 1-4 subtasks. Choose workers by skills. Do not choose chief as a worker.",
+    "Task: " + task
+  ].join("\\n");
+}
+
+async function executeRootTask(record) {
+  try {
+    transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
+    const chief=getEmployee("chief");
+    const planResult=await generateViaGateway(buildPlanningPrompt(record.task),chief);
+    const plan=parsePlannerJson(planResult.text);
+
+    if(!plan || !Array.isArray(plan.subtasks) || plan.subtasks.length===0) {
+      throw new Error("Chief returned invalid delegation plan");
+    }
+
+    const items=plan.subtasks.slice(0,4);
+    record.plan=plan.summary || "";
+    record.verificationChecklist=Array.isArray(plan.verificationChecklist) ? plan.verificationChecklist : [];
+    record.subtaskIds=[];
+    record.workerResults=[];
+    record.plannedAt=new Date().toISOString();
+
+    const children=[];
+    for(const item of items) {
+      const employeeId=employees().some(e=>e.id===item.employeeId && e.id!=="chief") ? item.employeeId : "executor";
+      const child=createTaskRecord({
+        task:String(item.task || "").trim() || ("Execute part of: " + record.task),
+        employeeId,
+        parentTaskId:record.id,
+        kind:"subtask"
+      });
+      tasks.set(child.id,child);
+      record.subtaskIds.push(child.id);
+      emit("task.accepted",{taskId:child.id,parentTaskId:record.id,kind:"subtask",task:child.task,employeeId:child.employeeId,role:child.role,provider:child.provider,model:child.model});
+      children.push(child);
+    }
+
+    transitionTask(record,"waiting",{waitingReason:"subtasks_running",subtaskIds:record.subtaskIds});
+    await Promise.all(children.map(child=>executeWorkerTask(child)));
+
+    const failed=children.filter(x=>x.status==="failed");
+    record.workerResults=children.map(x=>({taskId:x.id,employeeId:x.employeeId,status:x.status,result:x.result,error:x.error}));
+
+    if(failed.length) throw new Error("One or more subtasks failed");
+
+    transitionTask(record,"running",{waitingReason:null});
+    const synthesisPrompt=[
+      "You are the Chief of Staff of AI-OFFICE.",
+      "Synthesize the worker results into the final answer to the original task.",
+      "Be concise and factual. Do not claim external actions that were not actually performed.",
+      "Original task: " + record.task,
+      "Plan: " + JSON.stringify(record.plan),
+      "Verification checklist: " + JSON.stringify(record.verificationChecklist),
+      "Worker results: " + JSON.stringify(record.workerResults)
+    ].join("\\n");
+    const finalResult=await generateViaGateway(synthesisPrompt,chief);
+    record.model=finalResult.model;
+    transitionTask(record,"completed",{result:finalResult.text,completedAt:new Date().toISOString()});
+    emit("task.completed",{taskId:record.id,employeeId:"chief",provider:record.provider,model:record.model,subtaskCount:children.length});
+  } catch(error) {
+    if(record.status!=="failed") {
+      transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
+    }
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
   }
 }
@@ -274,7 +363,8 @@ app.post("/api/tasks", (req,res)=>{
     return res.status(202).json({ok:true,task:taskSnapshot(record)});
   }
 
-  void executeTask(record);
+  if(record.employeeId==="chief" && record.kind==="root") void executeRootTask(record);
+  else void executeWorkerTask(record);
   return res.status(202).json({ok:true,task:taskSnapshot(record)});
 });
 
@@ -300,7 +390,7 @@ app.post("/api/tasks/:id/subtasks",(req,res)=>{
       transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
       emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
     } else {
-      void executeTask(record);
+      void executeWorkerTask(record);
     }
     created.push(taskSnapshot(record));
   }
