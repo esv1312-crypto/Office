@@ -691,12 +691,13 @@ async function executeRootTask(record) {
       }
     }
 
-    const finalChildren=[...children,...[...tasks.values()].filter(x=>x.parentTaskId===record.id && x.kind==="replacement")];
+    const replacements=[...tasks.values()].filter(x=>x.parentTaskId===record.id && x.kind==="replacement");
+    const finalChildren=[...children,...replacements];
     record.workerResults=finalChildren.map(x=>({taskId:x.id,employeeId:x.employeeId,status:x.status,result:x.result,error:x.error,replacesTaskId:x.replacesTaskId || null}));
 
-    const stillFailed=finalChildren.filter(x=>x.kind==="subtask" && x.status==="failed" && x.replacementStatus!=="recovered");
-    const failedReplacement=finalChildren.filter(x=>x.kind==="replacement" && x.status==="failed");
-    if(stillFailed.length || failedReplacement.length) throw new Error("Worker and replacement attempts failed");
+    const recoveredTaskIds=new Set(replacements.filter(x=>x.status==="completed" && x.replacesTaskId).map(x=>x.replacesTaskId));
+    const stillFailed=children.filter(x=>x.status==="failed" && !recoveredTaskIds.has(x.id));
+    if(stillFailed.length) throw new Error("Worker and replacement attempts failed");
 
     transitionTask(record,"running",{waitingReason:null});
     const synthesisPrompt=[
