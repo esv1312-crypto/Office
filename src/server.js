@@ -343,6 +343,69 @@ async function executeWorkerTask(record) {
   }
 }
 
+
+function parseVerificationJson(text) {
+  const raw=String(text || "").trim();
+  const fenced=raw.match(/\`\`\`(?:json)?\\s*([\\s\\S]*?)\\s*\`\`\`/i);
+  const candidate=fenced ? fenced[1] : raw;
+  try { return JSON.parse(candidate); } catch (_) {}
+  const start=candidate.indexOf("{");
+  const end=candidate.lastIndexOf("}");
+  if(start>=0 && end>start) {
+    try { return JSON.parse(candidate.slice(start,end+1)); } catch (_) {}
+  }
+  return null;
+}
+
+function buildVerificationPrompt({task, checklist, workerResults}) {
+  return [
+    "You are the Verification specialist inside AI-OFFICE.",
+    "Verify the worker results against the original task and checklist.",
+    "Return ONLY valid JSON, no markdown.",
+    'Schema: {"status":"PASS|FAIL","checks":[{"name":"string","passed":true,"evidence":"string"}],"summary":"string"}',
+    "PASS only when the available evidence supports every required check.",
+    "Do not invent evidence and do not treat an AI claim as proof of an external action.",
+    "Original task: " + task,
+    "Checklist: " + JSON.stringify(checklist || []),
+    "Worker results: " + JSON.stringify(workerResults || [])
+  ].join("\\n");
+}
+
+async function verifyRootTask(record) {
+  const verifier=getEmployee("verifier");
+  const checklist=Array.isArray(record.verificationChecklist) ? record.verificationChecklist : [];
+  emit("verification.requested",{taskId:record.id,employeeId:verifier.id,checkCount:checklist.length});
+  const result=await generateViaGateway(buildVerificationPrompt({
+    task:record.task,
+    checklist,
+    workerResults:record.workerResults
+  }),verifier);
+  const verification=parseVerificationJson(result.text);
+  if(!verification || !["PASS","FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
+    throw Object.assign(new Error("Verifier returned invalid verification result"),{code:"VERIFICATION_INVALID"});
+  }
+  const failedChecks=verification.checks.filter(x=>x?.passed!==true);
+  const passed=verification.status==="PASS" && failedChecks.length===0;
+  record.verification={
+    status:passed ? "PASS" : "FAIL",
+    checks:verification.checks,
+    summary:String(verification.summary || ""),
+    verifierId:verifier.id,
+    model:result.model,
+    verifiedAt:new Date().toISOString()
+  };
+  record.evidence=verification.checks
+    .filter(x=>x?.passed===true && x?.evidence)
+    .map(x=>({check:x.name,evidence:x.evidence}));
+  emit(passed ? "verification.passed" : "verification.failed",{
+    taskId:record.id,
+    employeeId:verifier.id,
+    model:result.model,
+    failedChecks:failedChecks.map(x=>x?.name || "unnamed")
+  });
+  return passed;
+}
+
 function parsePlannerJson(text) {
   const raw=String(text || "").trim();
   const fenced=raw.match(/\`\`\`(?:json)?\\s*([\\s\\S]*?)\\s*\`\`\`/i);
@@ -420,8 +483,29 @@ async function executeRootTask(record) {
     ].join("\\n");
     const finalResult=await generateViaGateway(synthesisPrompt,chief);
     record.model=finalResult.model;
-    transitionTask(record,"completed",{result:finalResult.text,completedAt:new Date().toISOString()});
-    emit("task.completed",{taskId:record.id,employeeId:"chief",provider:record.provider,model:record.model,subtaskCount:children.length});
+    record.result=finalResult.text;
+
+    const verificationPassed=await verifyRootTask(record);
+    if(!verificationPassed) {
+      transitionTask(record,"failed",{
+        error:"Verification failed",
+        failedAt:new Date().toISOString(),
+        recoveryRequired:true
+      });
+      emit("task.failed",{taskId:record.id,employeeId:"chief",provider:record.provider,error:record.error,recoveryRequired:true});
+      return;
+    }
+
+    transitionTask(record,"completed",{completedAt:new Date().toISOString(),evidence:record.evidence});
+    emit("task.completed",{
+      taskId:record.id,
+      employeeId:"chief",
+      provider:record.provider,
+      model:record.model,
+      subtaskCount:children.length,
+      verification:"PASS",
+      evidenceCount:record.evidence.length
+    });
   } catch(error) {
     if(record.status!=="failed") {
       transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
