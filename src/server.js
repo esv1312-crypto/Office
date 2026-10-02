@@ -36,17 +36,34 @@ function isTransientGeminiError(status, message = "") {
 }
 
 async function callGemini(model, task) {
+  emit("ai.start", {provider:"gemini", model});
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.GEMINI_TIMEOUT_MS || 25000));
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(process.env.GEMINI_API_KEY);
-  const response = await fetch(url, {
+  let response;
+  try {
+    response = await fetch(url, {
     method: "POST",
     headers: {"Content-Type":"application/json"},
+    signal: controller.signal,
     body: JSON.stringify({
       systemInstruction: {
         parts: [{text:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."}]
       },
       contents: [{role:"user", parts:[{text:task}]}]
     })
-  });
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error("Gemini request timed out");
+      timeoutError.status = 408;
+      timeoutError.transient = true;
+      throw timeoutError;
+    }
+    throw error;
+  }
+  clearTimeout(timeout);
   const data = await response.json().catch(() => ({}));
   const message = data?.error?.message || ("Gemini HTTP " + response.status);
   if (!response.ok) {
@@ -73,7 +90,10 @@ async function generateWithGemini(task) {
     const model = models[modelIndex];
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        return await callGemini(model, task);
+        emit("ai.attempt", {provider:"gemini", model, attempt:attempt + 1});
+        const result = await callGemini(model, task);
+        emit("ai.success", {provider:"gemini", model, attempt:attempt + 1});
+        return result;
       } catch (error) {
         lastError = error;
         if (!error?.transient || attempt === 2) break;
