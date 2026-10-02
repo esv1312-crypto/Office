@@ -1,0 +1,44 @@
+name: Bootstrap free AI resource manager
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: contains(github.event.head_commit.message, '[office bootstrap resource manager]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Integrate resource manager
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'src/server.js';
+          let s = fs.readFileSync(path, 'utf8');
+
+          const importLine = 'import { inspectFreeProviders, chooseNextProvider } from "./free-ai-resource-manager.js";';
+          if (!s.includes(importLine)) {
+            s = s.replace('import OpenAI from "openai";', 'import OpenAI from "openai";\n' + importLine);
+          }
+
+          const marker = 'app.get("/api/resource-manager"';
+          if (!s.includes(marker)) {
+            const route = String.raw`\napp.get("/api/resource-manager", (_req,res)=>res.json({\n  ok:true,\n  manager:"free-ai-resource-manager",\n  policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},\n  ...inspectFreeProviders(),\n  gatewayOrder:providerOrder()\n}));\n`;
+            const anchor = 'app.get("/api/gateway", (_req,res)=>res.json({';
+            if (!s.includes(anchor)) throw new Error('gateway route anchor not found');
+            s = s.replace(anchor, route + '\n' + anchor);
+          }
+
+          fs.writeFileSync(path, s);
+          NODE
+
+          git config user.name "AI-OFFICE"
+          git config user.email "ai-office@users.noreply.github.com"
+          git add src/server.js
+          git diff --cached --quiet || git commit -m "feat: integrate autonomous free AI resource manager"
+          git push
