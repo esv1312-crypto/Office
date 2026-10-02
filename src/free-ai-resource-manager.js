@@ -2,7 +2,7 @@ const PROVIDERS = [
   {
     id:"gemini",
     name:"Google Gemini API",
-    freeAccess:"official free tier when available for the selected model/account",
+    freeAccess:"official free tier may be available; current limits vary by model/account; verify before use",
     credentialEnv:["GEMINI_API_KEY"],
     docs:"https://ai.google.dev/gemini-api/docs/pricing"
   },
