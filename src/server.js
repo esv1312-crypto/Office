@@ -26,9 +26,17 @@ function aiConfigured() {
   return false;
 }
 
-async function generateWithGemini(task) {
-  const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isTransientGeminiError(status, message = "") {
+  return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
+    || /high demand|temporarily|unavailable|overloaded|rate.?limit|resource.?exhausted/i.test(message);
+}
+
+async function callGemini(model, task) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(process.env.GEMINI_API_KEY);
   const response = await fetch(url, {
     method: "POST",
     headers: {"Content-Type":"application/json"},
@@ -39,9 +47,13 @@ async function generateWithGemini(task) {
       contents: [{role:"user", parts:[{text:task}]}]
     })
   });
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
+  const message = data?.error?.message || ("Gemini HTTP " + response.status);
   if (!response.ok) {
-    throw new Error(data?.error?.message || `Gemini HTTP ${response.status}`);
+    const error = new Error(message);
+    error.status = response.status;
+    error.transient = isTransientGeminiError(response.status, message);
+    throw error;
   }
   const text = (data?.candidates?.[0]?.content?.parts || [])
     .map(part => part.text || "")
@@ -49,6 +61,33 @@ async function generateWithGemini(task) {
     .trim();
   if (!text) throw new Error("Gemini returned an empty response");
   return {text, model};
+}
+
+async function generateWithGemini(task) {
+  const configured = (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash")
+    .split(",").map(x => x.trim()).filter(Boolean);
+  const models = [...new Set(configured)];
+  let lastError;
+
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+    const model = models[modelIndex];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await callGemini(model, task);
+      } catch (error) {
+        lastError = error;
+        if (!error?.transient || attempt === 2) break;
+        const delay = Math.min(8000, 1000 * (2 ** attempt)) + Math.floor(Math.random() * 500);
+        emit("ai.retry", {provider:"gemini", model, attempt:attempt + 1, delayMs:delay, error:error.message});
+        await sleep(delay);
+      }
+    }
+    if (modelIndex < models.length - 1) {
+      emit("ai.fallback", {provider:"gemini", from:model, to:models[modelIndex + 1], error:lastError?.message});
+    }
+  }
+
+  throw lastError || new Error("Gemini request failed");
 }
 
 async function generateWithOpenAI(task) {
