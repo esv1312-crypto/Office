@@ -12,6 +12,7 @@ function emit(type, data = {}) {
   const event = { id: events.length + 1, ts: new Date().toISOString(), type, ...data };
   events.unshift(event);
   if (events.length > 500) events.pop();
+  console.log("[EVENT]", JSON.stringify(event));
   return event;
 }
 
@@ -86,6 +87,7 @@ async function generateWithGemini(task) {
         return result;
       } catch(error) {
         lastError=error;
+        emit("ai.error",{provider:"gemini",model,attempt:attempt+1,error:error?.message||String(error),transient:Boolean(error?.transient)});
         if (!error?.transient || attempt===2) break;
         const delay=Math.min(8000,1000*(2**attempt))+Math.floor(Math.random()*500);
         emit("ai.retry",{provider:"gemini",model,attempt:attempt+1,delayMs:delay,error:error.message});
@@ -100,6 +102,7 @@ async function generateWithGemini(task) {
 async function generateWithOpenAI(task) {
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
   const model=process.env.OPENAI_MODEL || "gpt-6-luna";
+  emit("ai.start",{provider:"openai",model});
   const response=await client.responses.create({
     model,
     input:[
