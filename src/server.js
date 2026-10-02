@@ -1,6 +1,7 @@
 import express from "express";
 import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
+import { createBrowserManager } from "./browser-manager.js";
 
 const app = express();
 app.use(express.json({limit:"1mb"}));
@@ -8,6 +9,7 @@ app.use(express.json({limit:"1mb"}));
 const startedAt = new Date().toISOString();
 const events = [];
 const tasks = new Map();
+const browser = createBrowserManager({emit});
 
 const TASK_STATES = new Set(["accepted","planning","running","waiting","completed","failed","cancelled"]);
 const ALLOWED_TRANSITIONS = {
@@ -281,6 +283,26 @@ async function generateViaGateway(task, employee) {
 
 
 const TOOL_REGISTRY = {
+  "browser.request": {
+    description: "Create a browser workflow request. External navigation is gated and requires approval before sensitive actions.",
+    roles: ["coordinator","developer","analyst","verifier","executor"],
+    execute: async (args = {}) => browser.request({
+      taskId: args.taskId || null,
+      url: String(args.url || "").trim(),
+      goal: String(args.goal || "").trim(),
+      actionClass: String(args.actionClass || "research")
+    })
+  },
+  "browser.approve": {
+    description: "Approve a pending browser action after explicit human confirmation.",
+    roles: ["coordinator","executor"],
+    execute: async (args = {}) => browser.approve(String(args.requestId || ""), String(args.approvalToken || ""))
+  },
+  "browser.status": {
+    description: "Read browser workflow and approval state.",
+    roles: ["coordinator","developer","analyst","verifier","executor"],
+    execute: async (args = {}) => browser.status(String(args.requestId || ""))
+  },
   "office.echo": {
     description: "Safe test tool that returns the supplied value.",
     roles: ["coordinator","developer","analyst","verifier","executor"],
@@ -911,6 +933,44 @@ app.post("/api/tools/execute", async (req,res)=>{
   }
 });
 
+
+app.get("/api/browser", (_req,res)=>res.json({
+  ok:true,
+  ...browser.summary()
+}));
+
+app.post("/api/browser/request", (req,res)=>{
+  try {
+    const result=browser.request({
+      taskId:req.body?.taskId || null,
+      url:String(req.body?.url || "").trim(),
+      goal:String(req.body?.goal || "").trim(),
+      actionClass:String(req.body?.actionClass || "research")
+    });
+    res.status(result.requiresApproval ? 202 : 200).json({ok:true,...result});
+  } catch(error) {
+    res.status(error?.code === "BROWSER_POLICY_DENIED" ? 403 : 400).json({
+      ok:false,error:error?.message || String(error),code:error?.code || null
+    });
+  }
+});
+
+app.get("/api/browser/requests/:id",(req,res)=>{
+  const result=browser.status(String(req.params.id || ""));
+  if(!result) return res.status(404).json({ok:false,error:"browser request not found"});
+  res.json({ok:true,...result});
+});
+
+app.post("/api/browser/requests/:id/approve",(req,res)=>{
+  try {
+    const result=browser.approve(String(req.params.id || ""),String(req.body?.approvalToken || ""));
+    res.json({ok:true,...result});
+  } catch(error) {
+    res.status(error?.code === "BROWSER_APPROVAL_REQUIRED" ? 409 : 400).json({
+      ok:false,error:error?.message || String(error),code:error?.code || null
+    });
+  }
+});
 
 app.get("/api/resource-manager", (_req,res)=>res.json({
   ok:true,
