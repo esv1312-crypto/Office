@@ -1,0 +1,24 @@
+name: AI-OFFICE one-time smoke test
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  smoke:
+    if: github.event.head_commit.message != 'chore: remove one-time office smoke test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send real task to AI-OFFICE runtime
+        run: |
+          set -e
+          echo "Calling runtime..."
+          curl -fsS --retry 3 --retry-all-errors --max-time 90 \
+            -X POST "https://ai-office-runtime-8pir.onrender.com/api/tasks" \
+            -H "content-type: application/json" \
+            -d '{"title":"Первое настоящее задание AI-ОФИСА","description":"Проведи проверку самого AI-ОФИСА. Составь короткий план из 3 шагов, выполни доступные проверки runtime и наблюдаемости по имеющимся данным, верни итог и критерии проверки. Не выдумывай выполненные действия."}'
+          echo
+          echo "Reading runtime state..."
+          curl -fsS --retry 3 --retry-all-errors --max-time 30 \
+            "https://ai-office-runtime-8pir.onrender.com/api/state"
+          echo
