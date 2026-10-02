@@ -419,6 +419,144 @@ function parsePlannerJson(text) {
   return null;
 }
 
+const MAX_RECOVERY_ATTEMPTS = 2;
+
+function classifyFailure(record) {
+  const checks = Array.isArray(record?.verification?.checks) ? record.verification.checks : [];
+  const failedChecks = checks.filter(x => x?.passed !== true);
+  const text = [
+    record?.error || "",
+    record?.verification?.summary || "",
+    ...failedChecks.map(x => x?.evidence || ""),
+    ...failedChecks.map(x => x?.name || "")
+  ].join(" ").toLowerCase();
+
+  let type = "unknown";
+  if (/github|tool|permission|policy|not configured|http 4|http 5/.test(text)) type = "tool";
+  else if (/gemini|openai|ai provider|model|timeout|rate.?limit|high demand/.test(text)) type = "ai";
+  else if (failedChecks.length) type = "verification";
+  else if (/subtask|worker|employee/.test(text)) type = "worker";
+
+  const classification = {
+    type,
+    failedChecks: failedChecks.map(x => String(x?.name || "unnamed")),
+    reason: String(record?.verification?.summary || record?.error || "Verification failed")
+  };
+  record.failureClass = classification;
+  emit("failure.classified",{taskId:record.id,...classification});
+  return classification;
+}
+
+function chooseRecoveryEmployee(failureClass) {
+  if (failureClass?.type === "tool") return "executor";
+  if (failureClass?.type === "worker") return "developer";
+  if (failureClass?.type === "ai") return "executor";
+  return "developer";
+}
+
+async function recoverRootTask(record) {
+  const maxAttempts = Number(process.env.MAX_RECOVERY_ATTEMPTS || MAX_RECOVERY_ATTEMPTS);
+  record.maxRecoveryAttempts = Number.isFinite(maxAttempts) && maxAttempts > 0 ? Math.floor(maxAttempts) : MAX_RECOVERY_ATTEMPTS;
+  record.recoveryAttempts = Number(record.recoveryAttempts || 0);
+  record.recoveryHistory = Array.isArray(record.recoveryHistory) ? record.recoveryHistory : [];
+  record.recoveryTaskIds = Array.isArray(record.recoveryTaskIds) ? record.recoveryTaskIds : [];
+
+  while (record.recoveryAttempts < record.maxRecoveryAttempts) {
+    const failureClass = classifyFailure(record);
+    record.recoveryAttempts += 1;
+
+    const employeeId = chooseRecoveryEmployee(failureClass);
+    const failedChecks = failureClass.failedChecks.length
+      ? failureClass.failedChecks.join(", ")
+      : "the verification requirements";
+    const fixPrompt = [
+      "You are a recovery specialist inside AI-OFFICE.",
+      "Fix the failure below. Work only with capabilities actually available to this runtime.",
+      "Do not claim an external action happened unless you actually performed it.",
+      "Original task: " + record.task,
+      "Failure class: " + failureClass.type,
+      "Failed checks: " + failedChecks,
+      "Failure reason: " + failureClass.reason,
+      "Worker results: " + JSON.stringify(record.workerResults || []),
+      "Produce a concrete fix/retest action or explain precisely what blocks it."
+    ].join("\n");
+
+    const fixTask = createTaskRecord({
+      task:fixPrompt,
+      employeeId,
+      parentTaskId:record.id,
+      kind:"recovery"
+    });
+    fixTask.recoveryAttempt = record.recoveryAttempts;
+    tasks.set(fixTask.id,fixTask);
+    record.recoveryTaskIds.push(fixTask.id);
+    emit("recovery.requested",{
+      taskId:record.id,
+      recoveryTaskId:fixTask.id,
+      attempt:record.recoveryAttempts,
+      maxAttempts:record.maxRecoveryAttempts,
+      employeeId,
+      failureClass:failureClass.type
+    });
+
+    if (!aiConfigured(fixTask.provider)) {
+      record.recoveryHistory.push({attempt:record.recoveryAttempts,status:"blocked",reason:"AI not configured",taskId:fixTask.id});
+      emit("recovery.failed",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts,reason:"AI not configured"});
+      break;
+    }
+
+    emit("recovery.started",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts});
+    await executeWorkerTask(fixTask);
+    record.workerResults = [...(record.workerResults || []), {
+      taskId:fixTask.id,
+      employeeId:fixTask.employeeId,
+      status:fixTask.status,
+      result:fixTask.result,
+      error:fixTask.error,
+      recoveryAttempt:record.recoveryAttempts
+    }];
+
+    if (fixTask.status !== "completed") {
+      record.recoveryHistory.push({
+        attempt:record.recoveryAttempts,
+        status:"failed",
+        taskId:fixTask.id,
+        error:fixTask.error
+      });
+      emit("recovery.failed",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts,reason:fixTask.error || "recovery worker failed"});
+      continue;
+    }
+
+    record.recoveryHistory.push({attempt:record.recoveryAttempts,status:"completed",taskId:fixTask.id});
+    emit("recovery.success",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts});
+
+    transitionTask(record,"running",{recoveryRequired:false,recoveryAttempt:record.recoveryAttempts});
+    emit("retest.requested",{taskId:record.id,attempt:record.recoveryAttempts});
+
+    const passed = await verifyRootTask(record);
+    if (passed) {
+      emit("retest.passed",{taskId:record.id,attempt:record.recoveryAttempts});
+      return true;
+    }
+
+    emit("retest.failed",{taskId:record.id,attempt:record.recoveryAttempts});
+    if (record.recoveryAttempts < record.maxRecoveryAttempts) {
+      transitionTask(record,"failed",{
+        error:"Verification failed after recovery attempt " + record.recoveryAttempts,
+        failedAt:new Date().toISOString(),
+        recoveryRequired:true
+      });
+    }
+  }
+
+  emit("recovery.exhausted",{
+    taskId:record.id,
+    attempts:record.recoveryAttempts,
+    maxAttempts:record.maxRecoveryAttempts
+  });
+  return false;
+}
+
 function buildPlanningPrompt(task) {
   return [
     "You are the Chief of Staff of AI-OFFICE.",
@@ -493,10 +631,30 @@ async function executeRootTask(record) {
         recoveryRequired:true
       });
       emit("task.failed",{taskId:record.id,employeeId:"chief",provider:record.provider,error:record.error,recoveryRequired:true});
-      return;
+
+      const recovered=await recoverRootTask(record);
+      if (!recovered) {
+        record.error="Recovery attempts exhausted";
+        record.failedAt=new Date().toISOString();
+        transitionTask(record,"failed",{recoveryRequired:false,error:record.error,failedAt:record.failedAt});
+        emit("task.failed",{
+          taskId:record.id,
+          employeeId:"chief",
+          provider:record.provider,
+          error:record.error,
+          recoveryRequired:false,
+          recoveryAttempts:record.recoveryAttempts,
+          maxRecoveryAttempts:record.maxRecoveryAttempts
+        });
+        return;
+      }
     }
 
-    transitionTask(record,"completed",{completedAt:new Date().toISOString(),evidence:record.evidence});
+    transitionTask(record,"completed",{
+      completedAt:new Date().toISOString(),
+      evidence:record.evidence,
+      recoveryRequired:false
+    });
     emit("task.completed",{
       taskId:record.id,
       employeeId:"chief",
