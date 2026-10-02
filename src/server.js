@@ -177,6 +177,120 @@ async function generateViaGateway(task, employee) {
   throw new Error("Unsupported AI provider: " + brain.provider);
 }
 
+
+const TOOL_REGISTRY = {
+  "office.echo": {
+    description: "Safe test tool that returns the supplied value.",
+    roles: ["coordinator","developer","analyst","verifier","executor"],
+    execute: async (args = {}) => ({echo: args.value ?? null})
+  },
+  "github.read_file": {
+    description: "Read a UTF-8 file from the configured GitHub repository.",
+    roles: ["coordinator","developer","analyst","verifier","executor"],
+    requiresEnv: ["GITHUB_TOKEN","GITHUB_REPOSITORY"],
+    execute: async (args = {}) => {
+      const path = String(args.path || "").trim();
+      if (!path) throw new Error("github.read_file requires path");
+      const repo = process.env.GITHUB_REPOSITORY;
+      const ref = args.ref ? "&ref=" + encodeURIComponent(String(args.ref)) : "";
+      const response = await fetch("https://api.github.com/repos/" + repo + "/contents/" + path + "?per_page=1" + ref, {
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer " + process.env.GITHUB_TOKEN,
+          "X-GitHub-Api-Version": "2022-11-28"
+        }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.message || ("GitHub HTTP " + response.status));
+      if (Array.isArray(data)) throw new Error("Path is a directory, not a file");
+      const content = data?.content ? Buffer.from(String(data.content).replace(/\\s/g, ""), "base64").toString("utf8") : "";
+      return {repository: repo, path, sha: data?.sha || null, content};
+    }
+  },
+  "github.write_file": {
+    description: "Create or update a UTF-8 file in the configured GitHub repository.",
+    roles: ["coordinator","developer","executor"],
+    requiresEnv: ["GITHUB_TOKEN","GITHUB_REPOSITORY"],
+    execute: async (args = {}) => {
+      const path = String(args.path || "").trim();
+      const content = String(args.content ?? "");
+      const message = String(args.message || "AI-OFFICE: update file");
+      const branch = String(args.branch || process.env.GITHUB_BRANCH || "main");
+      if (!path) throw new Error("github.write_file requires path");
+
+      const base = "https://api.github.com/repos/" + process.env.GITHUB_REPOSITORY + "/contents/" + path;
+      const headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": "Bearer " + process.env.GITHUB_TOKEN,
+        "X-GitHub-Api-Version": "2022-11-28"
+      };
+
+      let sha = null;
+      const existing = await fetch(base + "?ref=" + encodeURIComponent(branch), {headers});
+      if (existing.ok) {
+        const data = await existing.json();
+        sha = data?.sha || null;
+      } else if (existing.status !== 404) {
+        const data = await existing.json().catch(() => ({}));
+        throw new Error(data?.message || ("GitHub HTTP " + existing.status));
+      }
+
+      const body = {message, content: Buffer.from(content, "utf8").toString("base64"), branch};
+      if (sha) body.sha = sha;
+
+      const response = await fetch(base, {
+        method: "PUT",
+        headers: {...headers, "Content-Type":"application/json"},
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.message || ("GitHub HTTP " + response.status));
+      return {repository: process.env.GITHUB_REPOSITORY, path, branch, commitSha:data?.commit?.sha || null};
+    }
+  }
+};
+
+function toolPolicy(employee, toolName, args = {}) {
+  const tool = TOOL_REGISTRY[toolName];
+  if (!tool) throw Object.assign(new Error("Tool is not registered: " + toolName), {code:"TOOL_NOT_FOUND"});
+  if (!tool.roles.includes(employee.role)) {
+    throw Object.assign(new Error("Tool denied for role: " + employee.role), {code:"TOOL_POLICY_DENIED"});
+  }
+  for (const name of (tool.requiresEnv || [])) {
+    if (!process.env[name]) {
+      throw Object.assign(new Error("Tool requires configuration: " + name), {code:"TOOL_NOT_CONFIGURED"});
+    }
+  }
+  if (toolName === "github.write_file" && process.env.GITHUB_TOOLS_ENABLED !== "true") {
+    throw Object.assign(new Error("GitHub write tools are disabled by policy"), {code:"TOOL_POLICY_DENIED"});
+  }
+  return true;
+}
+
+async function executeTool({employeeId = "executor", toolName, args = {}, taskId = null}) {
+  const employee = getEmployee(employeeId);
+  emit("tool.requested", {taskId, employeeId:employee.id, role:employee.role, tool:toolName, args});
+  let tool;
+  try {
+    tool = TOOL_REGISTRY[toolName];
+    toolPolicy(employee, toolName, args);
+    emit("tool.started", {taskId, employeeId:employee.id, role:employee.role, tool:toolName});
+    const result = await tool.execute(args);
+    emit("tool.success", {taskId, employeeId:employee.id, role:employee.role, tool:toolName});
+    return result;
+  } catch (error) {
+    emit("tool.error", {
+      taskId,
+      employeeId:employee.id,
+      role:employee.role,
+      tool:toolName,
+      code:error?.code || null,
+      error:error?.message || String(error)
+    });
+    throw error;
+  }
+}
+
 function taskSnapshot(record) {
   return {
     ...record,
@@ -324,12 +438,43 @@ app.get("/", (_req,res)=>res.json({
 
 app.get("/health", (_req,res)=>res.json({
   ok:true,service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),startedAt,
-  employees:employees().length
+  employees:employees().length,
+  tools:Object.keys(TOOL_REGISTRY).length,
+  githubToolsEnabled:process.env.GITHUB_TOOLS_ENABLED === "true"
 }));
 
 app.get("/api/employees", (_req,res)=>res.json({
   ok:true,employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)}))
 }));
+
+app.get("/api/tools", (_req,res)=>res.json({
+  ok:true,
+  tools:Object.entries(TOOL_REGISTRY).map(([name,tool]) => ({
+    name,
+    description:tool.description,
+    roles:tool.roles,
+    configured:(tool.requiresEnv || []).every(x => Boolean(process.env[x])),
+    enabled:name !== "github.write_file" || process.env.GITHUB_TOOLS_ENABLED === "true"
+  }))
+}));
+
+app.post("/api/tools/execute", async (req,res)=>{
+  const employeeId=String(req.body?.employeeId || "executor");
+  const toolName=String(req.body?.tool || "").trim();
+  if(!toolName) return res.status(400).json({ok:false,error:"tool is required"});
+  try {
+    const result=await executeTool({
+      employeeId,
+      toolName,
+      args:req.body?.args || {},
+      taskId:req.body?.taskId || null
+    });
+    res.json({ok:true,tool:toolName,result});
+  } catch(error) {
+    const status=error?.code === "TOOL_NOT_FOUND" ? 404 : error?.code === "TOOL_POLICY_DENIED" ? 403 : error?.code === "TOOL_NOT_CONFIGURED" ? 503 : 500;
+    res.status(status).json({ok:false,error:error?.message || String(error),code:error?.code || null});
+  }
+});
 
 app.get("/api/gateway", (_req,res)=>res.json({
   ok:true,providers:{
