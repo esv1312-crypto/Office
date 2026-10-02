@@ -8,6 +8,29 @@ const startedAt = new Date().toISOString();
 const events = [];
 const tasks = new Map();
 
+const TASK_STATES = new Set(["accepted","planning","running","waiting","completed","failed","cancelled"]);
+const ALLOWED_TRANSITIONS = {
+  accepted: new Set(["planning","running","waiting","failed","cancelled"]),
+  planning: new Set(["running","waiting","failed","cancelled"]),
+  running: new Set(["waiting","completed","failed","cancelled"]),
+  waiting: new Set(["running","completed","failed","cancelled"]),
+  completed: new Set([]),
+  failed: new Set(["planning","running","cancelled"]),
+  cancelled: new Set([])
+};
+
+function transitionTask(record, nextStatus, extra = {}) {
+  if (!TASK_STATES.has(nextStatus)) throw new Error("Invalid task state: " + nextStatus);
+  if (record.status !== nextStatus && !ALLOWED_TRANSITIONS[record.status]?.has(nextStatus)) {
+    throw new Error("Invalid task transition: " + record.status + " -> " + nextStatus);
+  }
+  const previousStatus = record.status;
+  record.status = nextStatus;
+  Object.assign(record, extra);
+  emit("task.state_changed", {taskId:record.id,parentTaskId:record.parentTaskId || null,previousStatus,status:nextStatus});
+  return record;
+}
+
 const DEFAULT_EMPLOYEES = [
   {id:"chief",name:"Руководитель",role:"coordinator",provider:"gemini",model:"gemini-3.8-flash",skills:["planning","delegation","coordination"]},
   {id:"developer",name:"Программист",role:"developer",provider:"gemini",model:"gemini-3.8-flash",skills:["coding","github","debugging"]},
@@ -155,13 +178,36 @@ async function generateViaGateway(task, employee) {
 }
 
 function taskSnapshot(record) {
-  return {...record};
+  return {
+    ...record,
+    children: [...tasks.values()].filter(x => x.parentTaskId === record.id).map(taskSnapshot)
+  };
+}
+
+function createTaskRecord({task, employeeId = "chief", parentTaskId = null, kind = "root"}) {
+  const employee = getEmployee(employeeId);
+  const brain = resolveBrain(employee);
+  return {
+    id: crypto.randomUUID(),
+    task,
+    kind,
+    parentTaskId,
+    status: "accepted",
+    createdAt: new Date().toISOString(),
+    employeeId: employee.id,
+    employee: employee.name,
+    role: employee.role,
+    provider: brain.provider,
+    model: brain.model,
+    attempts: 0,
+    result: null,
+    error: null
+  };
 }
 
 async function executeTask(record) {
   try {
-    record.status="running";
-    record.startedAt=new Date().toISOString();
+    transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
     const employee=getEmployee(record.employeeId);
     record.employeeId=employee.id;
     record.employee=employee.name;
@@ -173,14 +219,10 @@ async function executeTask(record) {
     const result=await generateViaGateway(record.task,employee);
 
     record.model=result.model;
-    record.status="completed";
-    record.result=result.text;
-    record.completedAt=new Date().toISOString();
+    transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
     emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model});
   } catch(error) {
-    record.status="failed";
-    record.error=error?.message || String(error);
-    record.failedAt=new Date().toISOString();
+    transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
   }
 }
@@ -217,22 +259,52 @@ app.post("/api/tasks", (req,res)=>{
   const task=String(req.body?.task || "").trim();
   if(!task) return res.status(400).json({ok:false,error:"task is required"});
 
-  const employeeId=String(req.body?.employeeId || "chief");
-  const employee=getEmployee(employeeId);
-  const brain=resolveBrain(employee);
-  const id=crypto.randomUUID();
-  const record={id,task,status:"accepted",createdAt:new Date().toISOString(),employeeId:employee.id,employee:employee.name,role:employee.role,provider:brain.provider,model:brain.model};
-  tasks.set(id,record);
-  emit("task.accepted",{taskId:id,task,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model});
+  const record=createTaskRecord({
+    task,
+    employeeId:String(req.body?.employeeId || "chief"),
+    parentTaskId:req.body?.parentTaskId || null,
+    kind:req.body?.kind || "root"
+  });
+  tasks.set(record.id,record);
+  emit("task.accepted",{taskId:record.id,parentTaskId:record.parentTaskId,kind:record.kind,task,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
 
-  if(!aiConfigured(brain.provider)) {
-    record.status="waiting_for_ai";
-    emit("task.waiting_for_ai",{taskId:id,employeeId:employee.id,provider:record.provider});
+  if(!aiConfigured(record.provider)) {
+    transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+    emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
     return res.status(202).json({ok:true,task:taskSnapshot(record)});
   }
 
   void executeTask(record);
   return res.status(202).json({ok:true,task:taskSnapshot(record)});
+});
+
+app.post("/api/tasks/:id/subtasks",(req,res)=>{
+  const parent=tasks.get(req.params.id);
+  if(!parent) return res.status(404).json({ok:false,error:"parent task not found"});
+  if(["completed","cancelled"].includes(parent.status)) return res.status(409).json({ok:false,error:"cannot add subtask to a closed task"});
+
+  const items=Array.isArray(req.body?.subtasks) ? req.body.subtasks : [req.body];
+  const created=[];
+  for(const item of items) {
+    const task=String(item?.task || "").trim();
+    if(!task) return res.status(400).json({ok:false,error:"each subtask requires task"});
+    const record=createTaskRecord({
+      task,
+      employeeId:String(item?.employeeId || "executor"),
+      parentTaskId:parent.id,
+      kind:"subtask"
+    });
+    tasks.set(record.id,record);
+    emit("task.accepted",{taskId:record.id,parentTaskId:parent.id,kind:"subtask",task,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
+    if(!aiConfigured(record.provider)) {
+      transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+      emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
+    } else {
+      void executeTask(record);
+    }
+    created.push(taskSnapshot(record));
+  }
+  res.status(202).json({ok:true,parent:taskSnapshot(parent),subtasks:created});
 });
 
 app.get("/api/tasks/:id",(req,res)=>{
