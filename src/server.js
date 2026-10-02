@@ -8,6 +8,14 @@ const startedAt = new Date().toISOString();
 const events = [];
 const tasks = new Map();
 
+const DEFAULT_EMPLOYEES = [
+  {id:"chief",name:"Руководитель",role:"coordinator",provider:"gemini",model:"gemini-3.8-flash",skills:["planning","delegation","coordination"]},
+  {id:"developer",name:"Программист",role:"developer",provider:"gemini",model:"gemini-3.8-flash",skills:["coding","github","debugging"]},
+  {id:"analyst",name:"Аналитик",role:"analyst",provider:"gemini",model:"gemini-3.7-flash",skills:["analysis","research","requirements"]},
+  {id:"verifier",name:"Проверяющий",role:"verifier",provider:"gemini",model:"gemini-3.6-flash",skills:["testing","verification","evidence"]},
+  {id:"executor",name:"Исполнитель",role:"executor",provider:"gemini",model:"gemini-3.6-flash",skills:["execution","operations","recovery"]}
+];
+
 function emit(type, data = {}) {
   const event = { id: events.length + 1, ts: new Date().toISOString(), type, ...data };
   events.unshift(event);
@@ -20,11 +28,29 @@ function aiProvider() {
   return (process.env.AI_PROVIDER || (process.env.OPENAI_API_KEY ? "openai" : "none")).toLowerCase();
 }
 
-function aiConfigured() {
-  const provider = aiProvider();
+function aiConfigured(provider = aiProvider()) {
   if (provider === "gemini") return Boolean(process.env.GEMINI_API_KEY);
   if (provider === "openai") return Boolean(process.env.OPENAI_API_KEY);
   return false;
+}
+
+function employees() {
+  try {
+    const parsed = JSON.parse(process.env.AI_EMPLOYEES_JSON || "null");
+    if (Array.isArray(parsed) && parsed.length) return parsed;
+  } catch (_) {}
+  return DEFAULT_EMPLOYEES;
+}
+
+function getEmployee(id) {
+  return employees().find(x => x.id === id) || employees()[0];
+}
+
+function resolveBrain(employee) {
+  return {
+    provider: String(employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase(),
+    model: employee?.model || null
+  };
 }
 
 async function sleep(ms) {
@@ -48,7 +74,7 @@ async function callGemini(model, task) {
       headers:{"Content-Type":"application/json"},
       signal:controller.signal,
       body:JSON.stringify({
-        systemInstruction:{parts:[{text:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."}]},
+        systemInstruction:{parts:[{text:"You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."}]},
         contents:[{role:"user",parts:[{text:task}]}]
       })
     });
@@ -74,8 +100,10 @@ async function callGemini(model, task) {
   return {text, model};
 }
 
-async function generateWithGemini(task) {
-  const models = [...new Set((process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean))];
+async function generateWithGemini(task, preferredModel) {
+  const configured = (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash")
+    .split(",").map(x=>x.trim()).filter(Boolean);
+  const models = [...new Set([preferredModel, ...configured].filter(Boolean))];
   let lastError;
   for (let modelIndex=0; modelIndex<models.length; modelIndex++) {
     const model=models[modelIndex];
@@ -99,18 +127,31 @@ async function generateWithGemini(task) {
   throw lastError || new Error("Gemini request failed");
 }
 
-async function generateWithOpenAI(task) {
+async function generateWithOpenAI(task, preferredModel) {
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
-  const model=process.env.OPENAI_MODEL || "gpt-6-luna";
+  const model=preferredModel || process.env.OPENAI_MODEL || "gpt-6-luna";
   emit("ai.start",{provider:"openai",model});
   const response=await client.responses.create({
     model,
     input:[
-      {role:"system",content:"You are the execution brain of AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
+      {role:"system",content:"You are an employee inside AI-OFFICE. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
       {role:"user",content:task}
     ]
   });
   return {text:response.output_text || "",model};
+}
+
+async function generateViaGateway(task, employee) {
+  const brain=resolveBrain(employee);
+  emit("gateway.route",{employeeId:employee.id,role:employee.role,provider:brain.provider,model:brain.model});
+  if (!aiConfigured(brain.provider)) {
+    const e=new Error("AI provider is not configured: " + brain.provider);
+    e.code="AI_NOT_CONFIGURED";
+    throw e;
+  }
+  if (brain.provider==="gemini") return generateWithGemini(task, brain.model);
+  if (brain.provider==="openai") return generateWithOpenAI(task, brain.model);
+  throw new Error("Unsupported AI provider: " + brain.provider);
 }
 
 function taskSnapshot(record) {
@@ -121,36 +162,54 @@ async function executeTask(record) {
   try {
     record.status="running";
     record.startedAt=new Date().toISOString();
-    emit("task.started",{taskId:record.id,provider:record.provider});
+    const employee=getEmployee(record.employeeId);
+    record.employeeId=employee.id;
+    record.employee=employee.name;
+    record.role=employee.role;
+    record.provider=resolveBrain(employee).provider;
+    record.model=resolveBrain(employee).model;
+    emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model});
 
-    const result=record.provider==="gemini"
-      ? await generateWithGemini(record.task)
-      : await generateWithOpenAI(record.task);
+    const result=await generateViaGateway(record.task,employee);
 
     record.model=result.model;
     record.status="completed";
     record.result=result.text;
     record.completedAt=new Date().toISOString();
-    emit("task.completed",{taskId:record.id,provider:record.provider,model:record.model});
+    emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model});
   } catch(error) {
     record.status="failed";
     record.error=error?.message || String(error);
     record.failedAt=new Date().toISOString();
-    emit("task.failed",{taskId:record.id,provider:record.provider,error:record.error});
+    emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
   }
 }
 
 app.get("/", (_req,res)=>res.json({
   service:"ai-office-runtime",status:"online",provider:aiProvider(),
-  mode:aiConfigured()?"ai":"control-plane",startedAt,tasks:tasks.size,events:events.length
+  mode:employees().length ? "office" : "control-plane",startedAt,tasks:tasks.size,events:events.length,
+  employees:employees().length
 }));
 
 app.get("/health", (_req,res)=>res.json({
-  ok:true,service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),startedAt
+  ok:true,service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),startedAt,
+  employees:employees().length
+}));
+
+app.get("/api/employees", (_req,res)=>res.json({
+  ok:true,employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)}))
+}));
+
+app.get("/api/gateway", (_req,res)=>res.json({
+  ok:true,providers:{
+    gemini:{configured:aiConfigured("gemini"),models:(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean)},
+    openai:{configured:aiConfigured("openai"),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
+  }
 }));
 
 app.get("/api/state", (_req,res)=>res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),
+  employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
   tasks:[...tasks.values()].map(taskSnapshot),events:events.slice(0,100)
 }));
 
@@ -158,14 +217,17 @@ app.post("/api/tasks", (req,res)=>{
   const task=String(req.body?.task || "").trim();
   if(!task) return res.status(400).json({ok:false,error:"task is required"});
 
+  const employeeId=String(req.body?.employeeId || "chief");
+  const employee=getEmployee(employeeId);
+  const brain=resolveBrain(employee);
   const id=crypto.randomUUID();
-  const record={id,task,status:"accepted",createdAt:new Date().toISOString(),provider:aiProvider()};
+  const record={id,task,status:"accepted",createdAt:new Date().toISOString(),employeeId:employee.id,employee:employee.name,role:employee.role,provider:brain.provider,model:brain.model};
   tasks.set(id,record);
-  emit("task.accepted",{taskId:id,task,provider:record.provider});
+  emit("task.accepted",{taskId:id,task,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model});
 
-  if(!aiConfigured()) {
+  if(!aiConfigured(brain.provider)) {
     record.status="waiting_for_ai";
-    emit("task.waiting_for_ai",{taskId:id,provider:record.provider});
+    emit("task.waiting_for_ai",{taskId:id,employeeId:employee.id,provider:record.provider});
     return res.status(202).json({ok:true,task:taskSnapshot(record)});
   }
 
@@ -180,6 +242,6 @@ app.get("/api/tasks/:id",(req,res)=>{
 });
 
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
-  emit("office.started",{provider:aiProvider(),aiConfigured:aiConfigured()});
-  console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider());
+  emit("office.started",{provider:aiProvider(),aiConfigured:aiConfigured(),employees:employees().length});
+  console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"employees:",employees().length);
 });
