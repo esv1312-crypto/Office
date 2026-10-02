@@ -964,14 +964,22 @@ app.get("/api/browser/requests/:id",(req,res)=>{
   res.json({ok:true,...result});
 });
 
-app.post("/api/browser/requests/:id/approve",(req,res)=>{
+app.post("/api/browser/requests/:id/approve",async (req,res)=>{
   try {
-    const result=browser.approve(String(req.params.id || ""),String(req.body?.approvalToken || ""));
+    const result=await browser.approve(String(req.params.id || ""),String(req.body?.approvalToken || ""));
     res.json({ok:true,...result});
   } catch(error) {
     res.status(error?.code === "BROWSER_APPROVAL_REQUIRED" ? 409 : 400).json({
       ok:false,error:error?.message || String(error),code:error?.code || null
     });
+  }
+});
+
+app.post("/api/browser/webhook",(req,res)=>{
+  try {
+    res.status(200).json({ok:true,...browser.webhook(req.body || {})});
+  } catch(error) {
+    res.status(200).json({ok:false,error:error?.message || String(error)});
   }
 });
 
