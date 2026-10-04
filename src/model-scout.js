@@ -17,7 +17,13 @@ const state = {
 };
 
 function isZeroPrice(pricing){
-  return pricing && Number(pricing.input) === 0 && Number(pricing.output) === 0;
+  if (!pricing) return false;
+  const input = pricing.input ?? pricing.prompt;
+  const output = pricing.output ?? pricing.completion;
+  return Number(input) === 0 && Number(output) === 0;
+}
+function isFreeModelId(id=""){
+  return String(id).endsWith(":free");
 }
 
 function roleScore(model, role){
@@ -45,7 +51,7 @@ async function discoverOpenRouter(){
   const data = await fetchJson("https://openrouter.ai/api/v1/models",{headers});
   const models = Array.isArray(data?.data) ? data.data : [];
   return models
-    .filter(m => isZeroPrice(m?.pricing))
+    .filter(m => isZeroPrice(m?.pricing) || isFreeModelId(m?.id))
     .filter(m => (m?.architecture?.output_modalities || ["text"]).includes("text"))
     .map(m => ({
       provider:"openrouter",
