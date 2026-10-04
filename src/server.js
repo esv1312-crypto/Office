@@ -2,6 +2,7 @@ import express from "express";
 import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
+import { refreshModelScout, getModelScoutState, getDynamicPool } from "./model-scout.js";
 
 const app = express();
 app.use(express.json({limit:"1mb"}));
@@ -12,6 +13,7 @@ const tasks = new Map();
 const browserRequests = new Map();
 const browserRuns = new Map();
 const browser = createBrowserManager({emit});
+let modelScoutTimer = null;
 
 const TASK_STATES = new Set(["accepted","planning","running","waiting","completed","failed","cancelled"]);
 const ALLOWED_TRANSITIONS = {
@@ -57,7 +59,7 @@ function freeOnly() {
 }
 
 function providerOrder() {
-  return (process.env.AI_PROVIDER_ORDER || "openrouter,gemini,cloudflare")
+  return (process.env.AI_PROVIDER_ORDER || "openrouter,huggingface,gemini,cloudflare")
     .split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
 }
 
@@ -82,6 +84,7 @@ function openRouterModel() {
 }
 
 function aiConfigured(provider) {
+  if (provider === "huggingface") return Boolean(String(process.env.HUGGINGFACE_API_KEY || "").trim());
   if (provider === "gemini") return Boolean(process.env.GEMINI_API_KEY);
   if (provider === "openrouter") return Boolean(openRouterApiKey());
   if (provider === "cloudflare") return Boolean(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID);
@@ -264,6 +267,8 @@ const openRouterRotation = new Map();
 function openRouterPool(employee) {
   const role=String(employee?.role || "executor");
   let pool=OPENROUTER_MODEL_POOLS[role] || OPENROUTER_MODEL_POOLS.executor;
+  const dynamic=getDynamicPool(employee).filter(x => x && !x.includes(":"));
+  if(dynamic.length) pool=[...dynamic,...pool];
   try {
     const custom=JSON.parse(process.env.OPENROUTER_MODEL_POOLS_JSON || "null");
     if (custom && Array.isArray(custom[role]) && custom[role].length) pool=custom[role];
@@ -308,6 +313,36 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
   throw lastError || new Error("All OpenRouter free models failed");
 }
 
+async function generateWithHuggingFace(task, employee, preferredModel) {
+  const token=String(process.env.HUGGINGFACE_API_KEY || "").trim();
+  if(!token) throw Object.assign(new Error("Hugging Face API key is not configured"),{code:"HF_NOT_CONFIGURED"});
+  const dynamic=getDynamicPool(employee).filter(model => model.includes("/"));
+  const configured=(process.env.HUGGINGFACE_MODELS || "").split(",").map(x=>x.trim()).filter(Boolean);
+  const pool=[preferredModel,...dynamic,...configured].filter(Boolean);
+  const models=[...new Set(pool)];
+  if(!models.length) throw new Error("No free Hugging Face model is available from Model Scout");
+  let lastError;
+  for(const model of models){
+    try{
+      emit("gateway.model_attempt",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model});
+      const result=await callOpenAICompatible({
+        provider:"huggingface",
+        baseUrl:"https://router.huggingface.co/v1/chat/completions",
+        apiKey:token,
+        model: model.includes(":") ? model : model+":fastest",
+        task
+      });
+      emit("gateway.model_success",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model:result.model});
+      return result;
+    }catch(error){
+      lastError=error;
+      emit("gateway.model_failed",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model,error:error?.message||String(error),transient:Boolean(error?.transient)});
+      if(models.indexOf(model)<models.length-1) emit("gateway.model_fallback",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",from:model,to:models[models.indexOf(model)+1],reason:error?.message||String(error)});
+    }
+  }
+  throw lastError || new Error("All Hugging Face free models failed");
+}
+
 async function generateWithCloudflare(task, preferredModel) {
   const model=preferredModel || process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct";
   return callOpenAICompatible({
@@ -343,6 +378,7 @@ async function generateViaGateway(task, employee) {
   let lastError;
   for(const provider of providers) {
     const model=provider==="gemini" ? brain.model
+      : provider==="huggingface" ? brain.model
       : provider==="openrouter" ? (brain.model || openRouterModel())
       : provider==="cloudflare" ? (brain.model || process.env.CLOUDFLARE_MODEL || null)
       : (process.env.OPENAI_MODEL || null);
@@ -350,6 +386,7 @@ async function generateViaGateway(task, employee) {
     try {
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
+      else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model);
       else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model);
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="openai") {
@@ -980,7 +1017,7 @@ app.get("/", (_req,res)=>res.json({
 
 app.get("/health", (_req,res)=>res.json({
   ok:true,service:"ai-office-runtime",provider:aiProvider(),providerOrder:providerOrder(),freeOnly:freeOnly(),
-  aiConfigured:providerOrder().some(aiConfigured),startedAt,
+  aiConfigured:providerOrder().some(aiConfigured) || aiConfigured("huggingface"),startedAt,
   employees:employees().length,
   tools:Object.keys(TOOL_REGISTRY).length,
   githubToolsEnabled:process.env.GITHUB_TOOLS_ENABLED === "true",
@@ -1074,15 +1111,23 @@ app.get("/api/resource-manager", (_req,res)=>res.json({
   manager:"free-ai-resource-manager",
   policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},
   ...inspectFreeProviders(),
-  gatewayOrder:providerOrder()
+  gatewayOrder:[...new Set([...providerOrder(),"huggingface"])]
 }));
+
+app.get("/api/model-scout", (_req,res)=>res.json({ok:true,...getModelScoutState()}));
+
+app.post("/api/model-scout/refresh", async (_req,res)=>{
+  try { const state=await refreshModelScout(); res.json({ok:true,...state}); }
+  catch(error){ res.status(500).json({ok:false,error:error?.message||String(error)}); }
+});
 
 app.get("/api/model-pools", (_req,res)=>res.json({
   ok:true,
-  provider:"openrouter",
+  provider:"dynamic",
   freeOnly:freeOnly(),
   rotation:"round_robin_per_role",
-  pools:Object.fromEntries(employees().map(e=>[e.id,openRouterPool(e)]))
+  pools:Object.fromEntries(employees().map(e=>[e.id,openRouterPool(e)])),
+  scout:getModelScoutState()
 }));
 
 app.get("/api/env-diagnostic", (_req,res)=>res.json({
@@ -1090,12 +1135,14 @@ app.get("/api/env-diagnostic", (_req,res)=>res.json({
   note:"Presence-only diagnostic. Secret values are never returned.",
   environment:{
     OPENROUTER_API_KEY:Boolean(String(process.env.OPENROUTER_API_KEY || "").trim()),
+    HUGGINGFACE_API_KEY:Boolean(String(process.env.HUGGINGFACE_API_KEY || "").trim()),
     OPENROUTER_MODEL:Boolean(String(process.env.OPENROUTER_MODEL || "").trim()),
     GEMINI_API_KEY:Boolean(String(process.env.GEMINI_API_KEY || "").trim()),
     CLOUDFLARE_API_TOKEN:Boolean(String(process.env.CLOUDFLARE_API_TOKEN || "").trim()),
     CLOUDFLARE_ACCOUNT_ID:Boolean(String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim())
   },
   gateway:{
+    huggingface:aiConfigured("huggingface"),
     openrouter:aiConfigured("openrouter"),
     gemini:aiConfigured("gemini"),
     cloudflare:aiConfigured("cloudflare")
@@ -1107,6 +1154,7 @@ app.get("/api/gateway", (_req,res)=>res.json({
   freeOnly:freeOnly(),
   order:providerOrder(),
   providers:{
+    huggingface:{configured:aiConfigured("huggingface"),models:(process.env.HUGGINGFACE_MODELS || "").split(",").map(x=>x.trim()).filter(Boolean)},
     gemini:{configured:aiConfigured("gemini"),models:(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean)},
     openrouter:{configured:aiConfigured("openrouter"),models:employees().filter(e=>resolveBrain(e).provider==="openrouter").map(e=>({employeeId:e.id,model:resolveBrain(e).model})),defaultModel:openRouterModel()},
     cloudflare:{configured:aiConfigured("cloudflare"),models:[process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct"]},
@@ -1133,7 +1181,7 @@ app.post("/api/tasks", (req,res)=>{
   tasks.set(record.id,record);
   emit("task.accepted",{taskId:record.id,parentTaskId:record.parentTaskId,kind:record.kind,task,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
 
-  if(!aiConfigured(record.provider)) {
+  if(!aiAvailable(record.provider)) {
     transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
     emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
     return res.status(202).json({ok:true,task:taskSnapshot(record)});
@@ -1162,7 +1210,7 @@ app.post("/api/tasks/:id/subtasks",(req,res)=>{
     });
     tasks.set(record.id,record);
     emit("task.accepted",{taskId:record.id,parentTaskId:parent.id,kind:"subtask",task,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
-    if(!aiConfigured(record.provider)) {
+    if(!aiAvailable(record.provider)) {
       transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
       emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
     } else {
@@ -1180,6 +1228,8 @@ app.get("/api/tasks/:id",(req,res)=>{
 });
 
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
+  void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
+  modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), Number(process.env.MODEL_SCOUT_INTERVAL_MS || 3600000));
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
   console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
