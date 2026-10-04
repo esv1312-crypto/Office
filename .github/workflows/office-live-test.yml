@@ -26,4 +26,4 @@ jobs:
 
 # Live smoke-test trigger: keep this workflow runnable from main commits.
 
-# authorized live smoke test [office live test] final-planner-recovery-pass
+# authorized live smoke test [office live test] final-green-check
