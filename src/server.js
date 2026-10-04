@@ -1089,6 +1089,23 @@ app.get("/api/model-pools", (_req,res)=>res.json({
   pools:Object.fromEntries(employees().map(e=>[e.id,openRouterPool(e)]))
 }));
 
+app.get("/api/env-diagnostic", (_req,res)=>res.json({
+  ok:true,
+  note:"Presence-only diagnostic. Secret values are never returned.",
+  environment:{
+    OPENROUTER_API_KEY:Boolean(String(process.env.OPENROUTER_API_KEY || "").trim()),
+    OPENROUTER_MODEL:Boolean(String(process.env.OPENROUTER_MODEL || "").trim()),
+    GEMINI_API_KEY:Boolean(String(process.env.GEMINI_API_KEY || "").trim()),
+    CLOUDFLARE_API_TOKEN:Boolean(String(process.env.CLOUDFLARE_API_TOKEN || "").trim()),
+    CLOUDFLARE_ACCOUNT_ID:Boolean(String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim())
+  },
+  gateway:{
+    openrouter:aiConfigured("openrouter"),
+    gemini:aiConfigured("gemini"),
+    cloudflare:aiConfigured("cloudflare")
+  }
+}));
+
 app.get("/api/gateway", (_req,res)=>res.json({
   ok:true,
   freeOnly:freeOnly(),
