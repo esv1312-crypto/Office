@@ -1,5 +1,12 @@
 const PROVIDERS = [
   {
+    id:"huggingface",
+    name:"Hugging Face Inference Providers",
+    freeAccess:"only models/providers currently marked free are eligible under AI_FREE_ONLY",
+    credentialEnv:["HUGGINGFACE_API_KEY"],
+    docs:"https://huggingface.co/docs/inference-providers"
+  },
+  {
     id:"gemini",
     name:"Google Gemini API",
     freeAccess:"official free tier may be available; current limits vary by model/account; verify before use",
