@@ -93,7 +93,7 @@ function aiConfigured(provider) {
 }
 
 function gatewayProviders(preferred) {
-  const order=providerOrder();
+  const order=[...new Set([...providerOrder(),"huggingface"])];
   const first=String(preferred || "").toLowerCase();
   const candidates=first && first !== "auto" ? [first,...order] : order;
   return [...new Set(candidates)].filter(p=>aiConfigured(p));
