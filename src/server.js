@@ -210,18 +210,91 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
   }
 }
 
-async function generateWithOpenRouter(task, preferredModel) {
-  const model=preferredModel || process.env.OPENROUTER_MODEL || "openrouter/free";
-  return callOpenAICompatible({
-    provider:"openrouter",
-    baseUrl:"https://openrouter.ai/api/v1/chat/completions",
-    apiKey:process.env.OPENROUTER_API_KEY,
-    model,task,
-    headers:{
-      "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
-      "X-Title":"AI-OFFICE"
+const OPENROUTER_MODEL_POOLS = {
+  coordinator:[
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "minimax/minimax-m3:free",
+    "tencent/hy3:free",
+    "qwen/qwen3.8-27b:free",
+    "openrouter/free"
+  ],
+  developer:[
+    "poolside/laguna-s-2.1:free",
+    "qwen/qwen3.8-27b:free",
+    "cohere/north-mini-code:free",
+    "tencent/hy3:free",
+    "openrouter/free"
+  ],
+  analyst:[
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "minimax/minimax-m3:free",
+    "tencent/hy3:free",
+    "qwen/qwen3.8-27b:free",
+    "openrouter/free"
+  ],
+  verifier:[
+    "google/gemma-4-31b-it:free",
+    "tencent/hy3:free",
+    "qwen/qwen3.8-27b:free",
+    "minimax/minimax-m3:free",
+    "openrouter/free"
+  ],
+  executor:[
+    "nvidia/nemotron-3.5-lightning:free",
+    "qwen/qwen3.8-27b:free",
+    "tencent/hy3:free",
+    "minimax/minimax-m3:free",
+    "openrouter/free"
+  ]
+};
+
+const openRouterRotation = new Map();
+
+function openRouterPool(employee) {
+  const role=String(employee?.role || "executor");
+  let pool=OPENROUTER_MODEL_POOLS[role] || OPENROUTER_MODEL_POOLS.executor;
+  try {
+    const custom=JSON.parse(process.env.OPENROUTER_MODEL_POOLS_JSON || "null");
+    if (custom && Array.isArray(custom[role]) && custom[role].length) pool=custom[role];
+  } catch (_) {}
+  const preferred=employee?.model || process.env.OPENROUTER_MODEL;
+  if (preferred) pool=[preferred,...pool];
+  return [...new Set(pool.filter(Boolean))];
+}
+
+async function generateWithOpenRouter(task, employee, preferredModel) {
+  const pool=openRouterPool(employee);
+  const role=String(employee?.role || "executor");
+  const cursor=Number(openRouterRotation.get(role) || 0);
+  const ordered=pool.map((_,i)=>pool[(cursor+i)%pool.length]);
+  openRouterRotation.set(role,(cursor+1)%pool.length);
+
+  let lastError;
+  for (let i=0;i<ordered.length;i++) {
+    const model=ordered[i];
+    try {
+      emit("gateway.model_attempt",{employeeId:employee?.id || null,role,provider:"openrouter",model,rotationIndex:i});
+      const result=await callOpenAICompatible({
+        provider:"openrouter",
+        baseUrl:"https://openrouter.ai/api/v1/chat/completions",
+        apiKey:process.env.OPENROUTER_API_KEY,
+        model,task,
+        headers:{
+          "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
+          "X-Title":"AI-OFFICE"
+        }
+      });
+      emit("gateway.model_success",{employeeId:employee?.id || null,role,provider:"openrouter",model});
+      return result;
+    } catch(error) {
+      lastError=error;
+      emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
+      if (i<ordered.length-1) {
+        emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:error?.message || String(error)});
+      }
     }
-  });
+  }
+  throw lastError || new Error("All OpenRouter free models failed");
 }
 
 async function generateWithCloudflare(task, preferredModel) {
@@ -266,7 +339,7 @@ async function generateViaGateway(task, employee) {
     try {
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
-      else if(provider==="openrouter") result=await generateWithOpenRouter(task,model);
+      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model);
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="openai") {
         if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"});
@@ -991,6 +1064,14 @@ app.get("/api/resource-manager", (_req,res)=>res.json({
   policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},
   ...inspectFreeProviders(),
   gatewayOrder:providerOrder()
+}));
+
+app.get("/api/model-pools", (_req,res)=>res.json({
+  ok:true,
+  provider:"openrouter",
+  freeOnly:freeOnly(),
+  rotation:"round_robin_per_role",
+  pools:Object.fromEntries(employees().map(e=>[e.id,openRouterPool(e)]))
 }));
 
 app.get("/api/gateway", (_req,res)=>res.json({
