@@ -1,2 +1,97 @@
+name: AI-OFFICE Pognali READ-ONLY AUDIT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[office pognali audit]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build read-only Pognali source dossier
+        run: |
+          set -euo pipefail
+          mkdir -p dossier
+          base="https://raw.githubusercontent.com/esv1312-crypto/pognali3/main"
+          curl --fail --silent --show-error --max-time 60 "$base/README.txt" -o dossier/README.txt
+          curl --fail --silent --show-error --max-time 60 "$base/BUILD_PIPELINE.md" -o dossier/BUILD_PIPELINE.md
+          curl --fail --silent --show-error --max-time 60 "$base/build.gradle" -o dossier/build.gradle
+          curl --fail --silent --show-error --max-time 60 "$base/settings.gradle" -o dossier/settings.gradle
+          curl --fail --silent --show-error --max-time 60 "$base/gradle.properties" -o dossier/gradle.properties
+          curl --fail --silent --show-error --max-time 60 "$base/app/build.gradle" -o dossier/app-build.gradle
+          curl --fail --silent --show-error --max-time 60 "$base/app/src/main/AndroidManifest.xml" -o dossier/AndroidManifest.xml
+          curl --fail --silent --show-error --max-time 60 "$base/app/src/main/java/com/pognali/app/MainActivity.java" -o dossier/MainActivity.java
+          curl --fail --silent --show-error --max-time 60 "$base/app/src/main/res/values/styles.xml" -o dossier/styles.xml
+          curl --fail --silent --show-error --max-time 60 "$base/app/src/main/assets/pognali_final.html" -o dossier/pognali_final.html
+          curl --fail --silent --show-error --max-time 60 "$base/docs/index.html" -o dossier/docs-index.html
+          curl --fail --silent --show-error --max-time 60 "$base/.github/workflows/android.yml" -o dossier/android.yml
+          curl --fail --silent --show-error --max-time 60 "$base/.github/workflows/android-ui-test.yml" -o dossier/android-ui-test.yml
+          curl --fail --silent --show-error --max-time 60 "$base/.github/workflows/emulator-health-check.yml" -o dossier/emulator-health-check.yml
+          curl --fail --silent --show-error --max-time 60 "$base/.github/workflows/pages.yml" -o dossier/pages.yml
+          printf '%s\n' "READ-ONLY DOSSIER for esv1312-crypto/pognali3 @ main" > dossier/MANIFEST.txt
+          find dossier -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort >> dossier/MANIFEST.txt
+
+      - name: Send real read-only audit task to AI-OFFICE
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, urllib.request
+          parts = ["README.txt","BUILD_PIPELINE.md","build.gradle","settings.gradle","gradle.properties","app-build.gradle","AndroidManifest.xml","MainActivity.java","styles.xml","pognali_final.html","docs-index.html","android.yml","android-ui-test.yml","emulator-health-check.yml","pages.yml","MANIFEST.txt"]
+          dossier = []
+          for name in parts:
+              p = pathlib.Path("dossier") / name
+              dossier.append(f"\n===== {name} =====\n{p.read_text(encoding='utf-8', errors='replace')}")
+          task = """REAL TASK — READ-ONLY AUDIT OF PROJECT «ПОГНАЛИ»
+
+You are the AI-OFFICE team. Audit the current project snapshot of GitHub repository esv1312-crypto/pognali3, branch main.
+
+ABSOLUTE RULE: READ-ONLY. You must not modify the Pognali project in any way. Do not create, delete, edit, commit, push, open PRs, change GitHub settings, change CI/CD, deploy, publish, send messages, purchase anything, or perform external actions on behalf of the user. The dossier below is a read-only snapshot supplied to you. Treat it as evidence; do not invent files or runtime behavior that is not evidenced.
+
+Use the office roles:
+1) Analyst — product/current-state and requirements audit.
+2) Developer — technical architecture/code/Android/Web/CI audit.
+3) Verifier — independent adversarial verification of the other conclusions.
+4) Executor — practical launch-readiness and priority assessment, WITHOUT executing changes.
+The chief must synthesize all reports.
+
+Audit:
+- What is actually implemented right now.
+- What user-facing features appear implemented, especially the core «Погнали» concept and flows such as create/join/invite if evidenced.
+- Android app structure, WebView/local HTML architecture, web version, build pipeline and tests.
+- Broken, incomplete, risky, suspicious, stale or contradictory parts.
+- Launch blockers for a first real working version.
+- Important technical debt and security/privacy issues visible in source.
+- CI/CD and emulator/UI-test readiness.
+- Concrete evidence for every material conclusion: exact file/path and relevant code/config facts.
+- Separate facts from assumptions.
+- Produce a prioritized plan: P0 critical, P1 important, P2 later.
+- Do not propose code changes as if already performed; recommendations only.
+
+Required final report format:
+A. EXECUTIVE VERDICT
+B. CURRENT STATE
+C. WHAT WORKS / EVIDENCE
+D. WHAT DOES NOT WORK OR IS UNPROVEN / EVIDENCE
+E. CRITICAL BLOCKERS
+F. PRIORITY PLAN P0/P1/P2
+G. RISKS / TECHNICAL DEBT
+H. WHAT TO TEST NEXT
+I. INDEPENDENT VERIFIER VERDICT
+J. FINAL STATUS: READY / NOT READY / PARTIALLY READY, with reasons.
+
+Important: this is an audit, not a coding task. Finish with a concise management report for the owner.
+
+SOURCE DOSSIER:
+""" + "".join(dossier)
+          payload = json.dumps({"task": task, "employeeId":"chief"}).encode()
+          req = urllib.request.Request("https://ai-office-runtime-8pir.onrender.com/api/tasks", data=payload, headers={"Content-Type":"application/json"}, method="POST")
+          with urllib.request.urlopen(req, timeout=120) as resp:
+              print(resp.read().decode())
+          PY
 
 # authorized read-only Pognali audit [office pognali audit]
