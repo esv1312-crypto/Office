@@ -405,7 +405,7 @@ async function generateViaGateway(task, employee) {
       try {
         const controller=new AbortController();
         const timeout=setTimeout(()=>controller.abort(),Number(process.env.BACKEND_REQUEST_TIMEOUT_MS || 120000));
-        const response=await fetch(base+"/api/backend/generate",{method:"POST",headers:{"Content-Type":"application/json"},signal:controller.signal,body:JSON.stringify({task,employeeId:employee?.id||"executor"})});
+        const response=await fetch(base+"/api/backend/generate",{method:"POST",headers:{"Content-Type":"application/json","Connection":"close"},signal:controller.signal,body:JSON.stringify({task,employeeId:employee?.id||"executor"})});
         clearTimeout(timeout);
         const data=await response.json().catch(()=>({}));
         if(response.ok && data?.ok && data?.result?.text) {
