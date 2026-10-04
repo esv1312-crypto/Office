@@ -2,7 +2,7 @@ import express from "express";
 import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
-import { refreshModelScout, getModelScoutState, getDynamicPool } from "./model-scout.js";
+import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 
 const app = express();
 app.use(express.json({limit:"1mb"}));
@@ -115,10 +115,14 @@ function getEmployee(id) {
   return employees().find(x => x.id === id) || employees()[0];
 }
 
-function resolveBrain(employee) {
+function resolveBrain(employee, task = "") {
+  const selected = selectModelForTask(task, employee);
+  const model = selected.selected;
   return {
-    provider: String(employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase(),
-    model: employee?.model || null
+    provider: String(model?.provider || employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase(),
+    model: model?.routeModel || model?.id || employee?.model || null,
+    taskKind: selected.kind,
+    candidates: selected.candidates || []
   };
 }
 
@@ -368,7 +372,7 @@ async function generateWithOpenAI(task, preferredModel) {
 }
 
 async function generateViaGateway(task, employee) {
-  const brain=resolveBrain(employee);
+  const brain=resolveBrain(employee, task);
   const providers=gatewayProviders(brain.provider);
   if(!providers.length) {
     const e=new Error("No configured AI provider is available in FREE_ONLY="+freeOnly());
@@ -382,7 +386,7 @@ async function generateViaGateway(task, employee) {
       : provider==="openrouter" ? (brain.model || openRouterModel())
       : provider==="cloudflare" ? (brain.model || process.env.CLOUDFLARE_MODEL || null)
       : (process.env.OPENAI_MODEL || null);
-    emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,freeOnly:freeOnly()});
+    emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly()});
     try {
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
