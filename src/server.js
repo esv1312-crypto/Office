@@ -912,7 +912,7 @@ async function executeRootTask(record) {
     transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
     const chief=getEmployee("chief");
     const planResult=await generateViaGateway(buildPlanningPrompt(record.task),chief);
-    const plan=parsePlannerJson(planResult.text);
+    let plan=parsePlannerJson(planResult.text);
 
     if(!plan || !Array.isArray(plan.subtasks) || plan.subtasks.length===0) {
       emit("planner.fallback",{taskId:record.id,reason:"Chief returned invalid delegation plan"});
