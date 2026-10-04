@@ -169,3 +169,43 @@ export function getDynamicPool(employee){
   const pool=state.rolePools[role] || [];
   return pool.map(x=>x.routeModel || x.id).filter(Boolean);
 }
+
+
+const TASK_RULES = [
+  ["video", /video|ролик|анимац|монтаж/i],
+  ["visual", /чертеж|чертёж|cad|3d|архитект|diagram|диаграм/i],
+  ["coding", /приложен|app|код|code|program|программ|github|debug|bug|deploy/i],
+  ["verification", /проверь|тест|verify|audit|аудит|review|ревью/i],
+  ["text", /текст|письм|стать|перевод|rewrite|copy|контент/i],
+  ["analysis", /анализ|исслед|research|сравн|аналит/i]
+];
+const TASK_CAPABILITIES = {
+  coding:["code","coding","program","developer","agent","terminal"],
+  verification:["reasoning","verify","verification","audit","testing"],
+  text:["writing","text","language","instruction"],
+  analysis:["reasoning","research","analysis","long context"],
+  visual:["vision","image","multimodal","diagram"],
+  video:["video","multimodal","generation"],
+  general:["reasoning","agent","general"]
+};
+function classifyTask(task=""){
+  const s=String(task);
+  for(const [kind,re] of TASK_RULES) if(re.test(s)) return kind;
+  return "general";
+}
+function scoreForTask(model,kind){
+  const hay=JSON.stringify(model).toLowerCase();
+  let score=Number(model.score||0);
+  for(const word of (TASK_CAPABILITIES[kind]||[])) if(hay.includes(word)) score+=4;
+  if(model.supports_tools && (kind==="coding" || kind==="verification")) score+=5;
+  if(model.context_length>=100000 && (kind==="analysis" || kind==="text")) score+=3;
+  return score;
+}
+export function selectModelForTask(task,employee){
+  const kind=classifyTask(task);
+  const role=String(employee?.role||"executor");
+  const pool=state.rolePools[role]||[];
+  const ranked=pool.map(m=>({...m,taskKind:kind,taskScore:scoreForTask(m,kind)}))
+    .sort((a,b)=>b.taskScore-a.taskScore||b.context_length-a.context_length||b.throughput-b.throughput);
+  return {kind,selected:ranked[0]||null,candidates:ranked.slice(0,8)};
+}
