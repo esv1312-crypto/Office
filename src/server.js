@@ -729,7 +729,7 @@ async function verifyRootTask(record) {
       .map(e => ({type:e.type,taskId:e.taskId||null,employeeId:e.employeeId||null,provider:e.provider||null,model:e.model||null,status:e.status||null,error:e.error||null}))
       .slice(0,80);
     result=await generateViaGateway(
-      "Return ONLY one JSON object, no markdown or prose. Schema: {\\"status\\":\\"PASS|FAIL\\",\\"summary\\":\\"string\\",\\"checks\\":[{\\"name\\":\\"string\\",\\"passed\\":true,\\"evidence\\":\\"string\\"}]}. Verify every checklist item using only the supplied runtime evidence and worker results. Checklist: " +
+      "Return ONLY one JSON object, no markdown or prose. Schema: {\"status\":\"PASS|FAIL\",\"summary\":\"string\",\"checks\":[{\"name\":\"string\",\"passed\":true,\"evidence\":\"string\"}]}. Verify every checklist item using only the supplied runtime evidence and worker results. Checklist: " +
       JSON.stringify(checklist) + " Worker results: " + JSON.stringify(record.workerResults) + " Runtime evidence: " + JSON.stringify(compactEvidence),
       verifier
     );
