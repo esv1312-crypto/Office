@@ -37,11 +37,11 @@ function transitionTask(record, nextStatus, extra = {}) {
 }
 
 const DEFAULT_EMPLOYEES = [
-  {id:"chief",name:"Руководитель",role:"coordinator",provider:"auto",model:"gemini-3.8-flash",skills:["planning","delegation","coordination"]},
-  {id:"developer",name:"Программист",role:"developer",provider:"gemini",model:"gemini-3.8-flash",skills:["coding","github","debugging"]},
-  {id:"analyst",name:"Аналитик",role:"analyst",provider:"auto",model:"gemini-3.7-flash",skills:["analysis","research","requirements"]},
-  {id:"verifier",name:"Проверяющий",role:"verifier",provider:"auto",model:"gemini-3.6-flash",skills:["testing","verification","evidence"]},
-  {id:"executor",name:"Исполнитель",role:"executor",provider:"gemini",model:"gemini-3.6-flash",skills:["execution","operations","recovery"]}
+  {id:"chief",name:"Руководитель",role:"coordinator",provider:"openrouter",model:"nvidia/nemotron-3-ultra-550b-a55b:free",skills:["planning","delegation","coordination"]},
+  {id:"developer",name:"Программист",role:"developer",provider:"openrouter",model:"poolside/laguna-s-2.1:free",skills:["coding","github","debugging"]},
+  {id:"analyst",name:"Аналитик",role:"analyst",provider:"openrouter",model:"nvidia/nemotron-3-super-120b-a12b:free",skills:["analysis","research","requirements"]},
+  {id:"verifier",name:"Проверяющий",role:"verifier",provider:"openrouter",model:"google/gemma-4-31b-it:free",skills:["testing","verification","evidence"]},
+  {id:"executor",name:"Исполнитель",role:"executor",provider:"openrouter",model:"nvidia/nemotron-3.5-lightning:free",skills:["execution","operations","recovery"]}
 ];
 
 function emit(type, data = {}) {
@@ -57,7 +57,7 @@ function freeOnly() {
 }
 
 function providerOrder() {
-  return (process.env.AI_PROVIDER_ORDER || "gemini,openrouter,cloudflare")
+  return (process.env.AI_PROVIDER_ORDER || "openrouter,gemini,cloudflare")
     .split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
 }
 
@@ -259,8 +259,8 @@ async function generateViaGateway(task, employee) {
   let lastError;
   for(const provider of providers) {
     const model=provider==="gemini" ? brain.model
-      : provider==="openrouter" ? (process.env.OPENROUTER_MODEL || null)
-      : provider==="cloudflare" ? (process.env.CLOUDFLARE_MODEL || null)
+      : provider==="openrouter" ? (brain.model || process.env.OPENROUTER_MODEL || "openrouter/free")
+      : provider==="cloudflare" ? (brain.model || process.env.CLOUDFLARE_MODEL || null)
       : (process.env.OPENAI_MODEL || null);
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,freeOnly:freeOnly()});
     try {
@@ -999,7 +999,7 @@ app.get("/api/gateway", (_req,res)=>res.json({
   order:providerOrder(),
   providers:{
     gemini:{configured:aiConfigured("gemini"),models:(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean)},
-    openrouter:{configured:aiConfigured("openrouter"),models:[process.env.OPENROUTER_MODEL || "openrouter/free"]},
+    openrouter:{configured:aiConfigured("openrouter"),models:employees().filter(e=>resolveBrain(e).provider==="openrouter").map(e=>({employeeId:e.id,model:resolveBrain(e).model})),defaultModel:process.env.OPENROUTER_MODEL || "openrouter/free"},
     cloudflare:{configured:aiConfigured("cloudflare"),models:[process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct"]},
     openai:{configured:aiConfigured("openai"),blockedByFreeOnly:freeOnly(),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
   }
