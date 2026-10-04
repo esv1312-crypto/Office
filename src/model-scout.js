@@ -170,10 +170,13 @@ export function getModelScoutState(){
   };
 }
 
-export function getDynamicPool(employee){
+export function getDynamicPool(employee, provider = null){
   const role=String(employee?.role || "executor");
   const pool=state.rolePools[role] || [];
-  return pool.map(x=>x.routeModel || x.id).filter(Boolean);
+  return pool
+    .filter(x => !provider || x.provider === provider)
+    .map(x=>x.routeModel || x.id)
+    .filter(Boolean);
 }
 
 
