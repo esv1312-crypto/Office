@@ -33,3 +33,5 @@ jobs:
             --data "$(python -c 'import json,os; print(json.dumps({"task":os.environ["TASK"],"employeeId":"chief"}))')"
 
 # Live smoke-test trigger: keep this workflow runnable from main commits.
+
+# authorized live smoke test [office live test]
