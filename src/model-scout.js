@@ -10,6 +10,7 @@ const state = {
   refreshedAt:null,
   refreshing:false,
   providers:{openrouter:[],huggingface:[]},
+  catalog:{openrouter:new Map(),huggingface:new Map()},
   rolePools:{coordinator:[],developer:[],analyst:[],verifier:[],executor:[]},
   inactive:{openrouter:new Map(),huggingface:new Map()},
   errors:[]
@@ -38,7 +39,10 @@ async function fetchJson(url, options={}){
 }
 
 async function discoverOpenRouter(){
-  const data = await fetchJson("https://openrouter.ai/api/v1/models");
+  const headers={};
+  const key=String(process.env.OPENROUTER_API_KEY || "").trim();
+  if(key) headers.Authorization="Bearer "+key;
+  const data = await fetchJson("https://openrouter.ai/api/v1/models",{headers});
   const models = Array.isArray(data?.data) ? data.data : [];
   return models
     .filter(m => isZeroPrice(m?.pricing))
@@ -115,8 +119,19 @@ export async function refreshModelScout(){
   state.errors=[];
   try {
     const results=await Promise.allSettled([discoverOpenRouter(),discoverHuggingFace()]);
-    state.providers.openrouter=results[0].status==="fulfilled" ? results[0].value : [];
-    state.providers.huggingface=results[1].status==="fulfilled" ? results[1].value : [];
+    const discovered={
+      openrouter:results[0].status==="fulfilled" ? results[0].value : [],
+      huggingface:results[1].status==="fulfilled" ? results[1].value : []
+    };
+    for(const provider of Object.keys(discovered)){
+      const seen=new Set(discovered[provider].map(x=>x.routeModel || x.id));
+      for(const model of discovered[provider]) state.catalog[provider].set(model.routeModel || model.id,model);
+      for(const [key,model] of state.catalog[provider]){
+        if(seen.has(key)) state.inactive[provider].delete(key);
+        else state.inactive[provider].set(key,{...model,inactiveSince:model.inactiveSince || new Date().toISOString()});
+      }
+      state.providers[provider]=discovered[provider];
+    }
     for(const result of results){
       if(result.status==="rejected") state.errors.push(result.reason?.message || String(result.reason));
     }
@@ -136,9 +151,15 @@ export function getModelScoutState(){
     counts:{
       openrouter:state.providers.openrouter.length,
       huggingface:state.providers.huggingface.length,
-      total:dedupe([...state.providers.openrouter,...state.providers.huggingface]).length
+      total:dedupe([...state.providers.openrouter,...state.providers.huggingface]).length,
+      inactiveOpenrouter:state.inactive.openrouter.size,
+      inactiveHuggingface:state.inactive.huggingface.size
     },
     rolePools:Object.fromEntries(Object.entries(state.rolePools).map(([role,pool])=>[role,pool])),
+    inactive:{
+      openrouter:[...state.inactive.openrouter.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince})),
+      huggingface:[...state.inactive.huggingface.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince}))
+    },
     errors:[...state.errors]
   };
 }
