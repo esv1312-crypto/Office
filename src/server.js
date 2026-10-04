@@ -62,7 +62,8 @@ function providerOrder() {
 }
 
 function aiProvider() {
-  return providerOrder()[0] || "none";
+  const order = providerOrder();
+  return order.find(p => aiConfigured(p)) || order[0] || "none";
 }
 
 function openRouterApiKey() {
@@ -93,6 +94,10 @@ function gatewayProviders(preferred) {
   const first=String(preferred || "").toLowerCase();
   const candidates=first && first !== "auto" ? [first,...order] : order;
   return [...new Set(candidates)].filter(p=>aiConfigured(p));
+}
+
+function aiAvailable(preferred) {
+  return gatewayProviders(preferred).length > 0;
 }
 
 function employees() {
@@ -1119,7 +1124,7 @@ app.get("/api/gateway", (_req,res)=>res.json({
 }));
 
 app.get("/api/state", (_req,res)=>res.json({
-  service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiConfigured(),
+  service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
   employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
   tasks:[...tasks.values()].map(taskSnapshot),events:events.slice(0,100)
 }));
@@ -1184,6 +1189,6 @@ app.get("/api/tasks/:id",(req,res)=>{
 });
 
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
-  emit("office.started",{provider:aiProvider(),aiConfigured:aiConfigured(),employees:employees().length});
-  console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"employees:",employees().length);
+  emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
+  console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
