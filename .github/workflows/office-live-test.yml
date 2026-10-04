@@ -31,3 +31,5 @@ jobs:
             https://ai-office-runtime-8pir.onrender.com/api/tasks \
             -H 'Content-Type: application/json' \
             --data "$(python -c 'import json,os; print(json.dumps({"task":os.environ["TASK"],"employeeId":"chief"}))')"
+
+# Live smoke-test trigger: keep this workflow runnable from main commits.
