@@ -65,9 +65,24 @@ function aiProvider() {
   return providerOrder()[0] || "none";
 }
 
+function openRouterApiKey() {
+  // Backward compatibility for an earlier Render setup that stored the
+  // OpenRouter secret under OPENROUTER_MODEL. Never print the value.
+  const explicit = String(process.env.OPENROUTER_API_KEY || "").trim();
+  if (explicit) return explicit;
+  const legacy = String(process.env.OPENROUTER_MODEL || "").trim();
+  if (/^(sk-or-|or-)/i.test(legacy)) return legacy;
+  return "";
+}
+
+function openRouterModel() {
+  const configured = String(process.env.OPENROUTER_MODEL || "").trim();
+  return /^(sk-or-|or-)/i.test(configured) || !configured ? "openrouter/free" : configured;
+}
+
 function aiConfigured(provider) {
   if (provider === "gemini") return Boolean(process.env.GEMINI_API_KEY);
-  if (provider === "openrouter") return Boolean(process.env.OPENROUTER_API_KEY);
+  if (provider === "openrouter") return Boolean(openRouterApiKey());
   if (provider === "cloudflare") return Boolean(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID);
   if (provider === "openai") return !freeOnly() && Boolean(process.env.OPENAI_API_KEY);
   return false;
@@ -277,7 +292,7 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
       const result=await callOpenAICompatible({
         provider:"openrouter",
         baseUrl:"https://openrouter.ai/api/v1/chat/completions",
-        apiKey:process.env.OPENROUTER_API_KEY,
+        apiKey:openRouterApiKey(),
         model,task,
         headers:{
           "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
@@ -332,7 +347,7 @@ async function generateViaGateway(task, employee) {
   let lastError;
   for(const provider of providers) {
     const model=provider==="gemini" ? brain.model
-      : provider==="openrouter" ? (brain.model || process.env.OPENROUTER_MODEL || "openrouter/free")
+      : provider==="openrouter" ? (brain.model || openRouterModel())
       : provider==="cloudflare" ? (brain.model || process.env.CLOUDFLARE_MODEL || null)
       : (process.env.OPENAI_MODEL || null);
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,freeOnly:freeOnly()});
@@ -1080,7 +1095,7 @@ app.get("/api/gateway", (_req,res)=>res.json({
   order:providerOrder(),
   providers:{
     gemini:{configured:aiConfigured("gemini"),models:(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean)},
-    openrouter:{configured:aiConfigured("openrouter"),models:employees().filter(e=>resolveBrain(e).provider==="openrouter").map(e=>({employeeId:e.id,model:resolveBrain(e).model})),defaultModel:process.env.OPENROUTER_MODEL || "openrouter/free"},
+    openrouter:{configured:aiConfigured("openrouter"),models:employees().filter(e=>resolveBrain(e).provider==="openrouter").map(e=>({employeeId:e.id,model:resolveBrain(e).model})),defaultModel:openRouterModel()},
     cloudflare:{configured:aiConfigured("cloudflare"),models:[process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct"]},
     openai:{configured:aiConfigured("openai"),blockedByFreeOnly:freeOnly(),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
   }
