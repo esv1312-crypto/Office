@@ -371,43 +371,55 @@ async function generateWithOpenAI(task, preferredModel) {
   return {text:response.output_text || "",model};
 }
 
-async function generateViaGateway(task, employee) {
+async function generateViaLocalGateway(task, employee) {
   const brain=resolveBrain(employee, task);
   const providers=gatewayProviders(brain.provider);
-  if(!providers.length) {
-    const e=new Error("No configured AI provider is available in FREE_ONLY="+freeOnly());
-    e.code="AI_NOT_CONFIGURED";
-    throw e;
-  }
+  if(!providers.length) throw Object.assign(new Error("No configured AI provider is available in FREE_ONLY="+freeOnly()),{code:"AI_NOT_CONFIGURED"});
   let lastError;
   for(const provider of providers) {
-    const model=provider==="gemini" ? brain.model
-      : provider==="huggingface" ? brain.model
-      : provider==="openrouter" ? (brain.model || openRouterModel())
-      : provider==="cloudflare" ? (brain.model || process.env.CLOUDFLARE_MODEL || null)
-      : (process.env.OPENAI_MODEL || null);
-    emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly()});
+    const model=provider==="gemini" ? brain.model : provider==="huggingface" ? brain.model : provider==="openrouter" ? (brain.model || openRouterModel()) : provider==="cloudflare" ? (brain.model || process.env.CLOUDFLARE_MODEL || null) : (process.env.OPENAI_MODEL || null);
+    emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly(),backend:"local"});
     try {
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model);
       else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model);
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
-      else if(provider==="openai") {
-        if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"});
-        result=await generateWithOpenAI(task,model);
-      } else throw new Error("Unsupported AI provider: "+provider);
-      emit("gateway.success",{employeeId:employee.id,provider,model:result.model,freeOnly:freeOnly()});
+      else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
+      else throw new Error("Unsupported AI provider: "+provider);
+      emit("gateway.success",{employeeId:employee.id,provider,model:result.model,freeOnly:freeOnly(),backend:"local"});
       return result;
     } catch(error) {
       lastError=error;
-      emit("gateway.provider_failed",{employeeId:employee.id,provider,error:error?.message||String(error),transient:Boolean(error?.transient),freeOnly:freeOnly()});
-      emit("gateway.fallback",{from:provider,to:providers[providers.indexOf(provider)+1] || null,reason:error?.message||String(error)});
+      emit("gateway.provider_failed",{employeeId:employee.id,provider,error:error?.message||String(error),transient:Boolean(error?.transient),freeOnly:freeOnly(),backend:"local"});
+      if(providers[providers.indexOf(provider)+1]) emit("gateway.fallback",{from:provider,to:providers[providers.indexOf(provider)+1],reason:error?.message||String(error),backend:"local"});
     }
   }
   throw lastError || new Error("All configured AI providers failed");
 }
 
+async function generateViaGateway(task, employee) {
+  const backendUrls=String(process.env.BACKEND_RUNTIME_URLS || "").split(",").map(x=>x.trim().replace(/\/$/,"")).filter(Boolean);
+  if(backendUrls.length && process.env.OFFICE_MODE !== "backend") {
+    for(const base of backendUrls) {
+      try {
+        const controller=new AbortController();
+        const timeout=setTimeout(()=>controller.abort(),Number(process.env.BACKEND_REQUEST_TIMEOUT_MS || 45000));
+        const response=await fetch(base+"/api/backend/generate",{method:"POST",headers:{"Content-Type":"application/json"},signal:controller.signal,body:JSON.stringify({task,employeeId:employee?.id||"executor"})});
+        clearTimeout(timeout);
+        const data=await response.json().catch(()=>({}));
+        if(response.ok && data?.ok && data?.result?.text) {
+          emit("backend.success",{backend:base,employeeId:employee?.id||null,model:data.result.model||null});
+          return data.result;
+        }
+        throw new Error(data?.error || ("Backend HTTP "+response.status));
+      } catch(error) {
+        emit("backend.failed",{backend:base,employeeId:employee?.id||null,error:error?.message||String(error)});
+      }
+    }
+  }
+  return generateViaLocalGateway(task,employee);
+}
 
 const TOOL_REGISTRY = {
   "browser.request": {
@@ -1012,6 +1024,17 @@ async function executeRootTask(record) {
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
   }
 }
+
+app.get("/api/backend/health", (_req,res)=>res.json({ok:true,mode:process.env.OFFICE_MODE||"office",aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),freeOnly:freeOnly()}));
+
+app.post("/api/backend/generate", async (req,res)=>{
+  if((process.env.OFFICE_MODE||"office")!=="backend") return res.status(409).json({ok:false,error:"This runtime is not configured as a backend node"});
+  const task=String(req.body?.task||"").trim();
+  if(!task) return res.status(400).json({ok:false,error:"task is required"});
+  const employee=getEmployee(String(req.body?.employeeId||"executor"));
+  try { const result=await generateViaLocalGateway(task,employee); res.json({ok:true,result,backend:process.env.OFFICE_PUBLIC_URL||null}); }
+  catch(error) { res.status(503).json({ok:false,error:error?.message||String(error),code:error?.code||null}); }
+});
 
 app.get("/", (_req,res)=>res.json({
   service:"ai-office-runtime",status:"online",provider:aiProvider(),
