@@ -915,7 +915,17 @@ async function executeRootTask(record) {
     const plan=parsePlannerJson(planResult.text);
 
     if(!plan || !Array.isArray(plan.subtasks) || plan.subtasks.length===0) {
-      throw new Error("Chief returned invalid delegation plan");
+      emit("planner.fallback",{taskId:record.id,reason:"Chief returned invalid delegation plan"});
+      plan = {
+        summary:"Deterministic recovery plan created because the Chief response was not valid planner JSON.",
+        subtasks:[
+          {employeeId:"analyst",task:"Analyze the original task and identify the main checks, risks, dependencies, and expected evidence."},
+          {employeeId:"developer",task:"Inspect the implementation relevant to the original task and identify concrete technical failures or fixes."},
+          {employeeId:"verifier",task:"Independently verify the implementation and proposed results; list PASS/FAIL evidence."},
+          {employeeId:"executor",task:"Run safe operational checks and recovery/replacement actions available to the runtime; report actual outcomes only."}
+        ],
+        verificationChecklist:["All planned roles produced results","Provider/model fallback behavior was exercised or observed","Independent verification produced evidence","Final root state is consistent with the evidence"]
+      };
     }
 
     const items=plan.subtasks.slice(0,4);
