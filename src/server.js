@@ -1263,6 +1263,84 @@ app.get("/api/state", (_req,res)=>res.json({
   tasks:[...tasks.values()].map(taskSnapshot),events:events.slice(0,100)
 }));
 
+app.get("/api/pognali/audit", async (req,res)=>{
+  const expected=String(process.env.POGNALI_AUDIT_TOKEN || "").trim();
+  const supplied=String(req.query?.token || "").trim();
+  if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
+  const files=[
+    "README.txt","BUILD_PIPELINE.md","build.gradle","settings.gradle","gradle.properties",
+    "app/build.gradle","app/src/main/AndroidManifest.xml",
+    "app/src/main/java/com/pognali/app/MainActivity.java",
+    "app/src/main/res/values/styles.xml",
+    "app/src/main/assets/pognali_final.html","docs/index.html",
+    ".github/workflows/android.yml",".github/workflows/android-ui-test.yml",
+    ".github/workflows/emulator-health-check.yml",".github/workflows/pages.yml"
+  ];
+  const base="https://raw.githubusercontent.com/esv1312-crypto/pognali3/main/";
+  try{
+    const dossier=[];
+    for(const path of files){
+      const response=await fetch(base+path);
+      if(!response.ok) throw new Error("Failed to fetch "+path+" (HTTP "+response.status+")");
+      const text=await response.text();
+      dossier.push("\n===== "+path+" =====\n"+text);
+    }
+    const taskText=`REAL TASK — READ-ONLY AUDIT OF PROJECT «ПОГНАЛИ»
+
+You are the AI-OFFICE team. Audit the current project snapshot of GitHub repository esv1312-crypto/pognali3, branch main.
+
+ABSOLUTE RULE: READ-ONLY. Do not modify the Pognali project in any way. Do not create, delete, edit, commit, push, open PRs, change GitHub settings, change CI/CD, deploy, publish, send messages, purchase anything, or perform external actions. The dossier below is read-only evidence supplied to you. Do not invent facts.
+
+Use these roles:
+1) Analyst — product/current-state and requirements audit.
+2) Developer — technical architecture/code/Android/Web/CI audit.
+3) Verifier — independent adversarial verification of conclusions.
+4) Executor — practical launch-readiness and priority assessment, WITHOUT executing changes.
+Chief synthesizes all reports.
+
+Audit:
+- What is actually implemented.
+- User-facing features, especially the core «Погнали» concept and create/join/invite flows if evidenced.
+- Android/WebView/local HTML architecture, web version, build pipeline and tests.
+- Broken, incomplete, risky, stale or contradictory parts.
+- Launch blockers for a first real working version.
+- Security/privacy/technical debt visible in source.
+- CI/CD and emulator/UI-test readiness.
+- Concrete evidence for every material conclusion: exact file/path and facts.
+- Separate facts from assumptions.
+- Prioritize P0/P1/P2.
+- Recommendations only; do not claim changes were made.
+
+Final report:
+A. EXECUTIVE VERDICT
+B. CURRENT STATE
+C. WHAT WORKS / EVIDENCE
+D. WHAT DOES NOT WORK OR IS UNPROVEN / EVIDENCE
+E. CRITICAL BLOCKERS
+F. PRIORITY PLAN P0/P1/P2
+G. RISKS / TECHNICAL DEBT
+H. WHAT TO TEST NEXT
+I. INDEPENDENT VERIFIER VERDICT
+J. FINAL STATUS: READY / NOT READY / PARTIALLY READY, with reasons.
+
+Finish with a concise management report for the owner.
+
+SOURCE DOSSIER:
+`+dossier.join("");
+    const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
+    tasks.set(record.id,record);
+    emit("task.accepted",{taskId:record.id,parentTaskId:null,kind:"root",task:taskText,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model,source:"pognali_read_only_audit"});
+    if(!aiAvailable(record.provider)){
+      transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+      emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
+    } else void executeRootTask(record);
+    res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true,sourceRepo:"esv1312-crypto/pognali3",filesAudited:files.length});
+  }catch(error){
+    emit("pognali.audit_failed",{error:error?.message||String(error)});
+    res.status(502).json({ok:false,error:error?.message||String(error)});
+  }
+});
+
 app.post("/api/tasks", (req,res)=>{
   const task=String(req.body?.task || "").trim();
   if(!task) return res.status(400).json({ok:false,error:"task is required"});
