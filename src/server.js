@@ -233,37 +233,28 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
 const OPENROUTER_MODEL_POOLS = {
   coordinator:[
     "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "minimax/minimax-m3:free",
-    "tencent/hy3:free",
     "qwen/qwen3.8-27b:free",
     "openrouter/free"
   ],
   developer:[
     "poolside/laguna-s-2.1:free",
-    "qwen/qwen3.8-27b:free",
     "cohere/north-mini-code:free",
-    "tencent/hy3:free",
+    "qwen/qwen3.8-27b:free",
     "openrouter/free"
   ],
   analyst:[
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "minimax/minimax-m3:free",
-    "tencent/hy3:free",
     "qwen/qwen3.8-27b:free",
     "openrouter/free"
   ],
   verifier:[
     "google/gemma-4-31b-it:free",
-    "tencent/hy3:free",
     "qwen/qwen3.8-27b:free",
-    "minimax/minimax-m3:free",
     "openrouter/free"
   ],
   executor:[
     "nvidia/nemotron-3.5-lightning:free",
     "qwen/qwen3.8-27b:free",
-    "tencent/hy3:free",
-    "minimax/minimax-m3:free",
     "openrouter/free"
   ]
 };
