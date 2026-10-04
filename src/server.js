@@ -715,13 +715,26 @@ async function verifyRootTask(record) {
   const checklist=Array.isArray(record.verificationChecklist) ? record.verificationChecklist : [];
   emit("verification.requested",{taskId:record.id,employeeId:verifier.id,checkCount:checklist.length});
   const eventEvidence=events.filter(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z")).slice(0,120);
-  const result=await generateViaGateway(buildVerificationPrompt({
+  let result=await generateViaGateway(buildVerificationPrompt({
     task:record.task,
     checklist,
     workerResults:record.workerResults,
     eventEvidence
   }),verifier);
-  const verification=parseVerificationJson(result.text);
+  let verification=parseVerificationJson(result.text);
+  if(!verification || !["PASS","FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
+    emit("verification.retry",{taskId:record.id,employeeId:verifier.id,reason:"invalid verifier JSON"});
+    const compactEvidence=eventEvidence
+      .filter(e => /task\.(accepted|completed|failed)|backend\.(success|failed)|gateway\.(fallback|model_fallback|model_success|model_failed)|verification\.(requested|passed|failed)/.test(e.type))
+      .map(e => ({type:e.type,taskId:e.taskId||null,employeeId:e.employeeId||null,provider:e.provider||null,model:e.model||null,status:e.status||null,error:e.error||null}))
+      .slice(0,80);
+    result=await generateViaGateway(
+      "Return ONLY one JSON object, no markdown or prose. Schema: {\\"status\\":\\"PASS|FAIL\\",\\"summary\\":\\"string\\",\\"checks\\":[{\\"name\\":\\"string\\",\\"passed\\":true,\\"evidence\\":\\"string\\"}]}. Verify every checklist item using only the supplied runtime evidence and worker results. Checklist: " +
+      JSON.stringify(checklist) + " Worker results: " + JSON.stringify(record.workerResults) + " Runtime evidence: " + JSON.stringify(compactEvidence),
+      verifier
+    );
+    verification=parseVerificationJson(result.text);
+  }
   if(!verification || !["PASS","FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
     throw Object.assign(new Error("Verifier returned invalid verification result"),{code:"VERIFICATION_INVALID"});
   }
