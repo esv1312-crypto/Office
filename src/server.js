@@ -271,7 +271,7 @@ const openRouterRotation = new Map();
 function openRouterPool(employee) {
   const role=String(employee?.role || "executor");
   let pool=OPENROUTER_MODEL_POOLS[role] || OPENROUTER_MODEL_POOLS.executor;
-  const dynamic=getDynamicPool(employee).filter(x => x && !x.includes(":"));
+  const dynamic=getDynamicPool(employee,"openrouter").filter(x => x && !x.includes(":"));
   if(dynamic.length) pool=[...dynamic,...pool];
   try {
     const custom=JSON.parse(process.env.OPENROUTER_MODEL_POOLS_JSON || "null");
@@ -320,7 +320,7 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
 async function generateWithHuggingFace(task, employee, preferredModel) {
   const token=String(process.env.HUGGINGFACE_API_KEY || "").trim();
   if(!token) throw Object.assign(new Error("Hugging Face API key is not configured"),{code:"HF_NOT_CONFIGURED"});
-  const dynamic=getDynamicPool(employee).filter(model => model.includes("/"));
+  const dynamic=getDynamicPool(employee,"huggingface").filter(model => model.includes("/"));
   const configured=(process.env.HUGGINGFACE_MODELS || "").split(",").map(x=>x.trim()).filter(Boolean);
   const pool=[preferredModel,...dynamic,...configured].filter(Boolean);
   const models=[...new Set(pool)];
@@ -404,7 +404,7 @@ async function generateViaGateway(task, employee) {
     for(const base of backendUrls) {
       try {
         const controller=new AbortController();
-        const timeout=setTimeout(()=>controller.abort(),Number(process.env.BACKEND_REQUEST_TIMEOUT_MS || 45000));
+        const timeout=setTimeout(()=>controller.abort(),Number(process.env.BACKEND_REQUEST_TIMEOUT_MS || 120000));
         const response=await fetch(base+"/api/backend/generate",{method:"POST",headers:{"Content-Type":"application/json"},signal:controller.signal,body:JSON.stringify({task,employeeId:employee?.id||"executor"})});
         clearTimeout(timeout);
         const data=await response.json().catch(()=>({}));
