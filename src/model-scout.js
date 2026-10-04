@@ -91,7 +91,7 @@ async function discoverHuggingFace(){
 function dedupe(models){
   const map=new Map();
   for(const model of models){
-    const key=model.provider+":"+model.routeModel || model.provider+":"+model.id;
+    const key=model.provider+":"+(model.routeModel || model.id);
     const existing=map.get(key);
     if(!existing || model.score > existing.score) map.set(key,model);
   }
