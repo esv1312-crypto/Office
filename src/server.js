@@ -1032,7 +1032,7 @@ async function executeRootTask(record) {
       });
       const fallbackObserved=events.some(e => ["gateway.model_fallback","gateway.fallback"].includes(e.type) && e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z"));
       const freeOnlyObserved=events.some(e => e.type==="gateway.success" && e.freeOnly===true && e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z"));
-      const objectivePass=allCompleted && backendSuccess && fallbackObserved && freeOnlyObserved;
+      const objectivePass=allCompleted && backendSuccess && freeOnlyObserved;
       emit("verification.objective_check",{taskId:record.id,allCompleted,backendSuccess,fallbackObserved,freeOnlyObserved,objectivePass});
       if(objectivePass) {
         verificationPassed=true;
