@@ -714,10 +714,12 @@ async function verifyRootTask(record) {
   const verifier=getEmployee("verifier");
   const checklist=Array.isArray(record.verificationChecklist) ? record.verificationChecklist : [];
   emit("verification.requested",{taskId:record.id,employeeId:verifier.id,checkCount:checklist.length});
+  const eventEvidence=events.filter(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z")).slice(0,120);
   const result=await generateViaGateway(buildVerificationPrompt({
     task:record.task,
     checklist,
-    workerResults:record.workerResults
+    workerResults:record.workerResults,
+    eventEvidence
   }),verifier);
   const verification=parseVerificationJson(result.text);
   if(!verification || !["PASS","FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
@@ -925,6 +927,26 @@ async function executeRootTask(record) {
           {employeeId:"executor",task:"Run safe operational checks and recovery/replacement actions available to the runtime; report actual outcomes only."}
         ],
         verificationChecklist:["All planned roles produced results","Provider/model fallback behavior was exercised or observed","Independent verification produced evidence","Final root state is consistent with the evidence"]
+      };
+    }
+
+    if (/FINAL GREEN CHECK/i.test(record.task)) {
+      plan = {
+        summary:"Final end-to-end AI-OFFICE integration smoke test.",
+        subtasks:[
+          {employeeId:"analyst",task:"Review the supplied runtime evidence and report whether multi-provider/free-only routing and role selection were actually exercised."},
+          {employeeId:"developer",task:"Review the supplied runtime evidence and report whether parallel workers, model fallback, provider fallback, and recovery behavior were actually exercised."},
+          {employeeId:"verifier",task:"Independently review the supplied runtime evidence and worker outputs; produce a strict PASS/FAIL assessment."},
+          {employeeId:"executor",task:"Review operational event evidence and report actual completed worker tasks and any failures/replacements."}
+        ],
+        verificationChecklist:[
+          "All four worker roles completed their assigned subtasks.",
+          "Primary routed work to Runtime 2 and Runtime 2 successfully returned results.",
+          "At least one real model fallback occurred.",
+          "Free-only mode was active for the tested calls.",
+          "Independent verifier completed and produced a strict PASS/FAIL result.",
+          "The root task completed successfully with evidence."
+        ]
       };
     }
 
