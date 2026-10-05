@@ -26,6 +26,18 @@ function isFreeModelId(id=""){
   return String(id).endsWith(":free");
 }
 
+function isExpired(model){
+  const raw = model?.expiration_date;
+  if (!raw) return false;
+  const ts = Date.parse(raw);
+  return Number.isFinite(ts) && ts <= Date.now();
+}
+
+function isUsableFreeModel(model){
+  if (!model?.id || isExpired(model)) return false;
+  return isZeroPrice(model?.pricing) || isFreeModelId(model.id);
+}
+
 function roleScore(model, role){
   const hay = JSON.stringify(model).toLowerCase();
   let score = 0;
@@ -51,7 +63,7 @@ async function discoverOpenRouter(){
   const data = await fetchJson("https://openrouter.ai/api/v1/models",{headers});
   const models = Array.isArray(data?.data) ? data.data : [];
   return models
-    .filter(m => isZeroPrice(m?.pricing) || isFreeModelId(m?.id))
+    .filter(isUsableFreeModel)
     .filter(m => (m?.architecture?.output_modalities || ["text"]).includes("text"))
     .map(m => ({
       provider:"openrouter",
@@ -79,7 +91,7 @@ async function discoverHuggingFace(){
     for(const p of providers){
       if(p?.status !== "live") continue;
       const free = p?.is_free === true || isZeroPrice(p?.pricing);
-      if(!free) continue;
+      if(!free || isExpired(m) || isExpired(p)) continue;
       out.push({
         provider:"huggingface",
         id:m.id,
@@ -166,7 +178,12 @@ export function getModelScoutState(){
       openrouter:[...state.inactive.openrouter.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince})),
       huggingface:[...state.inactive.huggingface.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince}))
     },
-    errors:[...state.errors]
+    errors:[...state.errors],
+    policy:{
+      freeDefinition:"pricing input/output == 0 OR explicit :free model id",
+      expiredModelsExcluded:true,
+      liveCapacity:"not guaranteed by catalog; runtime failures trigger fallback and temporary suppression"
+    }
   };
 }
 
