@@ -190,7 +190,12 @@ async function generateWithGemini(task, preferredModel) {
         return result;
       } catch(error) {
         lastError=error;
-        emit("ai.error",{provider:"gemini",model,attempt:attempt+1,error:error?.message||String(error),transient:Boolean(error?.transient)});
+        const quota = /quota exceeded|rate.?limit|resource.?exhausted/i.test(error?.message || "");
+        emit("ai.error",{provider:"gemini",model,attempt:attempt+1,error:error?.message||String(error),transient:Boolean(error?.transient),quota});
+        if (quota) {
+          emit("ai.quota_exhausted",{provider:"gemini",model,error:error?.message||String(error)});
+          break;
+        }
         if (!error?.transient || attempt===2) break;
         const delay=Math.min(8000,1000*(2**attempt))+Math.floor(Math.random()*500);
         emit("ai.retry",{provider:"gemini",model,attempt:attempt+1,delayMs:delay,error:error.message});
@@ -347,7 +352,8 @@ async function generateWithHuggingFace(task, employee, preferredModel) {
   if(!token) throw Object.assign(new Error("Hugging Face API key is not configured"),{code:"HF_NOT_CONFIGURED"});
   const dynamic=getDynamicPool(employee,"huggingface").filter(model => model.includes("/"));
   const configured=(process.env.HUGGINGFACE_MODELS || "").split(",").map(x=>x.trim()).filter(Boolean);
-  const pool=[preferredModel,...dynamic,...configured].filter(Boolean);
+  const safePreferred = preferredModel && !String(preferredModel).includes(":free") && String(preferredModel).includes("/") ? preferredModel : null;
+  const pool=[safePreferred,...dynamic,...configured].filter(Boolean);
   const models=[...new Set(pool)];
   if(!models.length) throw new Error("No free Hugging Face model is available from Model Scout");
   let lastError;
@@ -402,7 +408,15 @@ async function generateViaLocalGateway(task, employee) {
   if(!providers.length) throw Object.assign(new Error("No configured AI provider is available in FREE_ONLY="+freeOnly()),{code:"AI_NOT_CONFIGURED"});
   let lastError;
   for(const provider of providers) {
-    const model=provider==="gemini" ? brain.model : provider==="huggingface" ? brain.model : provider==="openrouter" ? (brain.model || openRouterModel()) : provider==="cloudflare" ? (brain.model || process.env.CLOUDFLARE_MODEL || null) : (process.env.OPENAI_MODEL || null);
+    const model=provider==="gemini"
+      ? brain.model
+      : provider==="huggingface"
+        ? null
+        : provider==="openrouter"
+          ? (brain.model || openRouterModel())
+          : provider==="cloudflare"
+            ? (brain.model || process.env.CLOUDFLARE_MODEL || null)
+            : (process.env.OPENAI_MODEL || null);
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly(),backend:"local"});
     try {
       let result;
