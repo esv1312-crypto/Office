@@ -1339,6 +1339,8 @@ app.get("/api/smoke/evidence", (req,res)=>{
 });
 
 
+app.get("/api/office-check",(req,res)=>{ if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1"}); const taskText="READ-ONLY AI-OFFICE INTERNAL CHECK. Inspect current routing, models, employees, task lifecycle, verification, recovery, browser usage, performance, logs and security. Classify findings FACT/INFERENCE/ASSUMPTION/UNPROVEN and cite exact source paths and locators. Do not modify anything or perform external actions."; const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"}); tasks.set(record.id,record); emit("office_check.started",{taskId:record.id,readOnly:true}); if(!aiAvailable(record.provider)) transitionTask(record,"waiting",{waitingReason:"ai_not_configured"}); else void executeRootTask(record); res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true});});
+
 app.get("/api/state", (_req,res)=>res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
   employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
