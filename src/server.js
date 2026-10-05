@@ -1325,6 +1325,25 @@ app.get("/api/gateway", (_req,res)=>res.json({
   }
 }));
 
+app.get("/api/smoke/fallback", async (req,res)=>{
+  if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/fallback?run=1 creates one internal controlled provider-fallback test"});
+  const before=events.length;
+  const employee=getEmployee("analyst");
+  const originalOrder=providerOrder();
+  try {
+    process.env.AI_PROVIDER_ORDER="gemini,huggingface";
+    process.env.GEMINI_MODELS="definitely-nonexistent-ai-office-test-model";
+    const result=await generateViaLocalGateway("INTERNAL READ-ONLY FALLBACK TEST. Return exactly: FALLBACK_OK",employee);
+    const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
+    return res.json({ok:true,test:"provider_fallback",readOnly:true,result:{model:result.model,text:result.text},trace,expected:["gemini failure","gateway.fallback to huggingface","huggingface success"],observed:{geminiFailure:trace.some(e=>e.type==="ai.error"&&e.provider==="gemini"),providerFallback:trace.some(e=>e.type==="gateway.fallback"&&e.from==="gemini"&&e.to==="huggingface"),huggingfaceSuccess:trace.some(e=>e.type==="gateway.model_success"&&e.provider==="huggingface")}});
+  } catch(error) {
+    const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
+    return res.status(503).json({ok:false,test:"provider_fallback",readOnly:true,error:error?.message||String(error),trace});
+  } finally {
+    process.env.AI_PROVIDER_ORDER=originalOrder.join(",");
+  }
+});
+
 app.get("/api/smoke/evidence", (req,res)=>{
   if(String(req.query?.run || "") !== "1") {
     return res.json({ok:true,usage:"GET /api/smoke/evidence?run=1 creates one internal read-only evidence smoke test"});
