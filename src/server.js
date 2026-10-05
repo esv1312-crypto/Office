@@ -117,7 +117,9 @@ function getEmployee(id) {
 
 function resolveBrain(employee, task = "") {
   const selected = selectModelForTask(task, employee);
-  const model = selected.selected;
+  const model = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id)
+    ? selected.selected
+    : (selected.candidates || []).find(x => !isModelSuppressed(x.routeModel || x.id)) || null;
   return {
     provider: String(model?.provider || employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase(),
     model: model?.routeModel || model?.id || employee?.model || null,
@@ -267,23 +269,43 @@ const OPENROUTER_MODEL_POOLS = {
 };
 
 const openRouterRotation = new Map();
+const modelSuppressions = new Map();
 
-function openRouterPool(employee) {
+function isModelSuppressed(model) {
+  const until=Number(modelSuppressions.get(model)||0);
+  if (!until) return false;
+  if (until <= Date.now()) {
+    modelSuppressions.delete(model);
+    return false;
+  }
+  return true;
+}
+
+function suppressModel(model, reason, ttlMs = 6 * 60 * 60 * 1000) {
+  if (!model) return;
+  modelSuppressions.set(model, Date.now()+ttlMs);
+  emit("gateway.model_suppressed",{provider:"openrouter",model,until:new Date(Date.now()+ttlMs).toISOString(),reason});
+}
+
+function openRouterPool(employee, preferredModel = null) {
   const role=String(employee?.role || "executor");
-  let pool=OPENROUTER_MODEL_POOLS[role] || OPENROUTER_MODEL_POOLS.executor;
-  const dynamic=getDynamicPool(employee,"openrouter").filter(x => x && !x.includes(":"));
-  if(dynamic.length) pool=[...dynamic,...pool];
+  const dynamic=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x));
+  let pool=dynamic.length ? dynamic : ["openrouter/free"];
   try {
     const custom=JSON.parse(process.env.OPENROUTER_MODEL_POOLS_JSON || "null");
-    if (custom && Array.isArray(custom[role]) && custom[role].length) pool=custom[role];
+    if (custom && Array.isArray(custom[role]) && custom[role].length) {
+      const liveCustom=custom[role].filter(x => x && !isModelSuppressed(x));
+      if (liveCustom.length) pool=[...liveCustom,...pool];
+    }
   } catch (_) {}
-  const preferred=employee?.model || process.env.OPENROUTER_MODEL;
-  if (preferred) pool=[preferred,...pool];
-  return [...new Set(pool.filter(Boolean))];
+  const preferred=preferredModel || process.env.OPENROUTER_MODEL;
+  if (preferred && !isModelSuppressed(preferred)) pool=[preferred,...pool];
+  const result=[...new Set(pool.filter(Boolean))];
+  return result.length ? result : ["openrouter/free"];
 }
 
 async function generateWithOpenRouter(task, employee, preferredModel) {
-  const pool=openRouterPool(employee);
+  const pool=openRouterPool(employee, preferredModel);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
   const ordered=pool.map((_,i)=>pool[(cursor+i)%pool.length]);
@@ -309,6 +331,9 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
     } catch(error) {
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
+      if (/model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(error?.message || "")) {
+        suppressModel(model,error?.message || "model unavailable");
+      }
       if (i<ordered.length-1) {
         emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:error?.message || String(error)});
       }
