@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
+import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus } from "./database.js";
 
 const app = express();
 app.use(express.json({limit:"1mb"}));
@@ -91,6 +92,7 @@ function transitionTask(record, nextStatus, extra = {}) {
   const previousStatus = record.status;
   record.status = nextStatus;
   Object.assign(record, extra);
+  void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
   emit("task.state_changed", {taskId:record.id,parentTaskId:record.parentTaskId || null,previousStatus,status:nextStatus});
   return record;
 }
@@ -108,6 +110,7 @@ function emit(type, data = {}) {
   events.unshift(event);
   if (events.length > 500) events.pop();
   console.log("[EVENT]", JSON.stringify(event));
+  void saveEvent(type,event).catch(error=>console.error("[DB] event save failed",error?.message||error));
   return event;
 }
 
@@ -1764,6 +1767,7 @@ SOURCE DOSSIER:
 `+dossier.join("");
     const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
     tasks.set(record.id,record);
+    void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
     emit("task.accepted",{taskId:record.id,parentTaskId:null,kind:"root",task:taskText,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model,source:"pognali_read_only_audit"});
     if(!aiAvailable(record.provider)){
       transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
@@ -1791,6 +1795,7 @@ app.post("/api/tasks", (req,res)=>{
     kind:req.body?.kind || "root"
   });
   tasks.set(record.id,record);
+  void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
   emit("task.accepted",{taskId:record.id,parentTaskId:record.parentTaskId,kind:record.kind,task,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
 
   if(!aiAvailable(record.provider)) {
@@ -1853,6 +1858,26 @@ async function runFinalAuditOnStartup() {
     emit("office_check.autorun_started",{status:response.status,taskId:body?.task?.id||null});
   } catch (error) { emit("office_check.autorun_failed",{error:error?.message||String(error)}); }
 }
+
+async function bootstrapDatabase() {
+  try {
+    const enabled = await initDatabase();
+    if(enabled) {
+      const state = await loadDatabaseState();
+      for(const snapshot of state.tasks || []) {
+        const record = {...snapshot};
+        delete record.children;
+        tasks.set(record.id,record);
+      }
+      events.splice(0,events.length,...(state.events || []));
+      console.log("[DB] persistence ready; restored tasks:",tasks.size,"events:",events.length);
+    } else console.log("[DB] persistence disabled; DATABASE_URL is not configured");
+  } catch(error) {
+    console.error("[DB] initialization failed; continuing without persistence:",error?.message||error);
+  }
+}
+
+await bootstrapDatabase();
 
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
