@@ -562,14 +562,15 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
   if(!providers.length) throw Object.assign(new Error("No configured AI provider is available in FREE_ONLY="+freeOnly()),{code:"AI_NOT_CONFIGURED"});
   let lastError;
   for(const provider of providers) {
+    const sameAsApproved = approvedCandidate && String(approvedCandidate.provider).toLowerCase()===provider;
     const model=provider==="gemini"
       ? null
       : provider==="huggingface"
         ? null
         : provider==="openrouter"
-          ? (brain.model || openRouterModel())
+          ? (sameAsApproved ? String(approvedCandidate.model) : openRouterModel())
           : provider==="cloudflare"
-            ? (brain.model || process.env.CLOUDFLARE_MODEL || null)
+            ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.CLOUDFLARE_MODEL || null))
             : (process.env.OPENAI_MODEL || null);
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly(),backend:"local"});
     try {
