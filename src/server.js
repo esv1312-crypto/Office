@@ -1286,6 +1286,34 @@ app.get("/api/gateway", (_req,res)=>res.json({
   }
 }));
 
+app.get("/api/smoke/evidence", (req,res)=>{
+  if(String(req.query?.run || "") !== "1") {
+    return res.json({ok:true,usage:"GET /api/smoke/evidence?run=1 creates one internal read-only evidence smoke test"});
+  }
+  const taskText=[
+    "SMOKE TEST — READ-ONLY EVIDENCE PIPELINE.",
+    "Do not modify anything.",
+    "Use this exact supplied source dossier:",
+    "===== test/source.txt =====",
+    "FACT A: The launch gate is called GREEN.",
+    "FACT B: The required owner is STAS.",
+    "===== test/config.txt =====",
+    "FACT C: The retry limit is 2.",
+    "Requirements:",
+    "- Analyst must report all three facts with exact source path and label FACT.",
+    "- Developer must independently verify the same three facts.",
+    "- Verifier must reject any material finding without a source path and locator.",
+    "- Final result must separate FACT, INFERENCE, ASSUMPTION and UNPROVEN.",
+    "This is an internal read-only smoke test; do not perform external actions."
+  ].join("\n");
+  const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"smoke"});
+  tasks.set(record.id,record);
+  emit("smoke.started",{taskId:record.id,type:"evidence_pipeline"});
+  void executeRootTask(record);
+  res.status(202).json({ok:true,taskId:record.id,readOnly:true,test:"evidence_pipeline"});
+});
+
+
 app.get("/api/state", (_req,res)=>res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
   employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
