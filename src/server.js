@@ -1339,7 +1339,38 @@ app.get("/api/smoke/evidence", (req,res)=>{
 });
 
 
-app.get("/api/office-check",(req,res)=>{ if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1"}); const taskText="READ-ONLY AI-OFFICE INTERNAL CHECK. Inspect current routing, models, employees, task lifecycle, verification, recovery, browser usage, performance, logs and security. Classify findings FACT/INFERENCE/ASSUMPTION/UNPROVEN and cite exact source paths and locators. Do not modify anything or perform external actions."; const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"}); tasks.set(record.id,record); emit("office_check.started",{taskId:record.id,readOnly:true}); if(!aiAvailable(record.provider)) transitionTask(record,"waiting",{waitingReason:"ai_not_configured"}); else void executeRootTask(record); res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true});});
+app.get("/api/office-check", async (req,res)=>{ 
+  if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1"});
+  const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js"];
+  const base="https://raw.githubusercontent.com/esv1312-crypto/Office/main/";
+  try{
+    const dossier=[];
+    for(const path of files){
+      const response=await fetch(base+path);
+      if(!response.ok) throw new Error("Failed to fetch "+path+" (HTTP "+response.status+")");
+      dossier.push("\\n===== "+path+" =====\\n"+await response.text());
+    }
+    const taskText=[
+      "READ-ONLY AI-OFFICE INTERNAL SELF-AUDIT.",
+      "Audit the CURRENT AI-OFFICE implementation represented by the supplied source dossier below. Do not modify anything or perform external actions.",
+      "Use exact evidence from the dossier. Every material FACT or INFERENCE must cite a real source path and precise locator: function, endpoint, constant, event, or line range. Never invent a path or locator. If the dossier does not prove a claim, mark it UNPROVEN.",
+      "Audit specifically: end-to-end routing; live Model Scout and stale/invalid model suppression; free-only policy; Chief/Analyst/Developer/Verifier/Executor; parent-context propagation; task lifecycle; verification; recovery and whether a successful recovery can return the ROOT to completed; browser/courier usage and whether it is unnecessarily invoked; retries, polling, timeouts, parallelism; events/logging; tool permissions; GitHub read/write boundaries; security.",
+      "Produce concrete KEEP, SIMPLIFY, REMOVE, ADD findings and P0/P1/P2 priorities.",
+      "The test is itself read-only: source files are evidence only. Do not use filesystem tools and do not claim any external action.",
+      "FINAL A-O: A Executive verdict; B Architecture; C Model system; D Employees; E Task engine/recovery; F Browser/Courier; G Performance; H Security; I Keep/Simplify/Remove; J Add; K P0; L P1; M P2; N Evidence index; O READY/PARTIALLY READY/NOT READY.",
+      "\\n===== SOURCE DOSSIER =====\\n"+dossier.join("")
+    ].join("\\n");
+    const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
+    tasks.set(record.id,record);
+    emit("office_check.started",{taskId:record.id,readOnly:true,filesAudited:files});
+    if(!aiAvailable(record.provider)) transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+    else void executeRootTask(record);
+    res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true,filesAudited:files.length});
+  }catch(error){
+    emit("office_check.failed",{error:error?.message||String(error)});
+    res.status(502).json({ok:false,error:error?.message||String(error)});
+  }
+});
 
 app.get("/api/state", (_req,res)=>res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
