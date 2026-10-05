@@ -28,6 +28,25 @@ const browserRequests = new Map();
 const browserRuns = new Map();
 const browser = createBrowserManager({emit});
 let modelScoutTimer = null;
+const workerWatchdogIntervalMs=Math.max(5000,Number(process.env.WORKER_WATCHDOG_INTERVAL_MS || 15000));
+const workerTimeoutMs=Math.max(30000,Number(process.env.WORKER_TIMEOUT_MS || 180000));
+let workerWatchdogTimer=null;
+function runWorkerWatchdog(){
+  const now=Date.now();
+  for(const record of tasks.values()){
+    if(!["running","waiting"].includes(record.status)) continue;
+    if(!record.startedAt) continue;
+    const age=now-Date.parse(record.startedAt);
+    if(age < workerTimeoutMs) continue;
+    if(record.kind==="root") continue;
+    if(record.watchdogFailedAt) continue;
+    record.watchdogFailedAt=new Date(now).toISOString();
+    transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:record.watchdogFailedAt});
+    emit("worker.watchdog_timeout",{taskId:record.id,parentTaskId:record.parentTaskId||null,employeeId:record.employeeId,ageMs:age,timeoutMs:workerTimeoutMs});
+    const parent=record.parentTaskId ? tasks.get(record.parentTaskId) : null;
+    if(parent) void recoverFailedWorker(parent,record);
+  }
+}
 
 const TASK_STATES = new Set(["accepted","planning","running","waiting","completed","failed","cancelled"]);
 const ALLOWED_TRANSITIONS = {
@@ -1383,6 +1402,23 @@ app.get("/api/smoke/fallback", async (req,res)=>{
   }
 });
 
+app.get("/api/smoke/recovery", async (req,res)=>{
+  const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  const supplied=String(req.query?.token || "").trim();
+  if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
+  if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/recovery?run=1&token=..."});
+  const root=createTaskRecord({task:"INTERNAL READ-ONLY RECOVERY TEST. Produce a short evidence-rich confirmation that the recovery worker can replace a failed worker and return a usable result.",employeeId:"chief",kind:"root"});
+  root.status="failed"; root.error="INTERNAL_RECOVERY_SMOKE_FAILURE"; root.verification={status:"FAIL",checks:[{name:"forced smoke failure",passed:false,evidence:"runtime forced failure",classification:"FACT",source:"runtime event",locator:"smoke/recovery"}],summary:"forced recovery smoke failure"};
+  tasks.set(root.id,root);
+  emit("smoke.recovery_forced_failure",{taskId:root.id,readOnly:true});
+  try{
+    await recoverRootTask(root);
+    return res.json({ok:root.status==="completed",readOnly:true,test:"root_recovery",taskId:root.id,status:root.status,recoveryAttempts:root.recoveryAttempts,recoveryHistory:root.recoveryHistory,recoveryTaskIds:root.recoveryTaskIds});
+  }catch(error){
+    return res.status(503).json({ok:false,readOnly:true,test:"root_recovery",taskId:root.id,status:root.status,error:error?.message||String(error),recoveryAttempts:root.recoveryAttempts,recoveryHistory:root.recoveryHistory,recoveryTaskIds:root.recoveryTaskIds});
+  }
+});
+
 app.get("/api/smoke/evidence", (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
   const supplied=String(req.query?.token || "").trim();
@@ -1596,6 +1632,8 @@ app.get("/api/tasks/:id",(req,res)=>{
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
   modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), Number(process.env.MODEL_SCOUT_INTERVAL_MS || 3600000));
+  workerWatchdogTimer=setInterval(runWorkerWatchdog,workerWatchdogIntervalMs);
+  emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
   console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
