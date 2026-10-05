@@ -157,7 +157,13 @@ function getEmployee(id) {
 }
 
 function resolveBrain(employee, task = "") {
-  const selected = selectModelForTask(task, employee);
+  const roleTask = employee?.id==="verifier" ? "verification testing evidence audit"
+    : employee?.id==="developer" ? "coding debugging implementation"
+    : employee?.id==="analyst" ? "analysis research requirements"
+    : employee?.id==="executor" ? "execution operations recovery"
+    : employee?.id==="chief" ? "planning delegation coordination"
+    : task;
+  const selected = selectModelForTask(roleTask || task, employee);
   const model = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id)
     ? selected.selected
     : (selected.candidates || []).find(x => !isModelSuppressed(x.routeModel || x.id)) || null;
@@ -402,7 +408,7 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
       if (/model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(error?.message || "")) {
         suppressModel(model,error?.message || "model unavailable",6*60*60*1000,"openrouter");
-      } else if (/429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|high demand|overloaded/i.test(error?.message || "")) {
+      } else if (/429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|high demand|overloaded|empty response/i.test(error?.message || "")) {
         suppressModel(model,error?.message || "model temporarily unavailable",15*60*1000,"openrouter");
       }
       if (i<ordered.length-1) {
