@@ -1597,6 +1597,7 @@ SOURCE DOSSIER:
 });
 
 app.post("/api/tasks", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   const task=String(req.body?.task || "").trim();
   if(!task) return res.status(400).json({ok:false,error:"task is required"});
 
@@ -1620,7 +1621,8 @@ app.post("/api/tasks", (req,res)=>{
   return res.status(202).json({ok:true,task:taskSnapshot(record)});
 });
 
-app.post("/api/tasks/:id/subtasks",(req,res)=>{\n  if(!requireInternalOrAudit(req,res)) return;
+app.post("/api/tasks/:id/subtasks",(req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   const parent=tasks.get(req.params.id);
   if(!parent) return res.status(404).json({ok:false,error:"parent task not found"});
   if(["completed","cancelled"].includes(parent.status)) return res.status(409).json({ok:false,error:"cannot add subtask to a closed task"});
