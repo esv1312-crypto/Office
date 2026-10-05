@@ -1145,7 +1145,7 @@ app.get("/health", (_req,res)=>res.json({
   employees:employees().length,
   tools:Object.keys(TOOL_REGISTRY).length,
   githubToolsEnabled:process.env.GITHUB_TOOLS_ENABLED === "true",
-  browser:{configured:browserConfigured(),automationEnabled:browserAutomationEnabled(),requiresApproval:browserApprovalRequired()}
+  browser:browser.summary()
 }));
 
 app.get("/api/employees", (_req,res)=>res.json({
