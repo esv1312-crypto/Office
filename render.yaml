@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: ai-office-runtime
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-office-monitor-db
+          property: connectionString
+
+databases:
+  - name: ai-office-monitor-db
+    plan: free
+    region: frankfurt
