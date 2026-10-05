@@ -403,11 +403,12 @@ function suppressProvider(provider, reason, ttlMs=15*60*1000) {
   emit("gateway.provider_suppressed",{provider:key,until:new Date(Date.now()+ttlMs).toISOString(),reason});
 }
 
-function isModelSuppressed(model) {
-  const until=Number(modelSuppressions.get("openrouter:"+String(model))||0);
+function isModelSuppressed(model, provider = "openrouter") {
+  const key=String(provider)+":"+String(model);
+  const until=Number(modelSuppressions.get(key)||0);
   if (!until) return false;
   if (until <= Date.now()) {
-    modelSuppressions.delete("openrouter:"+String(model));
+    modelSuppressions.delete(key);
     return false;
   }
   return true;
@@ -540,8 +541,10 @@ async function generateWithOpenAI(task, preferredModel) {
   return {text:response.output_text || "",model};
 }
 
-async function generateViaLocalGateway(task, employee, forcedProvider = null) {
-  const brain=resolveBrain(employee, task);
+async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null) {
+  const brain=approvedCandidate
+    ? { ...resolveBrain(employee, task), provider:String(approvedCandidate.provider), model:String(approvedCandidate.model), candidates:[approvedCandidate] }
+    : resolveBrain(employee, task);
   const providers=Array.isArray(forcedProvider)
     ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
     : forcedProvider
@@ -579,7 +582,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null) {
   throw lastError || new Error("All configured AI providers failed");
 }
 
-async function generateViaGateway(task, employee) {
+async function generateViaGateway(task, employee, approvedCandidate = null) {
   const backendUrls=String(process.env.BACKEND_RUNTIME_URLS || "").split(",").map(x=>x.trim().replace(/\/$/,"")).filter(Boolean);
   // Provider selection remains scout-driven, but provider fallback is always allowed after the selected provider fails.
   if(backendUrls.length && process.env.OFFICE_MODE !== "backend") {
@@ -600,7 +603,7 @@ async function generateViaGateway(task, employee) {
       }
     }
   }
-  return generateViaLocalGateway(task,employee);
+  return generateViaLocalGateway(task,employee,null,approvedCandidate);
 }
 
 const TOOL_REGISTRY = {
@@ -801,7 +804,7 @@ async function executeWorkerTask(record) {
     const ready=await ensureEmployeeReady(employee,record.task);
     record.provider=ready.provider; record.model=ready.model;
     emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model,preflight:"PASS"});
-    const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee);
+    const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee,ready);
     record.model=result.model; record.evidenceSummary=extractEvidenceIndex(result.text);
     if (record.status === "failed") {
       emit("task.late_result_ignored",{taskId:record.id,employeeId:employee.id,reason:"worker was already failed by watchdog"});
