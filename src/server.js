@@ -10,6 +10,14 @@ app.use(express.json({limit:"1mb"}));
 const startedAt = new Date().toISOString();
 const events = [];
 const tasks = new Map();
+const INTERNAL_TASK_AUTH_HEADER = "x-ai-office-internal";
+function requireInternalOrAudit(req,res) {
+  const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || req.query?.token || "").trim();
+  const internal=String(req.headers[INTERNAL_TASK_AUTH_HEADER] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
+  if(internal || (expected && supplied===expected)) return true;
+  res.status(401).json({ok:false,error:"authentication required"}); return false;
+}
 const workerQueue = { active:0, pending:[], limit:Math.max(1,Number(process.env.MAX_CONCURRENT_WORKERS || 3)) };
 async function acquireWorkerSlot(taskId) {
   if (workerQueue.active < workerQueue.limit) { workerQueue.active += 1; emit("worker.slot_acquired",{taskId,active:workerQueue.active,limit:workerQueue.limit}); return; }
@@ -1608,7 +1616,7 @@ app.post("/api/tasks", (req,res)=>{
   return res.status(202).json({ok:true,task:taskSnapshot(record)});
 });
 
-app.post("/api/tasks/:id/subtasks",(req,res)=>{
+app.post("/api/tasks/:id/subtasks",(req,res)=>{\n  if(!requireInternalOrAudit(req,res)) return;
   const parent=tasks.get(req.params.id);
   if(!parent) return res.status(404).json({ok:false,error:"parent task not found"});
   if(["completed","cancelled"].includes(parent.status)) return res.status(409).json({ok:false,error:"cannot add subtask to a closed task"});
