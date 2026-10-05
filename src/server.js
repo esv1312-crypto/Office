@@ -29,7 +29,7 @@ const browserRuns = new Map();
 const browser = createBrowserManager({emit});
 let modelScoutTimer = null;
 const workerWatchdogIntervalMs=Math.max(5000,Number(process.env.WORKER_WATCHDOG_INTERVAL_MS || 15000));
-const workerTimeoutMs=Math.max(30000,Number(process.env.WORKER_TIMEOUT_MS || 180000));
+const workerTimeoutMs=Math.max(30000,Number(process.env.WORKER_TIMEOUT_MS || 600000));
 let workerWatchdogTimer=null;
 function runWorkerWatchdog(){
   const now=Date.now();
@@ -44,7 +44,7 @@ function runWorkerWatchdog(){
     transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:record.watchdogFailedAt});
     emit("worker.watchdog_timeout",{taskId:record.id,parentTaskId:record.parentTaskId||null,employeeId:record.employeeId,ageMs:age,timeoutMs:workerTimeoutMs});
     const parent=record.parentTaskId ? tasks.get(record.parentTaskId) : null;
-    if(parent) void recoverFailedWorker(parent,record);
+    if(parent && ["waiting","running"].includes(parent.status)) void recoverFailedWorker(parent,record);
   }
 }
 
@@ -708,7 +708,7 @@ async function executeWorkerTask(record) {
     emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model});
     const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee);
     record.model=result.model; record.evidenceSummary=extractEvidenceIndex(result.text);
-    transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
+    if (record.status === "failed") {\n      emit("task.late_result_ignored",{taskId:record.id,employeeId:employee.id,reason:"worker was already failed by watchdog"});\n      return result.text;\n    }\n    transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
     emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model,evidenceCount:record.evidenceSummary.length});
     return result.text;
   } catch(error) {
