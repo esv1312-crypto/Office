@@ -429,7 +429,11 @@ async function generateWithOpenAI(task, preferredModel) {
 
 async function generateViaLocalGateway(task, employee, forcedProvider = null) {
   const brain=resolveBrain(employee, task);
-  const providers=forcedProvider ? [...new Set([String(forcedProvider).toLowerCase(), ...gatewayProviders(brain.provider)])].filter(p=>aiConfigured(p)) : gatewayProviders(brain.provider);
+  const providers=Array.isArray(forcedProvider)
+    ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
+    : forcedProvider
+      ? [...new Set([String(forcedProvider).toLowerCase(), ...gatewayProviders(brain.provider)])].filter(p=>aiConfigured(p))
+      : gatewayProviders(brain.provider);
   if(!providers.length) throw Object.assign(new Error("No configured AI provider is available in FREE_ONLY="+freeOnly()),{code:"AI_NOT_CONFIGURED"});
   let lastError;
   for(const provider of providers) {
@@ -1366,7 +1370,7 @@ app.get("/api/smoke/fallback", async (req,res)=>{
   try {
     process.env.AI_PROVIDER_ORDER="gemini,huggingface";
     process.env.GEMINI_MODELS="definitely-nonexistent-ai-office-test-model";
-    const result=await generateViaLocalGateway("INTERNAL READ-ONLY FALLBACK TEST. Return exactly: FALLBACK_OK",employee,"gemini");
+    const result=await generateViaLocalGateway("INTERNAL READ-ONLY FALLBACK TEST. Return exactly: FALLBACK_OK",employee,["gemini","huggingface"]);
     const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
     return res.json({ok:true,test:"provider_fallback",readOnly:true,result:{model:result.model,text:result.text},trace,expected:["gemini failure","gateway.fallback to huggingface","huggingface success"],observed:{geminiFailure:trace.some(e=>e.type==="ai.error"&&e.provider==="gemini"),providerFallback:trace.some(e=>e.type==="gateway.fallback"&&e.from==="gemini"&&e.to==="huggingface"),huggingfaceSuccess:trace.some(e=>e.type==="gateway.model_success"&&e.provider==="huggingface")}});
   } catch(error) {
