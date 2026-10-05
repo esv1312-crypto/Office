@@ -11,6 +11,22 @@ const startedAt = new Date().toISOString();
 const events = [];
 const tasks = new Map();
 const INTERNAL_TASK_AUTH_HEADER = "x-ai-office-internal";
+function validateParentLink(parentTaskId, childId=null) {
+  const parentId=String(parentTaskId || "").trim();
+  if(!parentId) return {ok:true,parent:null};
+  if(childId && parentId===String(childId)) return {ok:false,error:"task cannot be its own parent"};
+  let current=tasks.get(parentId);
+  if(!current) return {ok:false,error:"parent task not found"};
+  const seen=new Set();
+  while(current) {
+    if(seen.has(current.id)) return {ok:false,error:"task parent cycle detected"};
+    seen.add(current.id);
+    if(childId && current.parentTaskId===childId) return {ok:false,error:"task parent cycle detected"};
+    current=current.parentTaskId ? tasks.get(current.parentTaskId) : null;
+  }
+  return {ok:true,parent:tasks.get(parentId)};
+}
+
 function requireInternalOrAudit(req,res) {
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
   const supplied=String(req.headers["x-ai-office-audit-token"] || req.query?.token || "").trim();
@@ -1349,6 +1365,7 @@ async function executeRootTask(record) {
 app.get("/api/backend/health", (_req,res)=>res.json({ok:true,mode:process.env.OFFICE_MODE||"office",aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),freeOnly:freeOnly()}));
 
 app.post("/api/backend/generate", async (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   if((process.env.OFFICE_MODE||"office")!=="backend") return res.status(409).json({ok:false,error:"This runtime is not configured as a backend node"});
   const task=String(req.body?.task||"").trim();
   if(!task) return res.status(400).json({ok:false,error:"task is required"});
@@ -1436,6 +1453,7 @@ app.get("/api/browser/requests/:id",(req,res)=>{
 });
 
 app.post("/api/browser/requests/:id/approve",async (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   try {
     const result=await browser.approve(String(req.params.id || ""),String(req.body?.approvalToken || ""));
     res.json({ok:true,...result});
@@ -1671,11 +1689,14 @@ app.get("/api/office-check", async (req,res)=>{
   }
 });
 
-app.get("/api/state", (_req,res)=>res.json({
+app.get("/api/state", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
   employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
   tasks:[...tasks.values()].map(taskSnapshot),workerQueue:{active:workerQueue.active,pending:workerQueue.pending.length,limit:workerQueue.limit},events:events.slice(0,100)
-}));
+  });
+});
 
 app.get("/api/pognali/audit", async (req,res)=>{
   const expected=String(process.env.POGNALI_AUDIT_TOKEN || "").trim();
@@ -1760,10 +1781,13 @@ app.post("/api/tasks", (req,res)=>{
   const task=String(req.body?.task || "").trim();
   if(!task) return res.status(400).json({ok:false,error:"task is required"});
 
+  const requestedParent=req.body?.parentTaskId || null;
+  const parentCheck=validateParentLink(requestedParent);
+  if(!parentCheck.ok) return res.status(409).json({ok:false,error:parentCheck.error});
   const record=createTaskRecord({
     task,
     employeeId:String(req.body?.employeeId || "chief"),
-    parentTaskId:req.body?.parentTaskId || null,
+    parentTaskId:requestedParent,
     kind:req.body?.kind || "root"
   });
   tasks.set(record.id,record);
@@ -1811,6 +1835,7 @@ app.post("/api/tasks/:id/subtasks",(req,res)=>{
 });
 
 app.get("/api/tasks/:id",(req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   const record=tasks.get(req.params.id);
   if(!record) return res.status(404).json({ok:false,error:"task not found"});
   res.json({ok:true,task:taskSnapshot(record)});
