@@ -294,7 +294,7 @@ function isModelSuppressed(model) {
   const until=Number(modelSuppressions.get("openrouter:"+String(model))||0);
   if (!until) return false;
   if (until <= Date.now()) {
-    modelSuppressions.delete(model);
+    modelSuppressions.delete("openrouter:"+String(model));
     return false;
   }
   return true;
@@ -1355,6 +1355,9 @@ app.get("/api/gateway", (_req,res)=>res.json({
 }));
 
 app.get("/api/smoke/fallback", async (req,res)=>{
+  const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  const supplied=String(req.query?.token || "").trim();
+  if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/fallback?run=1 creates one internal controlled provider-fallback test"});
   const before=events.length;
   const employee=getEmployee("analyst");
@@ -1374,6 +1377,9 @@ app.get("/api/smoke/fallback", async (req,res)=>{
 });
 
 app.get("/api/smoke/evidence", (req,res)=>{
+  const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  const supplied=String(req.query?.token || "").trim();
+  if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") {
     return res.json({ok:true,usage:"GET /api/smoke/evidence?run=1 creates one internal read-only evidence smoke test"});
   }
