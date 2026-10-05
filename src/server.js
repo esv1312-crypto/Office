@@ -1629,11 +1629,25 @@ app.get("/api/tasks/:id",(req,res)=>{
   res.json({ok:true,task:taskSnapshot(record)});
 });
 
+async function runFinalAuditOnStartup() {
+  if (String(process.env.RUN_FINAL_AUDIT_ON_START || "").toLowerCase() !== "true") return;
+  await sleep(5000);
+  const token = String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  if (!token) { emit("office_check.autorun_skipped",{reason:"OFFICE_AUDIT_TOKEN_NOT_CONFIGURED"}); return; }
+  try {
+    const port = process.env.PORT || 10000;
+    const response = await fetch("http://127.0.0.1:"+port+"/api/office-check?run=1&token="+encodeURIComponent(token), {headers:{"X-AI-Office-Internal":"1"}});
+    const body = await response.json().catch(()=>({}));
+    emit("office_check.autorun_started",{status:response.status,taskId:body?.task?.id||null});
+  } catch (error) { emit("office_check.autorun_failed",{error:error?.message||String(error)}); }
+}
+
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
   modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), Number(process.env.MODEL_SCOUT_INTERVAL_MS || 3600000));
   workerWatchdogTimer=setInterval(runWorkerWatchdog,workerWatchdogIntervalMs);
   emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
+  void runFinalAuditOnStartup();
   console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
