@@ -1641,7 +1641,8 @@ app.get("/api/office-check", async (req,res)=>{
       "For each P0/P1/P2 item provide: classification, exact source/runtime evidence, impact, and smallest concrete fix. Do not mix recommendations with facts.",
       "The audit is successful only if the report is evidence-rich and internally consistent. Do not declare READY merely because code paths exist.",
       "",
-      "SOURCE DOSSIER: CURRENT AI-OFFICE SOURCE FILES ARE SUPPLIED BELOW."
+      "SOURCE DOSSIER: CURRENT AI-OFFICE SOURCE FILES ARE SUPPLIED BELOW.",
+      "\n===== SOURCE DOSSIER =====\n"+dossier.join("")
     ].join("\n");
     const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
     tasks.set(record.id,record);
