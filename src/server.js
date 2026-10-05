@@ -137,7 +137,7 @@ function gatewayProviders(preferred) {
   const order=[...new Set([...providerOrder(),"huggingface"])];
   const first=String(preferred || "").toLowerCase();
   const candidates=first && first !== "auto" ? [first,...order] : order;
-  return [...new Set(candidates)].filter(p=>aiConfigured(p));
+  return [...new Set(candidates)].filter(p=>aiConfigured(p) && !isProviderSuppressed(p));
 }
 
 function aiAvailable(preferred) {
@@ -235,7 +235,8 @@ async function generateWithGemini(task, preferredModel) {
         emit("ai.error",{provider:"gemini",model,attempt:attempt+1,error:error?.message||String(error),transient:Boolean(error?.transient),quota});
         if (quota) {
           emit("ai.quota_exhausted",{provider:"gemini",model,error:error?.message||String(error)});
-          break;
+          suppressProvider("gemini",error?.message||"Gemini quota exhausted",60*60*1000);
+          return Promise.reject(lastError);
         }
         if (!error?.transient || attempt===2) break;
         const delay=Math.min(8000,1000*(2**attempt))+Math.floor(Math.random()*500);
@@ -316,6 +317,19 @@ const OPENROUTER_MODEL_POOLS = {
 
 const openRouterRotation = new Map();
 const modelSuppressions = new Map();
+const providerSuppressions = new Map();
+function isProviderSuppressed(provider) {
+  const key=String(provider).toLowerCase();
+  const until=Number(providerSuppressions.get(key)||0);
+  if(!until) return false;
+  if(until<=Date.now()){ providerSuppressions.delete(key); return false; }
+  return true;
+}
+function suppressProvider(provider, reason, ttlMs=15*60*1000) {
+  const key=String(provider).toLowerCase();
+  providerSuppressions.set(key,Date.now()+ttlMs);
+  emit("gateway.provider_suppressed",{provider:key,until:new Date(Date.now()+ttlMs).toISOString(),reason});
+}
 
 function isModelSuppressed(model) {
   const until=Number(modelSuppressions.get("openrouter:"+String(model))||0);
@@ -465,7 +479,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null) {
   let lastError;
   for(const provider of providers) {
     const model=provider==="gemini"
-      ? (forcedProvider==="gemini" ? null : brain.model)
+      ? null
       : provider==="huggingface"
         ? null
         : provider==="openrouter"
