@@ -582,25 +582,48 @@ function createTaskRecord({task, employeeId = "chief", parentTaskId = null, kind
   };
 }
 
+function rootTaskFor(record) {
+  let current=record; const seen=new Set();
+  while(current?.parentTaskId && !seen.has(current.id)){seen.add(current.id);current=tasks.get(current.parentTaskId)||current;}
+  return current;
+}
+function extractEvidenceIndex(text){
+  const lines=String(text||"").split(/\r?\n/), start=lines.findIndex(x=>/EVIDENCE INDEX/i.test(x));
+  return start<0?[]:lines.slice(start+1).filter(x=>x.trim()).slice(0,80).map(x=>x.trim());
+}
+function buildWorkerPrompt(record,employee){
+  const root=rootTaskFor(record), original=String(root?.task||record.task||"");
+  const context=original.length>120000?original.slice(0,120000)+"\n[CONTEXT TRUNCATED BY RUNTIME]":original;
+  return [
+    "You are "+employee.name+" ("+employee.role+") inside AI-OFFICE.",
+    "Use the original parent task/source dossier below. Do not ask the Chief to repeat it.",
+    "EVIDENCE-FIRST RULES:",
+    "1) Make concrete findings from supplied evidence, not generic advice.",
+    "2) Label every material conclusion FACT, INFERENCE, ASSUMPTION, or UNPROVEN.",
+    "3) For every material FACT/INFERENCE cite exact file/path plus function, element, constant, workflow step, or line range when available.",
+    "4) Never invent line numbers or evidence.",
+    "5) If evidence cannot establish something, mark it UNPROVEN.",
+    "6) End with EVIDENCE INDEX: finding | label | source path | locator | why it proves the finding.",
+    "7) Never claim an external action occurred without explicit runtime evidence.",
+    "\n===== ORIGINAL PARENT TASK / SOURCE DOSSIER =====\n"+context,
+    "\n===== YOUR ASSIGNED SUBTASK =====\n"+String(record.task||""),
+    "\nReturn an evidence-rich report for the Chief."
+  ].join("\n");
+}
 async function executeWorkerTask(record) {
   try {
-    transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
+    transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1});
     const employee=getEmployee(record.employeeId);
-    record.employeeId=employee.id;
-    record.employee=employee.name;
-    record.role=employee.role;
-    record.provider=resolveBrain(employee).provider;
-    record.model=resolveBrain(employee).model;
+    record.employeeId=employee.id; record.employee=employee.name; record.role=employee.role;
+    record.provider=resolveBrain(employee).provider; record.model=resolveBrain(employee).model;
     emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model});
-
-    const result=await generateViaGateway(record.task,employee);
-
-    record.model=result.model;
+    const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee);
+    record.model=result.model; record.evidenceSummary=extractEvidenceIndex(result.text);
     transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
-    emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model});
+    emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model,evidenceCount:record.evidenceSummary.length});
     return result.text;
   } catch(error) {
-    const message=error?.message || String(error);
+    const message=error?.message||String(error);
     transitionTask(record,"failed",{error:message,failedAt:new Date().toISOString()});
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:message});
     return null;
@@ -696,18 +719,20 @@ function parseVerificationJson(text) {
   return null;
 }
 
-function buildVerificationPrompt({task, checklist, workerResults}) {
+function buildVerificationPrompt({task,checklist,workerResults}) {
   return [
-    "You are the Verification specialist inside AI-OFFICE.",
-    "Verify the worker results against the original task and checklist.",
+    "You are the independent Verification specialist inside AI-OFFICE.",
+    "Verify worker results against the original task and checklist as an adversarial auditor.",
     "Return ONLY valid JSON, no markdown.",
-    'Schema: {"status":"PASS|FAIL","checks":[{"name":"string","passed":true,"evidence":"string"}],"summary":"string"}',
-    "PASS only when the available evidence supports every required check.",
-    "Do not invent evidence and do not treat an AI claim as proof of an external action.",
-    "Original task: " + task,
-    "Checklist: " + JSON.stringify(checklist || []),
-    "Worker results: " + JSON.stringify(workerResults || [])
-  ].join("\\n");
+    'Schema: {"status":"PASS|FAIL","checks":[{"name":"string","passed":true,"evidence":"string","classification":"FACT|INFERENCE|ASSUMPTION|UNPROVEN","source":"path or runtime event","locator":"function/element/step/line range or N/A"}],"summary":"string"}',
+    "PASS only when every required check is supported by concrete supplied evidence.",
+    "A worker claim is not proof by itself. Reject unsupported claims.",
+    "Every passed check MUST contain source + locator or explicit runtime event evidence.",
+    "Require explicit FACT/INFERENCE/ASSUMPTION/UNPROVEN separation.",
+    "Distinguish absent from unproven.",
+    "If a requirement asks for an external run and no run evidence exists, mark it UNPROVEN and fail that check.",
+    "Original task: "+task,"Checklist: "+JSON.stringify(checklist||[]),"Worker results: "+JSON.stringify(workerResults||[])
+  ].join("\n");
 }
 
 async function verifyRootTask(record) {
@@ -825,14 +850,17 @@ async function recoverRootTask(record) {
       : "the verification requirements";
     const fixPrompt = [
       "You are a recovery specialist inside AI-OFFICE.",
-      "Fix the failure below. Work only with capabilities actually available to this runtime.",
-      "Do not claim an external action happened unless you actually performed it.",
-      "Original task: " + record.task,
-      "Failure class: " + failureClass.type,
-      "Failed checks: " + failedChecks,
-      "Failure reason: " + failureClass.reason,
-      "Worker results: " + JSON.stringify(record.workerResults || []),
-      "Produce a concrete fix/retest action or explain precisely what blocks it."
+      "Do not merely describe what should be fixed. Produce a corrected, evidence-rich replacement analysis addressing every failed verification check.",
+      "For read-only audits remain read-only. Do not modify the user's project.",
+      "Re-check the supplied original source dossier before each conclusion.",
+      "Never claim an external action without runtime evidence.",
+      "Original task: "+record.task,
+      "Failure class: "+failureClass.type,
+      "Failed checks: "+failedChecks,
+      "Failure reason: "+failureClass.reason,
+      "Previous worker results: "+JSON.stringify(record.workerResults||[]),
+      "For each failed check output CHECK, STATUS, CLASSIFICATION, SOURCE PATH, LOCATOR, EVIDENCE.",
+      "End with EVIDENCE INDEX containing only supported findings."
     ].join("\n");
 
     const fixTask = createTaskRecord({
@@ -866,6 +894,7 @@ async function recoverRootTask(record) {
       employeeId:fixTask.employeeId,
       status:fixTask.status,
       result:fixTask.result,
+      evidenceSummary:fixTask.evidenceSummary || [],
       error:fixTask.error,
       recoveryAttempt:record.recoveryAttempts
     }];
