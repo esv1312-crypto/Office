@@ -1826,7 +1826,7 @@ app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   workerWatchdogTimer=setInterval(runWorkerWatchdog,workerWatchdogIntervalMs);
   emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
-  // Final audits are explicit operations; never run on every service restart.
-  // void runFinalAuditOnStartup();
+  // Controlled one-shot final audit; disable RUN_FINAL_AUDIT_ON_START after this run.
+  void runFinalAuditOnStartup();
   console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
