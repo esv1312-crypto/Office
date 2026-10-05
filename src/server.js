@@ -349,7 +349,8 @@ async function preflightModel(provider, model, employee) {
     if(provider==="openrouter"){
       result=await callOpenAICompatible({provider,baseUrl:"https://openrouter.ai/api/v1/chat/completions",apiKey:openRouterApiKey(),model,task:probe});
     } else if(provider==="huggingface"){
-      result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model,task:probe});
+      const hfModel=normalizeHuggingFaceModel(model);
+      result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model:hfModel.includes(":")?hfModel:hfModel+":fastest",task:probe});
     } else if(provider==="gemini"){
       result=await callGemini(model,probe);
     } else if(provider==="cloudflare"){
@@ -487,12 +488,19 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
   throw lastError || new Error("All OpenRouter free models failed");
 }
 
+function normalizeHuggingFaceModel(model) {
+  const value=String(model || "").trim();
+  if(!value) return value;
+  const routeSuffix=/(together|groq|sambanova|cerebras|nebius|fireworks|novita|hf-inference)$/i;
+  return value.replace(/:(together|groq|sambanova|cerebras|nebius|fireworks|novita|hf-inference)$/i,"");
+}
+
 async function generateWithHuggingFace(task, employee, preferredModel) {
   const token=String(process.env.HUGGINGFACE_API_KEY || "").trim();
   if(!token) throw Object.assign(new Error("Hugging Face API key is not configured"),{code:"HF_NOT_CONFIGURED"});
   const dynamic=getDynamicPool(employee,"huggingface").filter(model => model.includes("/"));
   const configured=(process.env.HUGGINGFACE_MODELS || "").split(",").map(x=>x.trim()).filter(Boolean);
-  const safePreferred = preferredModel && !String(preferredModel).includes(":free") && String(preferredModel).includes("/") ? preferredModel : null;
+  const safePreferred = preferredModel && !String(preferredModel).includes(":free") && String(preferredModel).includes("/") ? normalizeHuggingFaceModel(preferredModel) : null;
   const pool=[safePreferred,...dynamic,...configured].filter(Boolean);
   const models=[...new Set(pool)];
   if(!models.length) throw new Error("No free Hugging Face model is available from Model Scout");
@@ -504,7 +512,7 @@ async function generateWithHuggingFace(task, employee, preferredModel) {
         provider:"huggingface",
         baseUrl:"https://router.huggingface.co/v1/chat/completions",
         apiKey:token,
-        model: model.includes(":") ? model : model+":fastest",
+        model: normalizeHuggingFaceModel(model).includes(":") ? normalizeHuggingFaceModel(model) : normalizeHuggingFaceModel(model)+":fastest",
         task
       });
       emit("gateway.model_success",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model:result.model});
