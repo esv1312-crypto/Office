@@ -324,6 +324,72 @@ const OPENROUTER_MODEL_POOLS = {
 const openRouterRotation = new Map();
 const modelSuppressions = new Map();
 const providerSuppressions = new Map();
+const preflightCache = new Map();
+const PREFLIGHT_TTL_MS = Math.max(60000, Number(process.env.MODEL_PREFLIGHT_TTL_MS || 600000));
+const PREFLIGHT_TIMEOUT_MS = Math.max(5000, Number(process.env.MODEL_PREFLIGHT_TIMEOUT_MS || 12000));
+
+function preflightKey(provider, model, role) {
+  return String(provider)+":"+String(model)+":"+String(role);
+}
+
+async function preflightModel(provider, model, employee) {
+  const key=preflightKey(provider,model,employee?.role);
+  const cached=preflightCache.get(key);
+  if(cached && cached.expiresAt>Date.now() && cached.ok) return cached;
+  const probe=[
+    "AI-OFFICE PREFLIGHT.",
+    "You are being tested before receiving a real task.",
+    "Reply with exactly one line: PREFLIGHT_OK",
+    "Do not explain anything else."
+  ].join("\n");
+  const started=Date.now();
+  emit("model.preflight_started",{employeeId:employee?.id||null,role:employee?.role||null,provider,model});
+  try {
+    let result;
+    if(provider==="openrouter"){
+      result=await callOpenAICompatible({provider,baseUrl:"https://openrouter.ai/api/v1/chat/completions",apiKey:openRouterApiKey(),model,task:probe});
+    } else if(provider==="huggingface"){
+      result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model,task:probe});
+    } else if(provider==="gemini"){
+      result=await callGemini(model,probe);
+    } else if(provider==="cloudflare"){
+      result=await generateWithCloudflare(probe,model);
+    } else {
+      throw new Error("Unsupported preflight provider: "+provider);
+    }
+    const ok=String(result?.text||"").trim().length>0;
+    if(!ok) throw new Error("preflight empty response");
+    const entry={ok:true,provider,model,role:employee?.role||null,latencyMs:Date.now()-started,expiresAt:Date.now()+PREFLIGHT_TTL_MS};
+    preflightCache.set(key,entry);
+    emit("model.preflight_passed",{employeeId:employee?.id||null,role:employee?.role||null,provider,model,latencyMs:entry.latencyMs,ttlMs:PREFLIGHT_TTL_MS});
+    return entry;
+  } catch(error) {
+    const message=error?.message||String(error);
+    const transient=Boolean(error?.transient)||/402|404|408|409|429|quota|rate.?limit|timeout|temporarily|unavailable|overloaded|empty response|does not exist|not found/i.test(message);
+    const ttl= /402|404|does not exist|not found|invalid model/i.test(message) ? 6*60*60*1000 : 15*60*1000;
+    suppressModel(model,message,ttl,provider);
+    const entry={ok:false,provider,model,role:employee?.role||null,error:message,transient,failedAt:new Date().toISOString(),expiresAt:Date.now()+Math.min(ttl,PREFLIGHT_TTL_MS)};
+    preflightCache.set(key,entry);
+    emit("model.preflight_failed",{employeeId:employee?.id||null,role:employee?.role||null,provider,model,error:message,transient});
+    return entry;
+  }
+}
+
+async function ensureEmployeeReady(employee, task) {
+  const brain=resolveBrain(employee,task);
+  const candidates=[{provider:brain.provider,model:brain.model},...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))];
+  const unique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
+  for(const candidate of unique.slice(0,4)){
+    if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
+    const check=await preflightModel(candidate.provider,candidate.model,employee);
+    if(check.ok) {
+      emit("model.preflight_selected",{employeeId:employee.id,role:employee.role,provider:candidate.provider,model:candidate.model});
+      return candidate;
+    }
+  }
+  throw Object.assign(new Error("No preflight-approved model is available for "+employee.role),{code:"PREFLIGHT_EXHAUSTED"});
+}
+
 function isProviderSuppressed(provider) {
   const key=String(provider).toLowerCase();
   const until=Number(providerSuppressions.get(key)||0);
@@ -732,8 +798,9 @@ async function executeWorkerTask(record) {
     transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1});
     const employee=getEmployee(record.employeeId);
     record.employeeId=employee.id; record.employee=employee.name; record.role=employee.role;
-    record.provider=resolveBrain(employee).provider; record.model=resolveBrain(employee).model;
-    emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model});
+    const ready=await ensureEmployeeReady(employee,record.task);
+    record.provider=ready.provider; record.model=ready.model;
+    emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model,preflight:"PASS"});
     const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee);
     record.model=result.model; record.evidenceSummary=extractEvidenceIndex(result.text);
     if (record.status === "failed") {
