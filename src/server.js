@@ -440,8 +440,9 @@ function openRouterPool(employee, preferredModel = null) {
       if (liveCustom.length) pool=[...liveCustom,...pool];
     }
   } catch (_) {}
-  const preferred=process.env.OPENROUTER_MODEL;
-  if (preferred && !isModelSuppressed(preferred)) pool=[preferred,...pool];
+  const configured=String(process.env.OPENROUTER_MODEL || "").trim();
+  if (configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool=[configured,...pool];
+  if (preferredModel && !isModelSuppressed(preferredModel,"openrouter")) pool=[preferredModel,...pool];
   const result=[...new Set(pool.filter(Boolean))];
   return result.length ? result : ["openrouter/free"];
 }
@@ -1378,6 +1379,7 @@ app.get("/api/tools", (_req,res)=>res.json({
 }));
 
 app.post("/api/tools/execute", async (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   const employeeId=String(req.body?.employeeId || "executor");
   const toolName=String(req.body?.tool || "").trim();
   if(!toolName) return res.status(400).json({ok:false,error:"tool is required"});
@@ -1402,6 +1404,7 @@ app.get("/api/browser", (_req,res)=>res.json({
 }));
 
 app.post("/api/browser/request", async (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   try {
     const result=await browser.request({
       taskId:req.body?.taskId || null,
@@ -1823,6 +1826,7 @@ app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   workerWatchdogTimer=setInterval(runWorkerWatchdog,workerWatchdogIntervalMs);
   emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
-  void runFinalAuditOnStartup();
+  // Final audits are explicit operations; never run on every service restart.
+  // void runFinalAuditOnStartup();
   console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
