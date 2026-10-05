@@ -708,7 +708,11 @@ async function executeWorkerTask(record) {
     emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model});
     const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee);
     record.model=result.model; record.evidenceSummary=extractEvidenceIndex(result.text);
-    if (record.status === "failed") {\n      emit("task.late_result_ignored",{taskId:record.id,employeeId:employee.id,reason:"worker was already failed by watchdog"});\n      return result.text;\n    }\n    transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
+    if (record.status === "failed") {
+      emit("task.late_result_ignored",{taskId:record.id,employeeId:employee.id,reason:"worker was already failed by watchdog"});
+      return result.text;
+    }
+    transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
     emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model,evidenceCount:record.evidenceSummary.length});
     return result.text;
   } catch(error) {
