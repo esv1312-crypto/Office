@@ -10,6 +10,20 @@ app.use(express.json({limit:"1mb"}));
 const startedAt = new Date().toISOString();
 const events = [];
 const tasks = new Map();
+const workerQueue = { active:0, pending:[], limit:Math.max(1,Number(process.env.MAX_CONCURRENT_WORKERS || 3)) };
+async function acquireWorkerSlot(taskId) {
+  if (workerQueue.active < workerQueue.limit) { workerQueue.active += 1; emit("worker.slot_acquired",{taskId,active:workerQueue.active,limit:workerQueue.limit}); return; }
+  emit("worker.queued",{taskId,active:workerQueue.active,limit:workerQueue.limit});
+  await new Promise(resolve=>workerQueue.pending.push(resolve));
+  workerQueue.active += 1;
+  emit("worker.slot_acquired",{taskId,active:workerQueue.active,limit:workerQueue.limit});
+}
+function releaseWorkerSlot(taskId) {
+  workerQueue.active=Math.max(0,workerQueue.active-1);
+  const next=workerQueue.pending.shift();
+  if(next) next();
+  emit("worker.slot_released",{taskId,active:workerQueue.active,limit:workerQueue.limit});
+}
 const browserRequests = new Map();
 const browserRuns = new Map();
 const browser = createBrowserManager({emit});
@@ -277,7 +291,7 @@ const openRouterRotation = new Map();
 const modelSuppressions = new Map();
 
 function isModelSuppressed(model) {
-  const until=Number(modelSuppressions.get(model)||0);
+  const until=Number(modelSuppressions.get("openrouter:"+String(model))||0);
   if (!until) return false;
   if (until <= Date.now()) {
     modelSuppressions.delete(model);
@@ -286,10 +300,19 @@ function isModelSuppressed(model) {
   return true;
 }
 
-function suppressModel(model, reason, ttlMs = 6 * 60 * 60 * 1000) {
+function suppressModel(model, reason, ttlMs = 6 * 60 * 60 * 1000, provider = "openrouter") {
   if (!model) return;
-  modelSuppressions.set(model, Date.now()+ttlMs);
-  emit("gateway.model_suppressed",{provider:"openrouter",model,until:new Date(Date.now()+ttlMs).toISOString(),reason});
+  const key=String(provider)+":"+String(model);
+  modelSuppressions.set(key, Date.now()+ttlMs);
+  emit("gateway.model_suppressed",{provider,model,until:new Date(Date.now()+ttlMs).toISOString(),reason});
+}
+
+function isProviderModelSuppressed(provider, model) {
+  const key=String(provider)+":"+String(model);
+  const until=Number(modelSuppressions.get(key)||0);
+  if (!until) return false;
+  if (until <= Date.now()) { modelSuppressions.delete(key); return false; }
+  return true;
 }
 
 function openRouterPool(employee, preferredModel = null) {
@@ -337,7 +360,9 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
       if (/model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(error?.message || "")) {
-        suppressModel(model,error?.message || "model unavailable");
+        suppressModel(model,error?.message || "model unavailable",6*60*60*1000,"openrouter");
+      } else if (/429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|high demand|overloaded/i.test(error?.message || "")) {
+        suppressModel(model,error?.message || "model temporarily unavailable",15*60*1000,"openrouter");
       }
       if (i<ordered.length-1) {
         emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:error?.message || String(error)});
@@ -439,6 +464,7 @@ async function generateViaLocalGateway(task, employee) {
 
 async function generateViaGateway(task, employee) {
   const backendUrls=String(process.env.BACKEND_RUNTIME_URLS || "").split(",").map(x=>x.trim().replace(/\/$/,"")).filter(Boolean);
+  // Provider selection remains scout-driven, but provider fallback is always allowed after the selected provider fails.
   if(backendUrls.length && process.env.OFFICE_MODE !== "backend") {
     for(const base of backendUrls) {
       try {
@@ -650,6 +676,7 @@ function buildWorkerPrompt(record,employee){
   ].join("\n");
 }
 async function executeWorkerTask(record) {
+  await acquireWorkerSlot(record.id);
   try {
     transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1});
     const employee=getEmployee(record.employeeId);
@@ -666,6 +693,8 @@ async function executeWorkerTask(record) {
     transitionTask(record,"failed",{error:message,failedAt:new Date().toISOString()});
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:message});
     return null;
+  } finally {
+    releaseWorkerSlot(record.id);
   }
 }
 
@@ -1373,7 +1402,10 @@ app.get("/api/smoke/evidence", (req,res)=>{
 
 
 app.get("/api/office-check", async (req,res)=>{ 
-  if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1"});
+  const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  const supplied=String(req.query?.token || "").trim();
+  if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
+  if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1&token=..."});
   const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js"];
   const base="https://raw.githubusercontent.com/esv1312-crypto/Office/main/";
   try{
@@ -1408,7 +1440,7 @@ app.get("/api/office-check", async (req,res)=>{
 app.get("/api/state", (_req,res)=>res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
   employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
-  tasks:[...tasks.values()].map(taskSnapshot),events:events.slice(0,100)
+  tasks:[...tasks.values()].map(taskSnapshot),workerQueue:{active:workerQueue.active,pending:workerQueue.pending.length,limit:workerQueue.limit},events:events.slice(0,100)
 }));
 
 app.get("/api/pognali/audit", async (req,res)=>{
