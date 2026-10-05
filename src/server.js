@@ -373,7 +373,7 @@ function openRouterPool(employee, preferredModel = null) {
       if (liveCustom.length) pool=[...liveCustom,...pool];
     }
   } catch (_) {}
-  const preferred=preferredModel || process.env.OPENROUTER_MODEL;
+  const preferred=process.env.OPENROUTER_MODEL;
   if (preferred && !isModelSuppressed(preferred)) pool=[preferred,...pool];
   const result=[...new Set(pool.filter(Boolean))];
   return result.length ? result : ["openrouter/free"];
