@@ -1771,9 +1771,10 @@ async function startOfficeAudit() {
     emit("office_check.started",{taskId:record.id,readOnly:true,filesAudited:files});
     if(!aiAvailable(record.provider)) transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
     else void executeRootTask(record);
-    res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true,filesAudited:files.length});
-
     return record;
+  } catch(error) {
+    throw error;
+  }
 }
 
 app.get("/api/office-check", async (req,res)=>{ 
