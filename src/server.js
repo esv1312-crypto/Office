@@ -321,7 +321,7 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
           {role:"system",content:"You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
           {role:"user",content:task}
         ],
-        ...(provider==="openrouter"&&paidTestEnabled()?{max_tokens:paidTestMaxOutputTokens()}: {})
+        ...(provider==="openrouter"&&paidTestEnabled()?{max_tokens:paidTestMaxOutputTokens(),reasoning:{effort:String(process.env.AI_PAID_TEST_REASONING_EFFORT||"low")}}: {})
       })
     });
     const data=await response.json().catch(()=>({}));
