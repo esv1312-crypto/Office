@@ -670,7 +670,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
       else throw new Error("Unsupported AI provider: "+provider);
-      emit("gateway.success",{employeeId:employee.id,provider,model:result.model,freeOnly:freeOnly(),backend:"local"});
+      emit("gateway.success",{employeeId:employee.id,provider,model:result.model,freeOnly:freeOnly() && !paidTestEnabled(),paidTest:paidTestEnabled(),backend:"local"});
       return result;
     } catch(error) {
       lastError=error;
@@ -1388,7 +1388,7 @@ async function executeRootTask(record) {
       const routedSuccess=backendConfigured ? backendSuccess : localSuccess;
       const fallbackObserved=events.some(e => ["gateway.model_fallback","gateway.fallback","ai.fallback"].includes(e.type) && e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z"));
       const freeOnlyObserved=events.some(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z") && e.type==="gateway.success" && e.freeOnly===true);
-      const paidTestObserved=paidTestEnabled() && events.some(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z") && e.type==="gateway.success" && e.freeOnly===false && e.model===paidTestModel());
+      const paidTestObserved=paidTestEnabled() && events.some(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z") && e.type==="gateway.success" && (e.paidTest===true || (e.freeOnly===false && e.model===paidTestModel())));
       const routePolicyObserved=paidTestEnabled() ? paidTestObserved : freeOnlyObserved;
       const objectivePass=allCompleted && routedSuccess && routePolicyObserved;
       emit("verification.objective_check",{taskId:record.id,allCompleted,backendConfigured,backendSuccess,localSuccess,routedSuccess,fallbackObserved,freeOnlyObserved,paidTestObserved,routePolicyObserved,objectivePass});
