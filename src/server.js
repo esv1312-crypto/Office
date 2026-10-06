@@ -305,55 +305,134 @@ function recordPaidTestUsage(data){
   paidTestUsage.calls++; paidTestUsage.estimatedUsd+=cost;
   emit("paid_test.usage",{calls:paidTestUsage.calls,estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
 }
-async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={}}) {
+const AI_OFFICE_TOOL_SCHEMAS = [
+  {
+    type:"function",
+    function:{
+      name:"github.read_file",
+      description:"Read a UTF-8 file from the configured GitHub repository. Use this to inspect existing project files before changing them.",
+      parameters:{type:"object",properties:{path:{type:"string"},ref:{type:"string"}},required:["path"]}
+    }
+  },
+  {
+    type:"function",
+    function:{
+      name:"github.write_file",
+      description:"Create or update a UTF-8 text file in the configured GitHub repository. Use this to actually implement code. Do not claim success until the tool returns success.",
+      parameters:{type:"object",properties:{path:{type:"string"},content:{type:"string"},message:{type:"string"},branch:{type:"string"}},required:["path","content"]}
+    }
+  },
+  {
+    type:"function",
+    function:{
+      name:"browser.request",
+      description:"Create a browser workflow request for safe public research. Use only when web research is necessary; sensitive actions require approval.",
+      parameters:{type:"object",properties:{url:{type:"string"},goal:{type:"string"},actionClass:{type:"string"}},required:["url","goal"]}
+    }
+  },
+  {
+    type:"function",
+    function:{
+      name:"browser.status",
+      description:"Read the status of a browser workflow request.",
+      parameters:{type:"object",properties:{requestId:{type:"string"}},required:["requestId"]}
+    }
+  }
+];
+
+function toolSchemasForEmployee(employee){
+  const role=String(employee?.role||"executor");
+  return AI_OFFICE_TOOL_SCHEMAS.filter(schema=>{
+    const name=schema.function.name;
+    if(name==="github.write_file") return ["coordinator","developer","executor"].includes(role) && process.env.GITHUB_TOOLS_ENABLED==="true";
+    if(name==="github.read_file") return Boolean(process.env.GITHUB_TOKEN&&process.env.GITHUB_REPOSITORY);
+    return true;
+  });
+}
+
+function buildToolAwareSystemPrompt(employee){
+  return [
+    "You are "+String(employee?.name||"AI-OFFICE employee")+" ("+String(employee?.role||"executor")+") inside AI-OFFICE.",
+    "You have access to real runtime tools when they are provided.",
+    "IMPORTANT: code presence is not completion. If a task requires repository changes, use github.write_file to create/update the actual files.",
+    "Before modifying an existing file, use github.read_file when needed to avoid overwriting unrelated work.",
+    "After a tool call, inspect its returned result and continue the task. Never claim a tool action succeeded unless the tool returned success.",
+    "Use browser.request only for necessary safe public research. Never perform sensitive external actions without the approval flow.",
+    "When the work is complete, return a concise evidence-rich report describing actual tool results and what remains unproven."
+  ].join("\n");
+}
+
+async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={},employeeId=null,taskId=null,enableTools=false}) {
   if(provider==="openrouter"&&paidTestEnabled()) paidTestReserve(task);
   emit("ai.start",{provider,model});
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
   try {
-    const response=await fetch(baseUrl,{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey,...headers},
-      signal:controller.signal,
-      body:JSON.stringify({
+    const messages=[
+      {role:"system",content:enableTools ? buildToolAwareSystemPrompt(getEmployee(employeeId||"executor")) : "You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
+      {role:"user",content:task}
+    ];
+    const maxToolRounds=Math.max(1,Math.min(8,Number(process.env.AI_TOOL_MAX_ROUNDS||6)));
+    for(let round=0; round<maxToolRounds; round++){
+      const body={
         model,
-        messages:[
-          {role:"system",content:"You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
-          {role:"user",content:task}
-        ],
+        messages,
+        ...(enableTools && toolSchemasForEmployee(getEmployee(employeeId||"executor")).length
+          ? {tools:toolSchemasForEmployee(getEmployee(employeeId||"executor")),tool_choice:"auto"}
+          : {}),
         ...(provider==="openrouter"&&paidTestEnabled()?{max_tokens:paidTestMaxOutputTokens(),reasoning:{effort:String(process.env.AI_PAID_TEST_REASONING_EFFORT||"low")}}: {})
-      })
-    });
-    const data=await response.json().catch(()=>({}));
-    if(provider==="openrouter"&&paidTestEnabled()) recordPaidTestUsage(data);
-    if(!response.ok) {
-      const e=new Error(data?.error?.message || ("HTTP "+response.status));
-      e.status=response.status;
-      e.transient=response.status===408 || response.status===409 || response.status===429 || response.status>=500;
-      throw e;
+      };
+      const response=await fetch(baseUrl,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey,...headers},
+        signal:controller.signal,
+        body:JSON.stringify(body)
+      });
+      const data=await response.json().catch(()=>({}));
+      if(provider==="openrouter"&&paidTestEnabled()) recordPaidTestUsage(data);
+      if(!response.ok){
+        const e=new Error(data?.error?.message || ("HTTP "+response.status));
+        e.status=response.status;
+        e.transient=response.status===408 || response.status===409 || response.status===429 || response.status>=500;
+        throw e;
+      }
+      const message=data?.choices?.[0]?.message || {};
+      const toolCalls=Array.isArray(message.tool_calls) ? message.tool_calls : [];
+      messages.push({role:"assistant",content:message.content||null,tool_calls:toolCalls});
+      if(enableTools && toolCalls.length){
+        emit("ai.tool_calls_requested",{taskId,employeeId,provider,model,round:round+1,count:toolCalls.length,tools:toolCalls.map(x=>x?.function?.name).filter(Boolean)});
+        for(const call of toolCalls){
+          const toolName=String(call?.function?.name||"").trim();
+          let args={};
+          try{args=JSON.parse(call?.function?.arguments||"{}");}catch(error){args={};}
+          try{
+            const result=await executeTool({employeeId:employeeId||"executor",toolName,args:{...args,taskId},taskId});
+            messages.push({role:"tool",tool_call_id:call.id,name:toolName,content:JSON.stringify(result)});
+            emit("ai.tool_call_completed",{taskId,employeeId,provider,model,round:round+1,tool:toolName,ok:true});
+          }catch(error){
+            messages.push({role:"tool",tool_call_id:call.id,name:toolName,content:JSON.stringify({ok:false,error:error?.message||String(error),code:error?.code||null})});
+            emit("ai.tool_call_completed",{taskId,employeeId,provider,model,round:round+1,tool:toolName,ok:false,error:error?.message||String(error)});
+          }
+        }
+        continue;
+      }
+      const content=message.content;
+      const reasoning=message.reasoning;
+      const reasoningDetails=Array.isArray(message.reasoning_details)
+        ? message.reasoning_details.map(x=>x?.text||x?.content||"").filter(Boolean).join("\n")
+        : "";
+      const choiceText=data?.choices?.[0]?.text;
+      const text=String(typeof content==="string" ? content : Array.isArray(content) ? content.map(x=>x?.text||"").filter(Boolean).join("\n") : reasoning || reasoningDetails || choiceText || "").trim();
+      if(!text) throw new Error(provider+" returned an empty response");
+      return {text,model,usage:data?.usage||null};
     }
-    const message=data?.choices?.[0]?.message || {};
-    const content=message.content;
-    const reasoning=message.reasoning;
-    const reasoningDetails=Array.isArray(message.reasoning_details)
-      ? message.reasoning_details.map(x=>x?.text||x?.content||"").filter(Boolean).join("\n")
-      : "";
-    const choiceText=data?.choices?.[0]?.text;
-    const text=String(
-      typeof content==="string" ? content :
-      Array.isArray(content) ? content.map(x=>x?.text||"").filter(Boolean).join("\n") :
-      reasoning || reasoningDetails || choiceText || ""
-    ).trim();
-    if(!text) throw new Error(provider+" returned an empty response");
-    return {text,model,usage:data?.usage||null};
+    throw new Error("AI tool loop exceeded maximum rounds");
   } catch(error) {
-    if(error?.name==="AbortError") {
+    if(error?.name==="AbortError"){
       const e=new Error(provider+" request timed out"); e.status=408; e.transient=true; throw e;
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  } finally { clearTimeout(timeout); }
 }
 
 const OPENROUTER_MODEL_POOLS = {
