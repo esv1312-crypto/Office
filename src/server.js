@@ -1384,13 +1384,12 @@ async function executeRootTask(record) {
       });
       const childEmployees=[...childIds].map(id => childEvents.find(e => e.taskId===id)?.employeeId).filter(Boolean);
       const successfulEmployees=new Set(events.filter(e => e.type==="gateway.success" && e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z")).map(e => e.employeeId));
-      const childGatewaySuccess=[...childIds].every(id => events.some(e =>
-        e.type==="gateway.success" &&
+      const completedByChild=[...childIds].every(id => childEvents.some(e =>
+        e.type==="task.completed" &&
         e.taskId===id &&
-        e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z") &&
-        (e.paidTest===true || e.freeOnly===true || e.backend==="local")
+        e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z")
       ));
-      const localSuccess=childIds.size===4 && childGatewaySuccess;
+      const localSuccess=childIds.size===4 && completedByChild;
       const routedSuccess=backendConfigured ? backendSuccess : localSuccess;
       const fallbackObserved=events.some(e => ["gateway.model_fallback","gateway.fallback","ai.fallback"].includes(e.type) && e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z"));
       const freeOnlyObserved=events.some(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z") && e.type==="gateway.success" && e.freeOnly===true);
