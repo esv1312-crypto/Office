@@ -1701,12 +1701,7 @@ app.get("/api/smoke/evidence", (req,res)=>{
 });
 
 
-app.get("/api/office-check", async (req,res)=>{ 
-  const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
-  const internal=String(req.headers["x-ai-office-internal"] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
-  if((!expected || supplied !== expected) && !internal) return res.status(401).json({ok:false,error:"audit token required"});
-  if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1&token=..."});
+async function startOfficeAudit() {
   const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js"];
   const base="https://raw.githubusercontent.com/esv1312-crypto/Office/main/";
   try{
@@ -1777,6 +1772,19 @@ app.get("/api/office-check", async (req,res)=>{
     if(!aiAvailable(record.provider)) transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
     else void executeRootTask(record);
     res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true,filesAudited:files.length});
+
+    return record;
+}
+
+app.get("/api/office-check", async (req,res)=>{ 
+  const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  const supplied=String(req.query?.token || "").trim();
+  const internal=String(req.headers["x-ai-office-internal"] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
+  if((!expected || supplied !== expected) && !internal) return res.status(401).json({ok:false,error:"audit token required"});
+  if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1&token=..."});
+  try{
+    const record=await startOfficeAudit();
+    res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true,filesAudited:4});
   }catch(error){
     emit("office_check.failed",{error:error?.message||String(error)});
     res.status(502).json({ok:false,error:error?.message||String(error)});
@@ -1940,14 +1948,12 @@ app.get("/api/tasks/:id",(req,res)=>{
 async function runFinalAuditOnStartup() {
   if (String(process.env.RUN_FINAL_AUDIT_ON_START || "true").toLowerCase() !== "true") return;
   await sleep(5000);
-  const token = String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  if (!token) { emit("office_check.autorun_skipped",{reason:"OFFICE_AUDIT_TOKEN_NOT_CONFIGURED"}); return; }
   try {
-    const port = process.env.PORT || 10000;
-    const response = await fetch("http://127.0.0.1:"+port+"/api/office-check?run=1&token="+encodeURIComponent(token), {headers:{"X-AI-Office-Internal":"1"}});
-    const body = await response.json().catch(()=>({}));
-    emit("office_check.autorun_started",{status:response.status,taskId:body?.task?.id||null});
-  } catch (error) { emit("office_check.autorun_failed",{error:error?.message||String(error)}); }
+    const record=await startOfficeAudit();
+    emit("office_check.autorun_started",{taskId:record.id});
+  } catch (error) {
+    emit("office_check.autorun_failed",{error:error?.message||String(error)});
+  }
 }
 
 async function bootstrapDatabase() {
