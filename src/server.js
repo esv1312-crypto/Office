@@ -1942,6 +1942,7 @@ app.get("/api/tasks/:id",(req,res)=>{
 });
 
 async function runFinalAuditOnStartup() {
+  if (String(process.env.RUN_FINAL_AUDIT_ON_START || "false").toLowerCase() !== "true") return;
   await sleep(5000);
   try {
     const record=await startOfficeAudit();
@@ -1980,6 +1981,9 @@ async function bootstrapDatabase() {
 }
 
 await bootstrapDatabase();
+
+const debugAuditTaskId=String(process.env.DEBUG_AUDIT_TASK_ID || "").trim();
+if(debugAuditTaskId) setTimeout(()=>console.log("[AUDIT_RESULT]"+JSON.stringify(taskSnapshot(tasks.get(debugAuditTaskId)||{id:debugAuditTaskId,status:"NOT_FOUND"}))),2000);
 
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
