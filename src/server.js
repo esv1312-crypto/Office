@@ -333,7 +333,17 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       throw e;
     }
     const message=data?.choices?.[0]?.message || {};
-    const text=String(message.content || "").trim();
+    const content=message.content;
+    const reasoning=message.reasoning;
+    const reasoningDetails=Array.isArray(message.reasoning_details)
+      ? message.reasoning_details.map(x=>x?.text||x?.content||"").filter(Boolean).join("\n")
+      : "";
+    const choiceText=data?.choices?.[0]?.text;
+    const text=String(
+      typeof content==="string" ? content :
+      Array.isArray(content) ? content.map(x=>x?.text||"").filter(Boolean).join("\n") :
+      reasoning || reasoningDetails || choiceText || ""
+    ).trim();
     if(!text) throw new Error(provider+" returned an empty response");
     return {text,model,usage:data?.usage||null};
   } catch(error) {
