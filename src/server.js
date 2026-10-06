@@ -1947,7 +1947,6 @@ app.get("/api/tasks/:id",(req,res)=>{
 });
 
 async function runFinalAuditOnStartup() {
-  if (String(process.env.RUN_FINAL_AUDIT_ON_START || "true").toLowerCase() !== "true") return;
   await sleep(5000);
   try {
     const record=await startOfficeAudit();
