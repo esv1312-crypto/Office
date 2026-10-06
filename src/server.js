@@ -1703,14 +1703,9 @@ app.get("/api/smoke/evidence", (req,res)=>{
 
 async function startOfficeAudit() {
   const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js"];
-  const base="https://raw.githubusercontent.com/esv1312-crypto/Office/main/";
   try{
-    const dossier=[];
-    for(const path of files){
-      const response=await fetch(base+path);
-      if(!response.ok) throw new Error("Failed to fetch "+path+" (HTTP "+response.status+")");
-      dossier.push("\\n===== "+path+" =====\\n"+await response.text());
-    }
+    const {readFile}=await import("node:fs/promises");
+    const dossier=[await readFile(new URL("../audit-dossier.txt",import.meta.url),"utf8")];
     const taskText=[
       "MASTER ENGINEERING AUDIT — AI-OFFICE.",
       "READ-ONLY. Do not modify code, infrastructure, GitHub, databases, deployments, external websites, or user data during the audit.",
