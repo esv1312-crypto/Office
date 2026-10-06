@@ -542,7 +542,7 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
     } catch(error) {
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
-      if (/empty response/i.test(error?.message || "") && paidTestEnabled() && i===0) {
+      if (/empty response/i.test(error?.message || "") && i===0) {
         emit("gateway.model_retry",{employeeId:employee?.id || null,role,provider:"openrouter",model,reason:"empty_response",retryIndex:1});
         try {
           const retry=await callOpenAICompatible({
