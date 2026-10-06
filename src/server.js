@@ -1867,6 +1867,16 @@ async function bootstrapDatabase() {
       for(const snapshot of state.tasks || []) {
         const record = {...snapshot};
         delete record.children;
+        if(record.status === "running") {
+          record.status = "failed";
+          record.error = "SERVICE_RESTART_INTERRUPTED";
+          record.failedAt = new Date().toISOString();
+          record.startedAt = null;
+          record.completedAt = null;
+        } else if(record.status === "waiting") {
+          record.startedAt = null;
+          record.waitingReason = record.waitingReason || "service_restart";
+        }
         tasks.set(record.id,record);
       }
       events.splice(0,events.length,...(state.events || []));
