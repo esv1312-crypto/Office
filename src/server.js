@@ -471,6 +471,7 @@ function isModelSuppressed(model, provider = "openrouter") {
 }
 
 function suppressModel(model, reason, ttlMs = 6 * 60 * 60 * 1000, provider = "openrouter") {
+  if (paidTestEnabled()) return;
   if (!model) return;
   const key=String(provider)+":"+String(model);
   modelSuppressions.set(key, Date.now()+ttlMs);
@@ -630,7 +631,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
           : provider==="cloudflare"
             ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.CLOUDFLARE_MODEL || null))
             : (process.env.OPENAI_MODEL || null);
-    emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly(),backend:"local"});
+    emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly() && !paidTestEnabled(),backend:"local"});
     try {
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
