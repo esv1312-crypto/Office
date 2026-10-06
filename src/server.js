@@ -982,7 +982,7 @@ async function executeWorkerTask(record) {
     const ready=await ensureEmployeeReady(employee,record.task);
     record.provider=ready.provider; record.model=ready.model;
     emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model,preflight:"PASS"});
-    const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee,ready);
+    const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee,ready,record.id);
     record.model=result.model; record.evidenceSummary=extractEvidenceIndex(result.text);
     if (record.status === "failed") {
       emit("task.late_result_ignored",{taskId:record.id,employeeId:employee.id,reason:"worker was already failed by watchdog"});
