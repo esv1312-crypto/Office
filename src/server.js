@@ -1983,7 +1983,7 @@ async function bootstrapDatabase() {
 await bootstrapDatabase();
 
 const debugAuditTaskId=String(process.env.DEBUG_AUDIT_TASK_ID || "").trim();
-if(debugAuditTaskId) setTimeout(()=>console.log("[AUDIT_RESULT]"+JSON.stringify(taskSnapshot(tasks.get(debugAuditTaskId)||{id:debugAuditTaskId,status:"NOT_FOUND"}))),2000);
+if(debugAuditTaskId) setTimeout(()=>{ const r=tasks.get(debugAuditTaskId); console.log("[AUDIT_RESULT]"+JSON.stringify({id:r?.id||debugAuditTaskId,status:r?.status||"NOT_FOUND",result:r?.result||null,error:r?.error||null,verification:r?.verification||null,children:[...tasks.values()].filter(x=>x.parentTaskId===debugAuditTaskId).map(x=>({id:x.id,employeeId:x.employeeId,status:x.status,result:x.result||null,error:x.error||null,verification:x.verification||null}))})); },2000);
 
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
