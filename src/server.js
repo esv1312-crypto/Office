@@ -1938,7 +1938,7 @@ app.get("/api/tasks/:id",(req,res)=>{
 });
 
 async function runFinalAuditOnStartup() {
-  if (String(process.env.RUN_FINAL_AUDIT_ON_START || "").toLowerCase() !== "true") return;
+  if (String(process.env.RUN_FINAL_AUDIT_ON_START || "true").toLowerCase() !== "true") return;
   await sleep(5000);
   const token = String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
   if (!token) { emit("office_check.autorun_skipped",{reason:"OFFICE_AUDIT_TOKEN_NOT_CONFIGURED"}); return; }
