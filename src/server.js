@@ -485,6 +485,7 @@ function isProviderModelSuppressed(provider, model) {
 
 function openRouterPool(employee, preferredModel = null) {
   const role=String(employee?.role || "executor");
+  if (paidTestEnabled()) return [paidTestModel()];
   const dynamic=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x));
   let pool=dynamic.length ? dynamic : ["openrouter/free"];
   try {
