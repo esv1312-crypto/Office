@@ -1705,7 +1705,15 @@ async function startOfficeAudit() {
   const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js"];
   try{
     const {readFile}=await import("node:fs/promises");
-    const dossier=[await readFile(new URL("../audit-dossier.txt",import.meta.url),"utf8")];
+    const dossier=[];
+    for (const path of files) {
+      try {
+        dossier.push("\n===== "+path+" =====\n"+await readFile(new URL("../"+path,import.meta.url),"utf8"));
+      } catch (error) {
+        dossier.push("\n===== "+path+" =====\nUNPROVEN: runtime could not read this source file: "+(error?.message||String(error)));
+      }
+    }
+    dossier.push("\n===== RUNTIME BROWSER SNAPSHOT =====\n"+JSON.stringify(browser.summary()));
     const taskText=[
       "MASTER ENGINEERING AUDIT — AI-OFFICE.",
       "READ-ONLY. Do not modify code, infrastructure, GitHub, databases, deployments, external websites, or user data during the audit.",
