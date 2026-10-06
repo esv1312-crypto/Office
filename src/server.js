@@ -293,7 +293,7 @@ function paidTestMaxOutputTokens(){return Math.max(128,Math.min(4096,Number(proc
 function paidTestReserve(task){
   if(!paidTestEnabled()) return;
   const input=Math.ceil(String(task||"").length/3.5);
-  const reserve=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.035)+paidTestMaxOutputTokens()*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.29))/1e6;
+  const reserve=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+paidTestMaxOutputTokens()*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
   if(paidTestUsage.estimatedUsd+reserve>paidTestBudgetUsd()) throw Object.assign(new Error("Paid test budget exhausted"),{code:"PAID_TEST_BUDGET_EXCEEDED"});
 }
 function recordPaidTestUsage(data){
@@ -321,7 +321,7 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
           {role:"system",content:"You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
           {role:"user",content:task}
         ],
-        ...(provider==="openrouter"&&paidTestEnabled()?{max_completion_tokens:4096,reasoning:{effort:"low",exclude:true}}: {})
+        ...(provider==="openrouter"&&paidTestEnabled()?{max_tokens:paidTestMaxOutputTokens()}: {})
       })
     });
     const data=await response.json().catch(()=>({}));
