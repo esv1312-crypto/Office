@@ -289,7 +289,7 @@ async function generateWithGemini(task, preferredModel) {
 
 const paidTestUsage={calls:0,estimatedUsd:0};
 function paidTestBudgetUsd(){return Math.max(0.05,Number(process.env.AI_PAID_TEST_BUDGET_USD||1));}
-function paidTestMaxOutputTokens(){return Math.max(128,Math.min(4096,Number(process.env.AI_PAID_TEST_MAX_OUTPUT_TOKENS||1800)));}
+function paidTestMaxOutputTokens(){return Math.max(128,Math.min(8192,Number(process.env.AI_PAID_TEST_MAX_OUTPUT_TOKENS||4096)));}
 function paidTestReserve(task){
   if(!paidTestEnabled()) return;
   const input=Math.ceil(String(task||"").length/3.5);
