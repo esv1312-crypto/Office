@@ -716,7 +716,7 @@ async function generateWithOpenAI(task, preferredModel) {
   return {text:response.output_text || "",model};
 }
 
-async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null) {
+async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null, taskId = null) {
   const brain=approvedCandidate
     ? { ...resolveBrain(employee, task), provider:String(approvedCandidate.provider), model:String(approvedCandidate.model), candidates:[approvedCandidate] }
     : resolveBrain(employee, task);
@@ -760,7 +760,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
   throw lastError || new Error("All configured AI providers failed");
 }
 
-async function generateViaGateway(task, employee, approvedCandidate = null) {
+async function generateViaGateway(task, employee, approvedCandidate = null, taskId = null) {
   const backendUrls=String(process.env.BACKEND_RUNTIME_URLS || "").split(",").map(x=>x.trim().replace(/\/$/,"")).filter(Boolean);
   // Provider selection remains scout-driven, but provider fallback is always allowed after the selected provider fails.
   if(backendUrls.length && process.env.OFFICE_MODE !== "backend") {
@@ -781,7 +781,7 @@ async function generateViaGateway(task, employee, approvedCandidate = null) {
       }
     }
   }
-  return generateViaLocalGateway(task,employee,null,approvedCandidate);
+  return generateViaLocalGateway(task,employee,null,approvedCandidate,taskId);
 }
 
 const TOOL_REGISTRY = {
@@ -1342,7 +1342,7 @@ async function executeRootTask(record) {
   try {
     transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
     const chief=getEmployee("chief");
-    const planResult=await generateViaGateway(buildPlanningPrompt(record.task),chief);
+    const planResult=await generateViaGateway(buildPlanningPrompt(record.task),chief,null,record.id);
     let plan=parsePlannerJson(planResult.text);
 
     if(!plan || !Array.isArray(plan.subtasks) || plan.subtasks.length===0) {
@@ -1435,7 +1435,7 @@ async function executeRootTask(record) {
     ].join("\\n");
     let finalResult;
     try {
-      finalResult=await generateViaGateway(synthesisPrompt,chief);
+      finalResult=await generateViaGateway(synthesisPrompt,chief,null,record.id);
     } catch(error) {
       emit("chief.synthesis_fallback",{taskId:record.id,error:error?.message||String(error)});
       finalResult={
