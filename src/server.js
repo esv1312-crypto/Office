@@ -594,7 +594,7 @@ function openRouterPool(employee, preferredModel = null) {
   return result.length ? result : ["openrouter/free"];
 }
 
-async function generateWithOpenRouter(task, employee, preferredModel) {
+async function generateWithOpenRouter(task, employee, preferredModel, taskId=null) {
   const pool=openRouterPool(employee, preferredModel);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
@@ -610,7 +610,7 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
         provider:"openrouter",
         baseUrl:"https://openrouter.ai/api/v1/chat/completions",
         apiKey:openRouterApiKey(),
-        model,task,
+        model,task,employeeId:employee?.id||"executor",taskId,enableTools:true,
         headers:{
           "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
           "X-Title":"AI-OFFICE"
@@ -628,7 +628,7 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
             provider:"openrouter",
             baseUrl:"https://openrouter.ai/api/v1/chat/completions",
             apiKey:openRouterApiKey(),
-            model,task,
+            model,task,employeeId:employee?.id||"executor",taskId,enableTools:true,
             headers:{
               "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
               "X-Title":"AI-OFFICE"
@@ -745,7 +745,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model);
-      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model);
+      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId);
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
       else throw new Error("Unsupported AI provider: "+provider);
