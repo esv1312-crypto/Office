@@ -338,8 +338,6 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
     const reasoningDetails=Array.isArray(message.reasoning_details)
       ? message.reasoning_details.map(x=>x?.text||x?.content||"").filter(Boolean).join("\n")
       : "";
-    const choice=data?.choices?.[0] || {};
-    emit("gateway.response_shape",{provider,model,status:response.status,choiceKeys:Object.keys(choice),messageKeys:Object.keys(message),finishReason:choice?.finish_reason||null,contentType:Array.isArray(content)?"array":typeof content,contentLength:typeof content==="string"?content.length:null,reasoningLength:typeof reasoning==="string"?reasoning.length:null,reasoningDetailsCount:Array.isArray(message.reasoning_details)?message.reasoning_details.length:0,choiceTextLength:typeof choice?.text==="string"?choice.text.length:null,usage:data?.usage||null});
     const choiceText=data?.choices?.[0]?.text;
     const text=String(
       typeof content==="string" ? content :
