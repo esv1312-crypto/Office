@@ -382,6 +382,7 @@ const PREFLIGHT_TTL_MS = Math.max(60000, Number(process.env.MODEL_PREFLIGHT_TTL_
 const PREFLIGHT_TIMEOUT_MS = Math.max(5000, Number(process.env.MODEL_PREFLIGHT_TIMEOUT_MS || 12000));
 
 function preflightKey(provider, model, role) {
+  if (paidTestEnabled()) return String(provider)+":"+String(model)+":paid-test";
   return String(provider)+":"+String(model)+":"+String(role);
 }
 
