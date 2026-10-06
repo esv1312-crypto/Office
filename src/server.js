@@ -542,6 +542,26 @@ async function generateWithOpenRouter(task, employee, preferredModel) {
     } catch(error) {
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
+      if (/empty response/i.test(error?.message || "") && paidTestEnabled() && i===0) {
+        emit("gateway.model_retry",{employeeId:employee?.id || null,role,provider:"openrouter",model,reason:"empty_response",retryIndex:1});
+        try {
+          const retry=await callOpenAICompatible({
+            provider:"openrouter",
+            baseUrl:"https://openrouter.ai/api/v1/chat/completions",
+            apiKey:openRouterApiKey(),
+            model,task,
+            headers:{
+              "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
+              "X-Title":"AI-OFFICE"
+            }
+          });
+          emit("gateway.model_success",{employeeId:employee?.id || null,role,provider:"openrouter",model,retry:true});
+          return retry;
+        } catch(retryError) {
+          lastError=retryError;
+          emit("gateway.model_retry_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:retryError?.message || String(retryError)});
+        }
+      }
       if (/model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(error?.message || "")) {
         suppressModel(model,error?.message || "model unavailable",6*60*60*1000,"openrouter");
       } else if (/429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|high demand|overloaded|empty response/i.test(error?.message || "")) {
