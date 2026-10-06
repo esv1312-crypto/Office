@@ -332,9 +332,10 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       e.transient=response.status===408 || response.status===409 || response.status===429 || response.status>=500;
       throw e;
     }
-    const text=String(data?.choices?.[0]?.message?.content || "").trim();
+    const message=data?.choices?.[0]?.message || {};
+    const text=String(message.content || "").trim();
     if(!text) throw new Error(provider+" returned an empty response");
-    return {text,model};
+    return {text,model,usage:data?.usage||null};
   } catch(error) {
     if(error?.name==="AbortError") {
       const e=new Error(provider+" request timed out"); e.status=408; e.transient=true; throw e;
