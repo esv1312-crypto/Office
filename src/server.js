@@ -1334,7 +1334,21 @@ async function executeRootTask(record) {
       "Verification checklist: " + JSON.stringify(record.verificationChecklist),
       "Worker results: " + JSON.stringify(record.workerResults)
     ].join("\\n");
-    const finalResult=await generateViaGateway(synthesisPrompt,chief);
+    let finalResult;
+    try {
+      finalResult=await generateViaGateway(synthesisPrompt,chief);
+    } catch(error) {
+      emit("chief.synthesis_fallback",{taskId:record.id,error:error?.message||String(error)});
+      finalResult={
+        model:record.model || paidTestModel(),
+        text:"Deterministic synthesis fallback. Worker results:\n"+finalChildren.map(x=>[
+          x.employeeId,
+          x.status,
+          x.error || "",
+          String(x.result?.text || x.result || "").slice(0,12000)
+        ].join(" | ")).join("\n")
+      };
+    }
     record.model=finalResult.model;
     record.result=finalResult.text;
 
@@ -1354,14 +1368,16 @@ async function executeRootTask(record) {
       const routedSuccess=backendConfigured ? backendSuccess : localSuccess;
       const fallbackObserved=events.some(e => ["gateway.model_fallback","gateway.fallback","ai.fallback"].includes(e.type) && e.ts >= (record.startedAt || "1970-01-01T00:00:00.000Z"));
       const freeOnlyObserved=events.some(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z") && e.type==="gateway.success" && e.freeOnly===true);
-      const objectivePass=allCompleted && routedSuccess && freeOnlyObserved;
-      emit("verification.objective_check",{taskId:record.id,allCompleted,backendConfigured,backendSuccess,localSuccess,routedSuccess,fallbackObserved,freeOnlyObserved,objectivePass});
+      const paidTestObserved=paidTestEnabled() && events.some(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z") && e.type==="gateway.success" && e.freeOnly===false && e.model===paidTestModel());
+      const routePolicyObserved=paidTestEnabled() ? paidTestObserved : freeOnlyObserved;
+      const objectivePass=allCompleted && routedSuccess && routePolicyObserved;
+      emit("verification.objective_check",{taskId:record.id,allCompleted,backendConfigured,backendSuccess,localSuccess,routedSuccess,fallbackObserved,freeOnlyObserved,paidTestObserved,routePolicyObserved,objectivePass});
       if(objectivePass) {
         verificationPassed=true;
         record.verification={status:"PASS",summary:"Objective runtime evidence passed the final integration smoke test.",checks:[
           {name:"All four worker roles completed",passed:true,evidence:"Four child task.completed events are present."},
           {name:"Configured gateway route completed",passed:true,evidence:backendConfigured ? "backend.success events are present for all four workers." : "gateway.success events are present for all four workers; no backend runtime is configured."},
-          {name:"Free-only mode was active",passed:true,evidence:"gateway.success events explicitly report freeOnly=true."}
+          {name:paidTestEnabled() ? "Paid test model was active" : "Free-only mode was active",passed:true,evidence:paidTestEnabled() ? "gateway.success events report freeOnly=false with the configured paid test model." : "gateway.success events explicitly report freeOnly=true."}
         ],verifierId:"runtime-objective-check",model:null,verifiedAt:new Date().toISOString()}; 
         record.evidence=record.verification.checks.map(x=>({check:x.name,evidence:x.evidence}));
         emit("verification.passed",{taskId:record.id,employeeId:"verifier",model:record.verification.model,objective:true,failedChecks:[]});
