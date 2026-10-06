@@ -2028,6 +2028,23 @@ app.get("/api/tasks/:id",(req,res)=>{
   res.json({ok:true,task:taskSnapshot(record)});
 });
 
+async function runProductTaskOnStartup() {
+  if (String(process.env.RUN_PRODUCT_TASK_ON_START || "false").toLowerCase() !== "true") return;
+  await sleep(5000);
+  const taskText=String(process.env.PRODUCT_TASK_ON_START || "").trim();
+  if(!taskText) return;
+  try {
+    const record=createTaskRecord({task:taskText,employeeId:"chief",kind:"root"});
+    tasks.set(record.id,record);
+    await saveTaskSnapshot(taskSnapshot(record)).catch(()=>{});
+    emit("product_task.autorun_started",{taskId:record.id});
+    await executeRootTask(record);
+    emit("product_task.autorun_finished",{taskId:record.id,status:record.status});
+  } catch(error) {
+    emit("product_task.autorun_failed",{error:error?.message||String(error)});
+  }
+}
+
 async function runFinalAuditOnStartup() {
   if (String(process.env.RUN_FINAL_AUDIT_ON_START || "false").toLowerCase() !== "true") return;
   await sleep(5000);
@@ -2077,5 +2094,6 @@ app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
   // Controlled one-shot final audit; disable RUN_FINAL_AUDIT_ON_START after this run.
   void runFinalAuditOnStartup();
+  void runProductTaskOnStartup();
   console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
