@@ -114,6 +114,13 @@ function emit(type, data = {}) {
   return event;
 }
 
+function paidTestEnabled() {
+  return String(process.env.AI_PAID_TEST_ONLY || "false").toLowerCase() === "true"
+    && Boolean(String(process.env.AI_PAID_TEST_MODEL || "").trim());
+}
+function paidTestModel() {
+  return String(process.env.AI_PAID_TEST_MODEL || "deepseek/deepseek-v4.1-flash").trim();
+}
 function freeOnly() {
   return String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
 }
@@ -176,6 +183,12 @@ function getEmployee(id) {
 }
 
 function resolveBrain(employee, task = "") {
+  if (paidTestEnabled()) return {
+    provider:"openrouter",
+    model:paidTestModel(),
+    taskKind:"paid-test",
+    candidates:[{provider:"openrouter",id:paidTestModel(),routeModel:paidTestModel()}]
+  };
   const roleTask = employee?.id==="verifier" ? "verification testing evidence audit"
     : employee?.id==="developer" ? "coding debugging implementation"
     : employee?.id==="analyst" ? "analysis research requirements"
@@ -274,7 +287,26 @@ async function generateWithGemini(task, preferredModel) {
   throw lastError || new Error("Gemini request failed");
 }
 
+const paidTestUsage={calls:0,estimatedUsd:0};
+function paidTestBudgetUsd(){return Math.max(0.05,Number(process.env.AI_PAID_TEST_BUDGET_USD||1));}
+function paidTestMaxOutputTokens(){return Math.max(128,Math.min(4096,Number(process.env.AI_PAID_TEST_MAX_OUTPUT_TOKENS||1800)));}
+function paidTestReserve(task){
+  if(!paidTestEnabled()) return;
+  const input=Math.ceil(String(task||"").length/3.5);
+  const reserve=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.035)+paidTestMaxOutputTokens()*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.29))/1e6;
+  if(paidTestUsage.estimatedUsd+reserve>paidTestBudgetUsd()) throw Object.assign(new Error("Paid test budget exhausted"),{code:"PAID_TEST_BUDGET_EXCEEDED"});
+}
+function recordPaidTestUsage(data){
+  if(!paidTestEnabled()) return;
+  const input=Number(data?.usage?.prompt_tokens||data?.usage?.input_tokens||0);
+  const output=Number(data?.usage?.completion_tokens||data?.usage?.output_tokens||0);
+  const estimatedInput=input||0;
+  const cost=(estimatedInput*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.035)+output*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.29))/1e6;
+  paidTestUsage.calls++; paidTestUsage.estimatedUsd+=cost;
+  emit("paid_test.usage",{calls:paidTestUsage.calls,estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
+}
 async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={}}) {
+  if(provider==="openrouter"&&paidTestEnabled()) paidTestReserve(task);
   emit("ai.start",{provider,model});
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
@@ -288,10 +320,12 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
         messages:[
           {role:"system",content:"You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
           {role:"user",content:task}
-        ]
+        ],
+        ...(provider==="openrouter"&&paidTestEnabled()?{max_tokens:paidTestMaxOutputTokens()}: {})
       })
     });
     const data=await response.json().catch(()=>({}));
+    if(provider==="openrouter"&&paidTestEnabled()) recordPaidTestUsage(data);
     if(!response.ok) {
       const e=new Error(data?.error?.message || ("HTTP "+response.status));
       e.status=response.status;
@@ -573,11 +607,13 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
   const brain=approvedCandidate
     ? { ...resolveBrain(employee, task), provider:String(approvedCandidate.provider), model:String(approvedCandidate.model), candidates:[approvedCandidate] }
     : resolveBrain(employee, task);
-  const providers=Array.isArray(forcedProvider)
-    ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
-    : forcedProvider
-      ? [...new Set([String(forcedProvider).toLowerCase(), ...gatewayProviders(brain.provider)])].filter(p=>aiConfigured(p))
-      : gatewayProviders(brain.provider);
+  const providers=paidTestEnabled()
+    ? ["openrouter"].filter(p=>aiConfigured(p))
+    : Array.isArray(forcedProvider)
+      ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
+      : forcedProvider
+        ? [...new Set([String(forcedProvider).toLowerCase(), ...gatewayProviders(brain.provider)])].filter(p=>aiConfigured(p))
+        : gatewayProviders(brain.provider);
   if(!providers.length) throw Object.assign(new Error("No configured AI provider is available in FREE_ONLY="+freeOnly()),{code:"AI_NOT_CONFIGURED"});
   let lastError;
   for(const provider of providers) {
