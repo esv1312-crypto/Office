@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { normalizeTaskSnapshotAfterRestart } from "../src/task-state.js";
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 
-test("PostgreSQL integration: task snapshots persist, batches roll back atomically, and events reload by event time", {
+test("PostgreSQL integration: atomic persistence, restart normalization, and event-time ordering", {
   skip: !testDatabaseUrl
 }, async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
