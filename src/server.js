@@ -1081,7 +1081,14 @@ async function executeWorkerTask(record) {
     return result.text;
   } catch(error) {
     const message=error?.message||String(error);
-    await transitionTask(record,"failed",{error:message,failedAt:new Date().toISOString()});
+    const failedAt=new Date().toISOString();
+    try {
+      await transitionTask(record,"failed",{error:message,failedAt});
+    } catch (persistenceError) {
+      console.error("[DB] worker failure state could not be persisted",persistenceError?.message||persistenceError);
+      record.status="failed";
+      Object.assign(record,{error:message,failedAt});
+    }
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:message});
     return null;
   } finally {
@@ -1638,7 +1645,15 @@ async function executeRootTask(record) {
     });
   } catch(error) {
     if(record.status!=="failed") {
-      await transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
+      const message=error?.message || String(error);
+      const failedAt=new Date().toISOString();
+      try {
+        await transitionTask(record,"failed",{error:message,failedAt});
+      } catch (persistenceError) {
+        console.error("[DB] root failure state could not be persisted",persistenceError?.message||persistenceError);
+        record.status="failed";
+        Object.assign(record,{error:message,failedAt});
+      }
     }
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
   }
