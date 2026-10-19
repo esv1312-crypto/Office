@@ -84,3 +84,15 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 ## Deferred by design
 
 - [ ] Build the user interface only after runtime reliability gates pass. The first product task should be for AI-ОФИС to build its own UI, using the stable API contract and audit findings.
+
+
+## Live baseline observed during the October 20, 2026 audit
+
+- The deployed Render service still points at `main` commit `9f0a90c27d5b387b451a2856babdec27422528ff`; the audit branch is not deployed.
+- A read-only request to the deployed `/health` endpoint exposed provider order, AI configuration state, tool counts, GitHub-tool state, and browser bridge/automation configuration. A read-only request to deployed `/api/employees` returned full employee model pools without authentication. The audit branch guards `/api/employees` and keeps public health responses minimal; regression tests cover both boundaries.
+- Render logs from October 19 show a real root task whose first independent verification failed, followed by recovery, successful re-verification, and root completion with persisted evidence count 3. Another root task reached verification pass and completion with evidence count 6. This is evidence of a live task/recovery lifecycle, but not a current-day deployment validation.
+- Current-day read-only endpoint checks initially returned HTTP 503, then `/health` responded successfully. Render metrics/logs for October 20 were empty at audit time; the service may have been idle or waking from the free-tier sleep cycle. A fresh authenticated end-to-end task run has not been executed against the deployed service.
+- Direct read-only SQL verification of persisted task rows remains blocked because the PostgreSQL IP allowlist is empty. No allowlist, database, plan, or deployment settings were changed.
+- The Render PostgreSQL instance `ai-office-monitor-db` has a reported expiration date of October 31, 2026. Back up/export or extend/upgrade the database before that deadline; this repository audit cannot perform that account-level change.
+
+These observations are evidence from the deployed `main` runtime and must not be interpreted as proof that the audit-branch fixes are live.
