@@ -697,7 +697,10 @@ async function generateWithHuggingFace(task, employee, preferredModel) {
 }
 
 async function generateWithApinex(task, employee, preferredModel, taskId=null) {
-  const model=String(preferredModel || process.env.APINEX_MODEL || "free/gpt-6-luna").trim();
+  const model=String(preferredModel || process.env.APINEX_MODEL || "").trim();
+  if(!model) {
+    throw Object.assign(new Error("No APINEX model has been discovered or explicitly configured; refusing to guess a model ID"),{code:"APINEX_MODEL_UNVERIFIED"});
+  }
   if(freeOnly() && !model.startsWith("free/")) {
     throw Object.assign(new Error("APINEX model is not in the explicitly free/* category; blocked by AI_FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"});
   }
@@ -757,7 +760,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
           : provider==="cloudflare"
             ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.CLOUDFLARE_MODEL || null))
             : provider==="apinex"
-              ? (sameAsApproved ? String(approvedCandidate.model) : (brain.provider==="apinex" && String(brain.model||"").startsWith("free/") ? String(brain.model) : (process.env.APINEX_MODEL || "free/gpt-6-luna")))
+              ? (sameAsApproved ? String(approvedCandidate.model) : (brain.provider==="apinex" && String(brain.model||"").startsWith("free/") ? String(brain.model) : (String(process.env.APINEX_MODEL || "").startsWith("free/") ? String(process.env.APINEX_MODEL) : null)))
               : (process.env.OPENAI_MODEL || null);
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly() && !paidTestEnabled(),backend:"local"});
     try {
