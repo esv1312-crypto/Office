@@ -1533,6 +1533,7 @@ async function executeRootTask(record) {
     record.plannedAt=new Date().toISOString();
 
     const children=[];
+    const previousSubtaskIds=[...record.subtaskIds];
     for(const item of items) {
       const employeeId=employees().some(e=>e.id===item.employeeId && e.id!=="chief") ? item.employeeId : "executor";
       const child=createTaskRecord({
@@ -1547,9 +1548,10 @@ async function executeRootTask(record) {
     }
 
     try {
-      await saveTaskSnapshots(children.map(taskSnapshot));
+      await saveTaskSnapshots([taskSnapshot(record),...children.map(taskSnapshot)]);
     } catch (error) {
       for (const child of children) tasks.delete(child.id);
+      record.subtaskIds=previousSubtaskIds;
       throw new Error("planned subtask batch could not be durably accepted");
     }
     for (const child of children) {
