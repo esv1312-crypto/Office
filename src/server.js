@@ -1420,6 +1420,7 @@ async function recoverRootTask(record) {
     });
 
     if (!aiConfigured(fixTask.provider)) {
+      await transitionTask(fixTask,"waiting",{waitingReason:"ai_not_configured"});
       record.recoveryHistory.push({attempt:record.recoveryAttempts,status:"blocked",reason:"AI not configured",taskId:fixTask.id});
       emit("recovery.failed",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts,reason:"AI not configured"});
       break;
