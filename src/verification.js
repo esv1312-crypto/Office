@@ -56,6 +56,59 @@ function referenceIsGrounded(check, context = {}) {
   return false;
 }
 
+function detectRuntimeContradiction(check, context = {}) {
+  const claimText = [
+    check?.name || "",
+    check?.requirement || "",
+    check?.evidence || "",
+    check?.source || "",
+    check?.locator || ""
+  ].join(" ");
+  const claimsSuccess = /\\b(completed|complete|passed|pass|succeeded|success|successful|finished|verified)\\b/i.test(claimText);
+  if (!claimsSuccess) return "";
+
+  const workerResults = Array.isArray(context.workerResults) ? context.workerResults : [];
+  const eventEvidence = Array.isArray(context.eventEvidence) ? context.eventEvidence : [];
+  const taskIds = [...new Set(claimText.match(/\\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\b/gi) || [])];
+
+  for (const taskId of taskIds) {
+    const snapshot = workerResults.find(item => String(item?.taskId || "").toLowerCase() === taskId.toLowerCase());
+    let status = snapshot?.status ? String(snapshot.status).toLowerCase() : "";
+    if (!status) {
+      const matchingEvents = eventEvidence
+        .filter(event => String(event?.taskId || "").toLowerCase() === taskId.toLowerCase())
+        .slice()
+        .sort((a, b) => Date.parse(a?.ts || a?.createdAt || 0) - Date.parse(b?.ts || b?.createdAt || 0));
+      for (const event of matchingEvents) {
+        if (event?.type === "task.state_changed" && event?.status) status = String(event.status).toLowerCase();
+        else if (event?.type === "task.completed") status = "completed";
+        else if (event?.type === "task.failed") status = "failed";
+        else if (event?.type === "task.cancelled") status = "cancelled";
+      }
+    }
+    if (status && status !== "completed") {
+      return "Claim conflicts with authoritative runtime status for task " + taskId + ": " + status + ".";
+    }
+  }
+
+  const claimsAllWorkersSucceeded = /\\b(all|every|each)\\b.{0,45}\\b(workers?|subtasks?|roles?)\\b.{0,60}\\b(completed|finished|succeeded|passed)\\b/i.test(claimText);
+  if (claimsAllWorkersSucceeded && workerResults.length) {
+    const recoveredTaskIds = new Set(workerResults
+      .filter(item => String(item?.status || "").toLowerCase() === "completed" && item?.replacesTaskId)
+      .map(item => String(item.replacesTaskId)));
+    const unresolved = workerResults.find(item =>
+      String(item?.status || "").toLowerCase() !== "completed" &&
+      !recoveredTaskIds.has(String(item?.taskId || ""))
+    );
+    if (unresolved) {
+      return "Claim that all workers completed conflicts with worker result " +
+        String(unresolved.taskId || "without task ID") + " in status " +
+        String(unresolved.status || "unknown") + ".";
+    }
+  }
+  return "";
+}
+
 function normalizeRequirement(value) {
   return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -104,7 +157,7 @@ export function enforceVerificationEvidence(verification, checklist = [], eviden
     else if (requiredItems.length > 0 && !requirement) reason = "Missing checklist requirement mapping.";
     else if (requiredItems.length > 0 && !matchedRequirement) reason = "Check does not map to a required checklist item.";
     else if (duplicateCoverage) reason = "Duplicate coverage for checklist item: " + matchedRequirement + ".";
-    else if (!referenceGrounded) reason = "Source/locator does not match supplied code or runtime evidence.";
+    else if (!referenceGrounded) reason = "Source/locator does not match supplied code or runtime evidence.";\n    else if (runtimeContradiction) reason = runtimeContradiction;
 
     return {
       ...check,
