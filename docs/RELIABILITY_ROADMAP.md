@@ -48,10 +48,11 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Validate the entire subtask batch before creating any children, so one malformed item cannot leave partial work running.
 - [x] Bound numeric runtime settings so invalid environment values cannot produce a NaN worker limit or near-zero recurring timer.
 - [x] Expose PostgreSQL enabled/ready state in `/health` and authenticated `/api/state` diagnostics.
-- [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
-  - Deterministic unit tests now cover watchdog timeout boundaries, invalid timestamps, root/terminal exclusions, and duplicate-timeout suppression; full recovery/retry/root-completion integration tests remain open.
-  - Root completion now has an explicit fail-closed gate: verifier status must be `PASS`, checks must be non-empty, and every check must have `passed === true`; unit tests cover absent, degraded, failed, empty, partial, malformed, and successful verification.
-  - Added a regression test asserting that the runtime calls independent verification, attempts recovery after a failed verification, and checks the persisted verifier record before the `completed` transition. Model Scout wiring is also tested, not only its helper.
+- [x] Add deterministic integration coverage for root-task completion and verification recovery/retest using a loopback mock provider.
+  - The runtime integration test exercises normal Chief → two specialist subtasks → synthesis → independent verifier PASS, plus a deliberate first-verification failure followed by a persisted recovery task, successful retest, and root completion.
+  - Root completion has an explicit fail-closed gate: verifier status must be `PASS`, checks must be non-empty, and every check must have `passed === true`; unit tests cover absent, degraded, failed, empty, partial, malformed, and successful verification.
+  - The verifier now receives the correctly named exclusion set for planner, synthesis, and worker models. Static role-specific candidates are also preflight-tested when dynamic model discovery is empty.
+- [ ] Extend watchdog coverage to a full runtime timeout/recovery race and provider-fallback/retry exhaustion. Unit tests currently verify timeout eligibility and persistence-before-recovery ordering.
 - [x] Reject passing verifier claims that contradict an identified task’s authoritative final state or claim all workers completed when any worker result remains unresolved; regression tests cover both cases.
 - [x] Document browser-request restart behavior: in-memory requests and one-time callback tokens are lost; never replay potentially side-effecting browser actions automatically after restart.
 - [x] Authenticate `.github/workflows/office-smoke.yml` and send the required `task` field to `/api/tasks`.
@@ -75,11 +76,12 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 
 ## P1 — reliability and observability
 
-- [ ] Create a deterministic end-to-end suite that runs against a safe test task and isolated/test database.
+- [x] Create a deterministic end-to-end suite that runs against safe test tasks, a loopback mock provider, and an isolated test database where needed.
+  - Runtime CI validates health/auth/task acceptance, full delegated execution, independent verification, and verification-failure recovery/retest without contacting real AI providers.
 - [ ] Add success-rate, time-to-completion, provider-fallback, and stuck-task metrics.
 - [ ] Test concurrent tasks and recovery from provider/browser outages.
-- [ ] Verify PostgreSQL restart recovery and event ordering against a real test database.
-  - The new isolated PostgreSQL 18 CI workflow now verifies durable task snapshots, atomic rollback of a partially failing batch, and event-time ordering. Restart recovery and the full runtime task lifecycle are still unverified.
+- [x] Verify PostgreSQL restart recovery and event ordering against a real test database.
+  - PostgreSQL 18 CI verifies durable task snapshots, atomic rollback of a partially failing batch, event-time ordering, and an actual Node runtime process restart. A persisted running task is normalized to `failed / SERVICE_RESTART_INTERRUPTED`, while a configuration-blocked task remains `waiting`.
 - [x] Await persistence for critical task-state transitions; revert in-memory state if the snapshot write fails.
 - [x] Persist internal office-audit, evidence-smoke, recovery-smoke, and Pognali-audit task acceptance before starting workers or returning acceptance.
 
