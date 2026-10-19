@@ -6,6 +6,7 @@ import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTa
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch } from "./task-state.js";
+import { boundedIntegerSetting } from "./runtime-config.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -39,7 +40,7 @@ function requireInternalOrAudit(req,res) {
   if(internal || (expected && supplied===expected)) return true;
   res.status(401).json({ok:false,error:"authentication required"}); return false;
 }
-const workerQueue = { active:0, pending:[], limit:Math.max(1,Number(process.env.MAX_CONCURRENT_WORKERS || 3)) };
+const workerQueue = { active:0, pending:[], limit:boundedIntegerSetting(process.env.MAX_CONCURRENT_WORKERS,3,1,100) };
 async function acquireWorkerSlot(taskId) {
   if (workerQueue.active < workerQueue.limit) { workerQueue.active += 1; emit("worker.slot_acquired",{taskId,active:workerQueue.active,limit:workerQueue.limit}); return; }
   emit("worker.queued",{taskId,active:workerQueue.active,limit:workerQueue.limit});
@@ -58,8 +59,8 @@ const browserRuns = new Map();
 const browser = createBrowserManager({emit});
 let modelScoutTimer = null;
 let resourceScoutTimer = null;
-const workerWatchdogIntervalMs=Math.max(5000,Number(process.env.WORKER_WATCHDOG_INTERVAL_MS || 15000));
-const workerTimeoutMs=Math.max(30000,Number(process.env.WORKER_TIMEOUT_MS || 600000));
+const workerWatchdogIntervalMs=boundedIntegerSetting(process.env.WORKER_WATCHDOG_INTERVAL_MS,15000,5000,3600000);
+const workerTimeoutMs=boundedIntegerSetting(process.env.WORKER_TIMEOUT_MS,600000,30000,86400000);
 let workerWatchdogTimer=null;
 function runWorkerWatchdog(){
   const now=Date.now();
@@ -2213,9 +2214,9 @@ await bootstrapDatabase();
 
 const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
-  modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), Number(process.env.MODEL_SCOUT_INTERVAL_MS || 3600000));
+  modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
   void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
-  resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), Number(process.env.RESOURCE_SCOUT_INTERVAL_MS || 86400000));
+  resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));
   workerWatchdogTimer=setInterval(runWorkerWatchdog,workerWatchdogIntervalMs);
   emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
