@@ -55,3 +55,20 @@ export function normalizeTaskSnapshotAfterRestart(snapshot, now = new Date().toI
 
   return { record, changed: false };
 }
+
+
+export function validateSubtaskBatch(input, fallback = {}) {
+  const items = Array.isArray(input) ? input : [fallback];
+  if (items.length === 0) {
+    return { ok: false, error: "at least one subtask is required" };
+  }
+  const normalized = [];
+  for (const item of items) {
+    const task = String(item?.task || "").trim();
+    if (!task) {
+      return { ok: false, error: "each subtask requires task" };
+    }
+    normalized.push({ ...item, task });
+  }
+  return { ok: true, items: normalized };
+}
