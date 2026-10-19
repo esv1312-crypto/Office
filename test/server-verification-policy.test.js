@@ -116,3 +116,19 @@ test("retrieved content is marked untrusted and tool logs avoid raw arguments", 
   assert.match(helper, /goalLength:String\(input\.goal/);
   assert.match(execution, /args:safeToolArgs\(toolName,args\)/);
 });
+
+test("GitHub write tool cannot silently write to main or override its configured branch", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf('"github.write_file": {');
+  const end = source.indexOf("\n};", start);
+  assert.notEqual(start, -1, "github.write_file tool must exist");
+  assert.notEqual(end, -1, "tool registry boundary must exist");
+  const tool = source.slice(start, end);
+
+  assert.match(tool, /const configuredBranch = String\(process\.env\.GITHUB_BRANCH \|\| ""\)\.trim\(\)/);
+  assert.match(tool, /requestedBranch !== configuredBranch/);
+  assert.match(tool, /protectedBranches\.has\(configuredBranch\)/);
+  assert.match(tool, /GITHUB_ALLOW_PROTECTED_BRANCH_WRITES/);
+  assert.match(tool, /path\.split\("\/"\)\.some\(segment => segment === "\." \|\| segment === "\.\."/);
+  assert.doesNotMatch(tool, /process\.env\.GITHUB_BRANCH \|\| "main"/);
+});
