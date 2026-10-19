@@ -360,11 +360,18 @@ function buildToolAwareSystemPrompt(employee){
   ].join("\n");
 }
 
+function aiRequestTimeoutMs() {
+  const value=Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000);
+  return Number.isFinite(value)?Math.max(5000,value):30000;
+}
+
 async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={},employeeId=null,taskId=null,enableTools=false,timeoutMs=null}) {
   if(provider==="openrouter"&&paidTestEnabled()) paidTestReserve(task);
   emit("ai.start",{provider,model});
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),Number(timeoutMs || process.env.AI_REQUEST_TIMEOUT_MS || 30000));
+  const requestedTimeout=timeoutMs===null || timeoutMs===undefined ? aiRequestTimeoutMs() : Number(timeoutMs);
+  const timeoutDuration=Number.isFinite(requestedTimeout)?Math.max(1000,requestedTimeout):aiRequestTimeoutMs();
+  const timeout=setTimeout(()=>controller.abort(),timeoutDuration);
   try {
     const messages=[
       {role:"system",content:enableTools ? buildToolAwareSystemPrompt(getEmployee(employeeId||"executor")) : "You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
@@ -605,8 +612,7 @@ function openRouterPool(employee, preferredModel = null) {
 
 async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
   const enableTools=enableToolsOverride===null ? toolSchemasForEmployee(employee).length>0 : Boolean(enableToolsOverride);
-  const configuredTimeout=Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000);
-  const timeoutMs=timeoutMsOverride===null ? (Number.isFinite(configuredTimeout)?Math.max(5000,configuredTimeout):30000) : timeoutMsOverride;
+  const timeoutMs=timeoutMsOverride===null ? aiRequestTimeoutMs() : (Number.isFinite(Number(timeoutMsOverride))?Math.max(1000,Number(timeoutMsOverride)):aiRequestTimeoutMs());
   const pool=allowModelFallback ? openRouterPool(employee, preferredModel) : [String(preferredModel||"")].filter(Boolean);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
@@ -733,8 +739,7 @@ async function generateWithCloudflare(task, preferredModel, timeoutMs=null) {
 }
 
 async function generateWithOpenAI(task, preferredModel) {
-  const configuredTimeout=Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000);
-  const timeout=Number.isFinite(configuredTimeout)?Math.max(5000,configuredTimeout):30000;
+  const timeout=aiRequestTimeoutMs();
   const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout});
   const model=preferredModel || process.env.OPENAI_MODEL || "gpt-6-luna";
   emit("ai.start",{provider:"openai",model});
@@ -781,13 +786,13 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model,!strictCandidate);
-      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate,!strictCandidate && toolSchemasForEmployee(employee).length>0,Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
+      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate,!strictCandidate && toolSchemasForEmployee(employee).length>0,aiRequestTimeoutMs());
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="apinex") {
         const preflight=await preflightModel(provider,model,employee);
         if(!preflight.ok) throw Object.assign(new Error("APINEX model failed preflight"),{code:"PREFLIGHT_FAILED"});
         const enableTools=!strictCandidate && toolSchemasForEmployee(employee).length>0;
-        result=await generateWithApinex(task,employee,model,taskId,enableTools,Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
+        result=await generateWithApinex(task,employee,model,taskId,enableTools,aiRequestTimeoutMs());
       }
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
       else throw new Error("Unsupported AI provider: "+provider);
