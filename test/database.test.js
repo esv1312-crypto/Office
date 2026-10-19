@@ -104,3 +104,24 @@ test("internal audit and smoke task endpoints persist acceptance before starting
   assert.ok(pognaliRoute.indexOf("await saveTaskSnapshot") < pognaliRoute.indexOf('emit("task.accepted"'));
   assert.ok(pognaliRoute.indexOf("await saveTaskSnapshot") < pognaliRoute.indexOf("void executeRootTask(record)"));
 });
+
+
+test("planned subtasks and recovery workers are persisted before execution", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const planStart = server.indexOf("async function executeRootTask(record)");
+  const planEnd = server.indexOf("\nasync function", planStart + 10);
+  const rootExecution = server.slice(planStart, planEnd);
+  assert.match(rootExecution, /await saveTaskSnapshots\(children\.map\(taskSnapshot\)\)/);
+  assert.ok(rootExecution.indexOf("await saveTaskSnapshots(children.map(taskSnapshot))") < rootExecution.indexOf('emit("task.accepted"'));
+  assert.ok(rootExecution.indexOf("await saveTaskSnapshots(children.map(taskSnapshot))") < rootExecution.indexOf("Promise.all(children.map(child=>executeWorkerTask(child)))"));
+
+  const replacementStart = server.indexOf("async function performWorkerRecovery");
+  const replacementEnd = server.indexOf("\nasync function", replacementStart + 10);
+  const replacement = server.slice(replacementStart, replacementEnd);
+  assert.match(replacement, /await saveTaskSnapshot\(taskSnapshot\(replacement\)\)/);
+  assert.ok(replacement.indexOf("await saveTaskSnapshot(taskSnapshot(replacement))") < replacement.indexOf("await executeWorkerTask(replacement)"));
+
+  const recoveryTask = server.indexOf("await saveTaskSnapshots([taskSnapshot(record),taskSnapshot(fixTask)])");
+  assert.ok(recoveryTask > 0, "root recovery must persist the parent link and recovery task atomically");
+  assert.ok(recoveryTask < server.indexOf('emit("recovery.requested"', recoveryTask));
+});
