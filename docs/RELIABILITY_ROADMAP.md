@@ -26,6 +26,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] OpenRouter calls use defined timeout/tool policy; APINEX honors the no-tools preflight and request timeout.
 - [x] OpenAI SDK calls have a bounded timeout; catalog requests time out.
 - [x] Provider-wide authentication/quota failures stop repeated model attempts; rate-limit responses suppress the provider briefly.
+- [x] The controlled provider-fallback smoke test uses request-scoped model overrides and does not mutate process-wide provider/model configuration.
 - [x] Root recovery installs the replacement result before re-verifying it.
 - [x] Worker recovery is single-flight to prevent duplicate replacement tasks.
 - [x] Accepted, planning, and running tasks without a persisted resumable queue become explicitly interrupted after restart; configuration-blocked tasks remain waiting.
