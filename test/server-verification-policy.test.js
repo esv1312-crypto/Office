@@ -207,7 +207,8 @@ test("provider-wide authentication and quota errors stop model-level retries", a
   const huggingFace = source.slice(huggingFaceStart, localGatewayStart);
   const localGateway = source.slice(localGatewayStart, source.indexOf("\nasync function generateViaGateway", localGatewayStart));
 
-  assert.match(openRouter, /if\(error\?\.status===401 \|\| error\?\.status===402\) break/);
-  assert.match(huggingFace, /if\(error\?\.status===401 \|\| error\?\.status===402\) break/);
+  assert.match(openRouter, /if\(error\?\.status===401 \|\| error\?\.status===402 \|\| error\?\.status===429\) break/);
+  assert.match(huggingFace, /if\(error\?\.status===401 \|\| error\?\.status===402 \|\| error\?\.status===429\) break/);
   assert.match(localGateway, /suppressProvider\(provider,error\?\.message\|\|String\(error\),15\*60\*1000\)/);
+  assert.match(localGateway, /else if\(error\?\.status===429\) suppressProvider\(provider,error\?\.message\|\|String\(error\),60\*1000\)/);
 });
