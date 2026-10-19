@@ -1,20 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  initDatabase,
-  saveTaskSnapshot,
-  saveTaskSnapshots,
-  saveEvent,
-  loadDatabaseState,
-  closeDatabase
-} from "../src/database.js";
-
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 
 test("PostgreSQL integration: task snapshots persist, batches roll back atomically, and events reload by event time", {
   skip: !testDatabaseUrl
 }, async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
+  const {
+    initDatabase,
+    saveTaskSnapshot,
+    saveTaskSnapshots,
+    saveEvent,
+    loadDatabaseState,
+    closeDatabase
+  } = await import("../src/database.js");
   const tag = `integration-${process.pid}-${Date.now()}`;
   try {
     process.env.DATABASE_URL = testDatabaseUrl;
