@@ -3,6 +3,27 @@ const { Pool } = pg;
 
 let pool = null;
 let dbReady = false;
+let writeTail = Promise.resolve();
+
+function enqueueWrite(work) {
+  const pending = writeTail.then(work, work);
+  writeTail = pending.catch(() => {});
+  return pending;
+}
+
+export async function flushDatabaseWrites() {
+  await writeTail;
+}
+
+export async function closeDatabase() {
+  await flushDatabaseWrites();
+  if (pool) {
+    const current = pool;
+    pool = null;
+    dbReady = false;
+    await current.end();
+  }
+}
 
 export function databaseEnabled() {
   return Boolean(String(process.env.DATABASE_URL || "").trim());
@@ -60,20 +81,22 @@ export async function loadDatabaseState() {
 
 export async function saveTaskSnapshot(snapshot) {
   if (!dbReady) return;
-  await pool.query(
+  return enqueueWrite(() => pool.query(
     "INSERT INTO ai_office_tasks(id,parent_task_id,payload,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(id) DO UPDATE SET parent_task_id=EXCLUDED.parent_task_id,payload=EXCLUDED.payload,updated_at=NOW()",
     [snapshot.id, snapshot.parentTaskId || null, snapshot]
-  );
+  ));
 }
 
 export async function saveEvent(type, payload) {
   if (!dbReady) return;
   const eventTime=payload?.ts || payload?.createdAt || new Date().toISOString();
-  await pool.query(
-    "INSERT INTO ai_office_events(task_id,event_type,payload,created_at) VALUES($1,$2,$3,$4)",
-    [payload?.taskId || null, type, payload || {}, eventTime]
-  );
-  await pool.query("DELETE FROM ai_office_events WHERE id IN (SELECT id FROM ai_office_events ORDER BY created_at DESC,id DESC OFFSET 500)");
+  return enqueueWrite(async () => {
+    await pool.query(
+      "INSERT INTO ai_office_events(task_id,event_type,payload,created_at) VALUES($1,$2,$3,$4)",
+      [payload?.taskId || null, type, payload || {}, eventTime]
+    );
+    await pool.query("DELETE FROM ai_office_events WHERE id IN (SELECT id FROM ai_office_events ORDER BY created_at DESC,id DESC OFFSET 500)");
+  });
 }
 
 export function databaseStatus() {
@@ -82,8 +105,8 @@ export function databaseStatus() {
 
 export async function saveResourceSnapshot(resource) {
   if (!dbReady || !resource?.id) return;
-  await pool.query(
+  return enqueueWrite(() => pool.query(
     "INSERT INTO ai_office_resources(id,status,payload,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(id) DO UPDATE SET status=EXCLUDED.status,payload=EXCLUDED.payload,updated_at=NOW()",
     [String(resource.id), String(resource.status || "discovered"), resource]
-  );
+  ));
 }
