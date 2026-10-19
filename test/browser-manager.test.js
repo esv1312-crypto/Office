@@ -60,7 +60,10 @@ test("sensitive browser actions still require explicit approval", async () => {
 
     assert.equal(request.status, "waiting_approval");
     assert.equal(request.requiresApproval, true);
-    assert.ok(request.approvalToken);
+    assert.equal(request.approvalToken, undefined);
+    assert.equal(manager.status(request.id).approvalToken, undefined);
+    assert.equal(typeof manager.approve, "undefined");
+    assert.equal(typeof manager.approveAuthorized, "function");
   } finally {
     restoreEnv();
   }
