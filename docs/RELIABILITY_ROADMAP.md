@@ -50,6 +50,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
   - Deterministic unit tests now cover watchdog timeout boundaries, invalid timestamps, root/terminal exclusions, and duplicate-timeout suppression; full recovery/retry/root-completion integration tests remain open.
   - Root completion now has an explicit fail-closed gate: verifier status must be `PASS`, checks must be non-empty, and every check must have `passed === true`; unit tests cover absent, degraded, failed, empty, partial, malformed, and successful verification.
+  - Added a regression test asserting that the runtime calls independent verification, attempts recovery after a failed verification, and checks the persisted verifier record before the `completed` transition. Model Scout wiring is also tested, not only its helper.
 - [x] Reject passing verifier claims that contradict an identified task’s authoritative final state or claim all workers completed when any worker result remains unresolved; regression tests cover both cases.
 - [x] Document browser-request restart behavior: in-memory requests and one-time callback tokens are lost; never replay potentially side-effecting browser actions automatically after restart.
 - [x] Authenticate `.github/workflows/office-smoke.yml` and send the required `task` field to `/api/tasks`.
