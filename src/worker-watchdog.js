@@ -29,9 +29,11 @@ export async function runWorkerWatchdogPass({
 
     const parent = record.parentTaskId ? tasks.get(record.parentTaskId) : null;
     if (parent && ["waiting", "running"].includes(parent.status)) {
-      void Promise.resolve()
-        .then(() => recoverFailedWorker(parent, record))
-        .catch(onRecoveryError);
+      try {
+        void Promise.resolve(recoverFailedWorker(parent, record)).catch(onRecoveryError);
+      } catch (error) {
+        onRecoveryError(error);
+      }
     }
   }
 }
