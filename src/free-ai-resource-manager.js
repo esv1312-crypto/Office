@@ -65,7 +65,7 @@ export function inspectFreeProviders() {
 }
 
 export function chooseNextProvider(failedProvider) {
-  const order=(process.env.AI_PROVIDER_ORDER || "gemini,openrouter,cloudflare")
+  const order=(process.env.AI_PROVIDER_ORDER || "gemini,openrouter,cloudflare,apinex")
     .split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
   return order.find(id => id !== failedProvider && PROVIDERS.some(p=>p.id===id) && configured(PROVIDERS.find(p=>p.id===id))) || null;
 }
