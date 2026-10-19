@@ -498,8 +498,11 @@ async function preflightModel(provider, model, employee) {
     } else {
       throw new Error("Unsupported preflight provider: "+provider);
     }
-    const ok=String(result?.text||"").trim().length>0;
-    if(!ok) throw new Error("preflight empty response");
+    const responseText=String(result?.text||"").trim();
+    if(responseText !== "PREFLIGHT_OK") {
+      throw new Error(responseText ? "preflight returned unexpected response" : "preflight empty response");
+    }
+    const ok=true;
     const entry={ok:true,provider,model,role:employee?.role||null,latencyMs:Date.now()-started,expiresAt:Date.now()+PREFLIGHT_TTL_MS};
     preflightCache.set(key,entry);
     emit("model.preflight_passed",{employeeId:employee?.id||null,role:employee?.role||null,provider,model,latencyMs:entry.latencyMs,ttlMs:PREFLIGHT_TTL_MS});
