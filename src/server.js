@@ -261,9 +261,9 @@ async function callGemini(model, task, timeoutMs=null) {
   return {text, model};
 }
 
-async function generateWithGemini(task, preferredModel) {
-  const configured = (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash")
-    .split(",").map(x=>x.trim()).filter(Boolean);
+async function generateWithGemini(task, preferredModel, configuredOverride = null) {
+  const configured = (Array.isArray(configuredOverride) ? configuredOverride : (process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(","))
+    .map(x=>String(x).trim()).filter(Boolean);
   const models = [...new Set([preferredModel, ...configured].filter(Boolean))];
   let lastError;
   for (let modelIndex=0; modelIndex<models.length; modelIndex++) {
@@ -763,7 +763,7 @@ async function generateWithOpenAI(task, preferredModel) {
   return {text:response.output_text || "",model};
 }
 
-async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null, taskId = null, strictCandidate = false) {
+async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null, taskId = null, strictCandidate = false, overrides = {}) {
   const brain=approvedCandidate
     ? { ...resolveBrain(employee, task), provider:String(approvedCandidate.provider), model:String(approvedCandidate.model), candidates:[approvedCandidate] }
     : resolveBrain(employee, task);
@@ -794,7 +794,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly() && !paidTestEnabled(),backend:"local"});
     try {
       let result;
-      if(provider==="gemini") result=await generateWithGemini(task,model);
+      if(provider==="gemini") result=await generateWithGemini(task,model,overrides.geminiModels || null);
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model,!strictCandidate);
       else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate,!strictCandidate && toolSchemasForEmployee(employee).length>0,aiRequestTimeoutMs());
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
@@ -1886,21 +1886,21 @@ app.get("/api/smoke/fallback", async (req,res)=>{
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/fallback?run=1 creates one internal controlled provider-fallback test"});
   const before=events.length;
   const employee=getEmployee("analyst");
-  const originalOrder=providerOrder();
-  const originalGeminiModels=process.env.GEMINI_MODELS;
   try {
-    process.env.AI_PROVIDER_ORDER="gemini,huggingface";
-    process.env.GEMINI_MODELS="definitely-nonexistent-ai-office-test-model";
-    const result=await generateViaLocalGateway("INTERNAL READ-ONLY FALLBACK TEST. Return exactly: FALLBACK_OK",employee,["gemini","huggingface"]);
+    const result=await generateViaLocalGateway(
+      "INTERNAL READ-ONLY FALLBACK TEST. Return exactly: FALLBACK_OK",
+      employee,
+      ["gemini","huggingface"],
+      null,
+      null,
+      false,
+      {geminiModels:["definitely-nonexistent-ai-office-test-model"]}
+    );
     const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
     return res.json({ok:true,test:"provider_fallback",readOnly:true,result:{model:result.model,text:result.text},trace,expected:["gemini failure","gateway.fallback to huggingface","huggingface success"],observed:{geminiFailure:trace.some(e=>e.type==="ai.error"&&e.provider==="gemini"),providerFallback:trace.some(e=>e.type==="gateway.fallback"&&e.from==="gemini"&&e.to==="huggingface"),huggingfaceSuccess:trace.some(e=>e.type==="gateway.model_success"&&e.provider==="huggingface")}});
   } catch(error) {
     const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
     return res.status(503).json({ok:false,test:"provider_fallback",readOnly:true,error:error?.message||String(error),trace});
-  } finally {
-    process.env.AI_PROVIDER_ORDER=originalOrder.join(",");
-    if(originalGeminiModels === undefined) delete process.env.GEMINI_MODELS;
-    else process.env.GEMINI_MODELS=originalGeminiModels;
   }
 });
 
