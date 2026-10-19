@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, TASK_STATES } from "../src/task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, TASK_STATES } from "../src/task-state.js";
 
 test("task state policy contains the expected lifecycle states", () => {
   assert.deepEqual([...TASK_STATES], ["accepted", "planning", "running", "waiting", "completed", "failed", "cancelled"]);
@@ -97,4 +97,24 @@ test("terminal tasks are not rewritten during restart normalization", () => {
   assert.equal(changed, false);
   assert.equal(record.status, "completed");
   assert.equal(record.completedAt, "2026-10-18T12:00:00.000Z");
+});
+
+
+test("subtask batch validation is atomic and rejects empty or malformed batches before creation", () => {
+  assert.deepEqual(validateSubtaskBatch([{task:"first"},{task:"second"}]), {
+    ok:true,
+    items:[{task:"first"},{task:"second"}]
+  });
+  assert.deepEqual(validateSubtaskBatch([{task:"first"},{task:"   "}]), {
+    ok:false,
+    error:"each subtask requires task"
+  });
+  assert.deepEqual(validateSubtaskBatch([]), {
+    ok:false,
+    error:"at least one subtask is required"
+  });
+  assert.deepEqual(validateSubtaskBatch(undefined, {task:"  single task  "}), {
+    ok:true,
+    items:[{task:"single task"}]
+  });
 });
