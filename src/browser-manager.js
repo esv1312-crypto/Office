@@ -8,6 +8,7 @@ export function createBrowserManager({emit}) {
   const webhookToken=()=>String(process.env.BROWSER_WEBHOOK_SECRET || "").trim();
   const enabled=()=>String(process.env.BROWSER_AUTOMATION_ENABLED || "false").toLowerCase()==="true";
   const publicUrl=()=>String(process.env.OFFICE_PUBLIC_URL || "https://ai-office-runtime-8pir.onrender.com").replace(/\/+$/,"");
+  const auditUrl=(raw)=>{ try { return new URL(String(raw||"")).origin; } catch (_) { return "[invalid-url]"; } };
 
   async function call(path,body){
     if(!key()) throw Object.assign(new Error("browser backend is not configured"),{code:"BROWSER_NOT_CONFIGURED"});
@@ -32,7 +33,7 @@ export function createBrowserManager({emit}) {
       const callback=publicUrl()+"/api/browser/webhook?token="+encodeURIComponent(webhookToken());
       const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:callback});
       r.runId=d?.run_id || d?.runId || null;
-      emit("browser.started",{requestId:r.id,runId:r.runId,url:r.url});
+      emit("browser.started",{requestId:r.id,runId:r.runId,url:auditUrl(r.url)});
     }catch(e){
       r.status="failed"; r.error=e?.message||String(e); r.completedAt=new Date().toISOString();
       emit("browser.failed",{requestId:r.id,error:r.error});
@@ -48,9 +49,9 @@ export function createBrowserManager({emit}) {
     const needs=SENSITIVE_ACTIONS.has(action);
     const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,result:null,error:null};
     requests.set(r.id,r);
-    emit("browser.requested",{requestId:r.id,taskId,url,goal,actionClass:action,requiresApproval:needs,status:r.status});
-    if(needs){ emit("approval.requested",{requestId:r.id,taskId,url,goal,actionClass:action,approvalRequired:true}); return pub(r); }
-    emit("browser.queued",{requestId:r.id,taskId,url,goal,actionClass:action});
+    emit("browser.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,requiresApproval:needs,status:r.status});
+    if(needs){ emit("approval.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,approvalRequired:true}); return pub(r); }
+    emit("browser.queued",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action});
     // Never leave a request queued forever when execution is disabled or credentials are missing.
     return start(r);
   }
