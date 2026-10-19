@@ -129,3 +129,15 @@ test("planned subtasks and recovery workers are persisted before execution", asy
   const rootRecovery = server.slice(rootRecoveryStart, rootRecoveryEnd);
   assert.match(rootRecovery, /await transitionTask\(fixTask,"waiting",\{waitingReason:"ai_not_configured"\}\)/);
 });
+
+
+test("provider fallback smoke test does not mutate process-wide model configuration", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf('app.get("/api/smoke/fallback"');
+  const end = server.indexOf('app.get("/api/smoke/recovery"', start);
+  const route = server.slice(start, end);
+  assert.doesNotMatch(route, /process\.env\.(AI_PROVIDER_ORDER|GEMINI_MODELS)\s*=/);
+  assert.match(route, /geminiModels:\["definitely-nonexistent-ai-office-test-model"\]/);
+  assert.match(server, /async function generateWithGemini\(task, preferredModel, configuredOverride = null\)/);
+  assert.match(server, /generateWithGemini\(task,model,overrides\.geminiModels \|\| null\)/);
+});
