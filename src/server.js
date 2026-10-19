@@ -857,8 +857,18 @@ const TOOL_REGISTRY = {
       const path = String(args.path || "").trim();
       const content = String(args.content ?? "");
       const message = String(args.message || "AI-OFFICE: update file");
-      const branch = String(args.branch || process.env.GITHUB_BRANCH || "main");
+      const configuredBranch = String(process.env.GITHUB_BRANCH || "").trim();
+      const requestedBranch = String(args.branch || "").trim();
+      const protectedBranches = new Set(String(process.env.GITHUB_PROTECTED_BRANCHES || "main,master,production").split(",").map(value => value.trim()).filter(Boolean));
       if (!path) throw new Error("github.write_file requires path");
+      if (!configuredBranch) throw Object.assign(new Error("GITHUB_BRANCH must be configured to a dedicated working branch"), {code:"TOOL_NOT_CONFIGURED"});
+      if (requestedBranch && requestedBranch !== configuredBranch) throw Object.assign(new Error("GitHub writes are restricted to the configured GITHUB_BRANCH"), {code:"TOOL_POLICY_DENIED"});
+      if (protectedBranches.has(configuredBranch) && String(process.env.GITHUB_ALLOW_PROTECTED_BRANCH_WRITES || "false").toLowerCase() !== "true") {
+        throw Object.assign(new Error("Writes to protected branches are disabled by policy"), {code:"TOOL_POLICY_DENIED"});
+      }
+      if (path.startsWith("/") || path.split("/").some(segment => segment === "." || segment === "..") || /[?#\\r\\n]/.test(path)) {
+        throw Object.assign(new Error("github.write_file path is invalid"), {code:"TOOL_POLICY_DENIED"});
+      }
 
       const base = "https://api.github.com/repos/" + process.env.GITHUB_REPOSITORY + "/contents/" + path;
       const headers = {
