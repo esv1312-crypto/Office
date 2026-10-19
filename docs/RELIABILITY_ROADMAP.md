@@ -35,7 +35,8 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Database writes are serialized and drained when the process shuts down gracefully.
 - [x] Refuse startup when `DATABASE_URL` is configured but PostgreSQL initialization fails, instead of silently running without persistence.
 - [x] Persist root-task acceptance before returning HTTP 202; return HTTP 503 if the initial snapshot cannot be stored.
-- [x] Persist subtask batches transactionally before starting workers; roll back the batch and reject acceptance if persistence fails.
+- [x] Persist API-created and internally planned subtask batches transactionally before starting workers; roll back the batch and reject acceptance if persistence fails.
+- [x] Persist replacement workers and root-recovery tasks before execution, including the recovery task’s parent link.
 - [x] CI syntax checks cover runtime, test, and script files; `npm test` runs syntax checks before unit tests.
 - [x] Protected audit/control routes now accept audit credentials through headers rather than query strings; the one-time browser callback token remains supported because the browser provider receives a callback URL and the token is per-request.
 - [x] The manual `office-live-test.yml` workflow now requires `secrets.OFFICE_AUDIT_TOKEN` and sends it in `x-ai-office-audit-token`; a unit test guards this contract.
