@@ -5,7 +5,6 @@ export function createBrowserManager({emit}) {
   const requests=new Map();
   const freeOnly=()=>String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
   const key=()=>process.env["TINY"+"FISH_API_KEY"];
-  const webhookToken=()=>String(process.env.BROWSER_WEBHOOK_SECRET || "").trim();
   const enabled=()=>String(process.env.BROWSER_AUTOMATION_ENABLED || "false").toLowerCase()==="true";
   const publicUrl=()=>String(process.env.OFFICE_PUBLIC_URL || "https://ai-office-runtime-8pir.onrender.com").replace(/\/+$/,"");
   const auditUrl=(raw)=>{ try { return new URL(String(raw||"")).origin; } catch (_) { return "[invalid-url]"; } };
@@ -22,15 +21,14 @@ export function createBrowserManager({emit}) {
     return d;
   }
 
-  function pub(r){ return {...r}; }
+  function pub(r){ const {webhookToken,...safe}=r; return {...safe}; }
 
   async function start(r){
     if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
     if(!key()){ r.status="blocked"; r.error="Browser backend is not configured"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
-    if(!webhookToken()){ r.status="blocked"; r.error="Browser webhook authentication is not configured"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
     r.status="running"; r.startedAt=new Date().toISOString();
     try{
-      const callback=publicUrl()+"/api/browser/webhook?token="+encodeURIComponent(webhookToken());
+      const callback=publicUrl()+"/api/browser/webhook?token="+encodeURIComponent(r.webhookToken);
       const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:callback});
       r.runId=d?.run_id || d?.runId || null;
       emit("browser.started",{requestId:r.id,runId:r.runId,url:auditUrl(r.url)});
@@ -47,7 +45,7 @@ export function createBrowserManager({emit}) {
     if(!SAFE_ACTIONS.has(action)&&!SENSITIVE_ACTIONS.has(action)) throw Object.assign(new Error("unsupported browser action"),{code:"BROWSER_POLICY_DENIED"});
     if(freeOnly() && /billing|purchase|upgrade|paid/i.test(goal+" "+action)) throw Object.assign(new Error("paid browser action blocked by FREE_ONLY policy"),{code:"BROWSER_POLICY_DENIED"});
     const needs=SENSITIVE_ACTIONS.has(action);
-    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,result:null,error:null};
+    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,webhookToken:crypto.randomUUID(),result:null,error:null};
     requests.set(r.id,r);
     emit("browser.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,requiresApproval:needs,status:r.status});
     if(needs){ emit("approval.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,approvalRequired:true}); return pub(r); }
@@ -65,16 +63,20 @@ export function createBrowserManager({emit}) {
     return start(r);
   }
 
-  function webhook(payload={}){
+  function webhook(payload={}, suppliedToken=""){
+    const token=String(suppliedToken||"");
+    const r=[...requests.values()].find(x=>x.webhookToken && x.webhookToken===token);
+    if(!r) return {matched:false,authenticated:false};
     const runId=String(payload.run_id||payload.data?.run_id||"");
-    const r=[...requests.values()].find(x=>x.runId===runId);
-    if(!r) return {matched:false};
+    if(!runId || (r.runId && r.runId!==runId)) return {matched:false,authenticated:false};
+    r.runId=runId;
+    r.webhookToken=null;
     r.status=String(payload.status||payload.data?.status||"UNKNOWN").toLowerCase();
     r.completedAt=new Date().toISOString();
     r.result=payload.data?.result??payload.result??null;
     r.error=payload.data?.error?.message||payload.error?.message||null;
     emit("browser.completed",{requestId:r.id,runId,status:r.status,error:r.error});
-    return {matched:true,requestId:r.id,status:r.status};
+    return {matched:true,authenticated:true,requestId:r.id,status:r.status};
   }
 
   function status(id){ const r=requests.get(id); return r?pub(r):null; }
@@ -83,7 +85,7 @@ export function createBrowserManager({emit}) {
     const a=[...requests.values()];
     return {
       manager:"browser-manager",
-      enabled:Boolean(enabled() && key() && webhookToken()),
+      enabled:Boolean(enabled() && key()),
       managerLoaded:true,
       backendConfigured:Boolean(key()),
       backend:key()?"tinyfish":"external-browser-bridge",
@@ -95,7 +97,7 @@ export function createBrowserManager({emit}) {
       active:a.filter(x=>x.status==="running").length,
       completed:a.filter(x=>x.status==="completed").length,
       failed:a.filter(x=>x.status==="failed"||x.status==="blocked").length,
-      nextAction:!key()?"Configure browser backend credentials":!webhookToken()?"Configure BROWSER_WEBHOOK_SECRET":!enabled()?"Enable browser automation only after confirming spending policy":"Browser execution is live"
+      nextAction:!key()?"Configure browser backend credentials":!enabled()?"Enable browser automation only after confirming spending policy":"Browser execution is live"
     };
   }
   return {request,approveAuthorized,status,summary,webhook};
