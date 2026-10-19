@@ -1863,7 +1863,7 @@ app.get("/api/smoke/recovery", async (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
   const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
-  if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/recovery?run=1&token=..."});
+  if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/recovery?run=1 (send x-ai-office-audit-token header)"});
   const root=createTaskRecord({task:"INTERNAL READ-ONLY RECOVERY TEST. Produce a short evidence-rich confirmation that the recovery worker can replace a failed worker and return a usable result.",employeeId:"chief",kind:"root"});
   root.status="failed"; root.error="INTERNAL_RECOVERY_SMOKE_FAILURE"; root.verification={status:"FAIL",checks:[{name:"forced smoke failure",passed:false,evidence:"runtime forced failure",classification:"FACT",source:"runtime event",locator:"smoke/recovery"}],summary:"forced recovery smoke failure"};
   tasks.set(root.id,root);
@@ -1991,7 +1991,7 @@ app.get("/api/office-check", async (req,res)=>{
   const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   const internal=String(req.headers["x-ai-office-internal"] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
   if((!expected || supplied !== expected) && !internal) return res.status(401).json({ok:false,error:"audit token required"});
-  if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1&token=..."});
+  if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1 (send x-ai-office-audit-token header)"});
   try{
     const record=await startOfficeAudit();
     res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true,filesAudited:4});
