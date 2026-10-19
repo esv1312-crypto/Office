@@ -1577,7 +1577,7 @@ async function executeRootTask(record) {
   }
 }
 
-app.get("/api/backend/health", (_req,res)=>res.json({ok:true,mode:process.env.OFFICE_MODE||"office",aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),freeOnly:freeOnly()}));
+app.get("/api/backend/health", (_req,res)=>res.json({ok:true,service:"ai-office-runtime",mode:process.env.OFFICE_MODE||"office"}));
 
 app.post("/api/backend/generate", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1589,20 +1589,9 @@ app.post("/api/backend/generate", async (req,res)=>{
   catch(error) { res.status(503).json({ok:false,error:error?.message||String(error),code:error?.code||null}); }
 });
 
-app.get("/", (_req,res)=>res.json({
-  service:"ai-office-runtime",status:"online",provider:aiProvider(),
-  mode:employees().length ? "office" : "control-plane",startedAt,tasks:tasks.size,events:events.length,
-  employees:employees().length
-}));
+app.get("/", (_req,res)=>res.json({service:"ai-office-runtime",status:"online"}));
 
-app.get("/health", (_req,res)=>res.json({
-  ok:true,service:"ai-office-runtime",provider:aiProvider(),providerOrder:providerOrder(),freeOnly:freeOnly(),
-  aiConfigured:providerOrder().some(aiConfigured) || aiConfigured("huggingface"),startedAt,
-  employees:employees().length,
-  tools:Object.keys(TOOL_REGISTRY).length,
-  githubToolsEnabled:process.env.GITHUB_TOOLS_ENABLED === "true",
-  browser:browser.summary()
-}));
+app.get("/health", (_req,res)=>res.json({ok:true,service:"ai-office-runtime",status:"online",startedAt}));
 
 app.get("/api/employees", (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
