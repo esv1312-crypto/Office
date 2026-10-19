@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { isZeroPrice, isUsableFreeModel, resolveProviderDiscovery } from "../src/model-scout.js";
 
 test("explicit zero input and output pricing is free", () => {
@@ -69,4 +70,12 @@ test("provider discovery failure preserves the last successful model snapshot", 
   assert.equal(succeeded.ok, true);
   assert.deepEqual(succeeded.models, []);
   assert.equal(succeeded.error, null);
+});
+
+
+test("Model Scout routes provider refreshes through the last-good-snapshot policy", async () => {
+  const source = await readFile(new URL("../src/model-scout.js", import.meta.url), "utf8");
+  assert.match(source, /const outcome=resolveProviderDiscovery\(state\.providers\[provider\],result\)/);
+  assert.match(source, /if\(!outcome\.ok\)\{[\s\S]*?state\.errors\.push\(provider\+": "\+outcome\.error\);[\s\S]*?continue;/);
+  assert.match(source, /const seen=new Set\(models\.map\(x=>x\.routeModel \|\| x\.id\)\)/);
 });
