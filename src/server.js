@@ -720,7 +720,9 @@ async function generateWithCloudflare(task, preferredModel, timeoutMs=null) {
 }
 
 async function generateWithOpenAI(task, preferredModel) {
-  const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY});
+  const configuredTimeout=Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000);
+  const timeout=Number.isFinite(configuredTimeout)?Math.max(5000,configuredTimeout):30000;
+  const client=new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout});
   const model=preferredModel || process.env.OPENAI_MODEL || "gpt-6-luna";
   emit("ai.start",{provider:"openai",model});
   const response=await client.responses.create({
@@ -769,6 +771,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       else if(provider==="apinex") result=await generateWithApinex(task,employee,model,taskId);
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
       else throw new Error("Unsupported AI provider: "+provider);
+      if(!String(result?.text || "").trim()) throw Object.assign(new Error(provider+" returned an empty response"),{code:"EMPTY_RESPONSE"});
       emit("gateway.success",{employeeId:employee.id,provider,model:result.model,freeOnly:freeOnly() && !paidTestEnabled(),paidTest:paidTestEnabled(),backend:"local"});
       return result;
     } catch(error) {
