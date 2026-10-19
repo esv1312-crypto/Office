@@ -1566,6 +1566,7 @@ app.get("/api/tools", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; 
     configured:(tool.requiresEnv || []).every(x => Boolean(process.env[x])),
     enabled:name !== "github.write_file" || process.env.GITHUB_TOOLS_ENABLED === "true"
   }))
+  });
 });
 
 app.post("/api/tools/execute", async (req,res)=>{
@@ -1591,6 +1592,7 @@ app.post("/api/tools/execute", async (req,res)=>{
 app.get("/api/browser", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
   ok:true,
   ...browser.summary()
+  });
 });
 
 app.post("/api/browser/request", async (req,res)=>{
@@ -1649,9 +1651,10 @@ app.get("/api/resource-manager", (req,res)=>{ if(!requireInternalOrAudit(req,res
   policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},
   ...inspectFreeProviders(),
   gatewayOrder:[...new Set([...providerOrder(),"huggingface"])]
+  });
 });
 
-app.get("/api/model-scout", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({ok:true,...getModelScoutState()});
+app.get("/api/model-scout", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({ok:true,...getModelScoutState()}); });
 
 app.post("/api/model-scout/refresh", async (_req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1666,6 +1669,7 @@ app.get("/api/model-pools", (req,res)=>{ if(!requireInternalOrAudit(req,res)) re
   rotation:"round_robin_per_role",
   pools:Object.fromEntries(employees().map(e=>[e.id,openRouterPool(e)])),
   scout:getModelScoutState()
+  });
 });
 
 app.get("/api/env-diagnostic", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
@@ -1685,6 +1689,7 @@ app.get("/api/env-diagnostic", (req,res)=>{ if(!requireInternalOrAudit(req,res))
     gemini:aiConfigured("gemini"),
     cloudflare:aiConfigured("cloudflare")
   }
+  });
 });
 
 app.get("/api/gateway", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
@@ -1698,6 +1703,7 @@ app.get("/api/gateway", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return
     cloudflare:{configured:aiConfigured("cloudflare"),models:[process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct"]},
     openai:{configured:aiConfigured("openai"),blockedByFreeOnly:freeOnly(),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
   }
+  });
 });
 
 app.get("/api/smoke/fallback", async (req,res)=>{
