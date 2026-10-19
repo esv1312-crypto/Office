@@ -259,3 +259,17 @@ test("manual smoke workflow authenticates protected runtime requests without pri
   assert.match(workflow, /x-ai-office-audit-token: \$OFFICE_AUDIT_TOKEN/);
   assert.doesNotMatch(workflow, /echo\s+.*(?:\$OFFICE_AUDIT_TOKEN|\$\{OFFICE_AUDIT_TOKEN\})/);
 });
+
+test("event identifiers remain monotonic when history is capped and restored", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const emitStart = source.indexOf("function emit(");
+  const paidStart = source.indexOf("\nfunction paidTestEnabled", emitStart);
+  const bootstrapStart = source.indexOf("async function bootstrapDatabase");
+  const emit = source.slice(emitStart, paidStart);
+  const bootstrap = source.slice(bootstrapStart);
+
+  assert.match(source, /let nextEventId = 1/);
+  assert.match(emit, /id: nextEventId\+\+/);
+  assert.match(bootstrap, /nextEventId=Math\.max\(0,\.\.\.events\.map\(event=>Number\(event\.id\)\|\|0\)\)\+1/);
+  assert.doesNotMatch(source, /id:\s*events\.length\s*\+\s*1/);
+});
