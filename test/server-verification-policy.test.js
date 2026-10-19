@@ -310,7 +310,8 @@ test("independent verifier excludes planner, synthesis, and worker models", asyn
   assert.match(ready, /options\.excludeModels/);
   assert.match(ready, /!excludedModels\.has\(x\.model\)/);
   assert.match(verify, /new Set\(\[record\.model,record\.plannerModel,\.\.\.relatedTasks\.map\(task=>task\.model\)\]/);
-  assert.match(verify, /ensureEmployeeReady\(verifier,record\.task,\{excludeModels\}\)/);
+  assert.match(verify, /ensureEmployeeReady\(verifier,record\.task,\{excludeModels:excludedModels\}\)/);
+  assert.match(ready, /staticRoleFallbacks\.map\(model=>\(\{provider:"openrouter",model\}\)\)/);
   assert.match(verify, /\{strictCandidate:true\}/);
 });
 
