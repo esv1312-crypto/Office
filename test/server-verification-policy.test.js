@@ -34,7 +34,7 @@ test("remote backend calls forward the audit token in a header, never in the URL
   assert.notEqual(end, -1, "gateway function boundary must exist");
   const gateway = source.slice(start, end);
 
-  assert.match(gateway, /backendHeaders\["x-ai-office-audit-token"\]\s*=\s*auditToken/);
+  assert.match(gateway, /"x-ai-office-audit-token":auditToken/);
   assert.match(gateway, /fetch\(base\s*\+\s*["']\/api\/backend\/generate["']/);
   assert.match(gateway, /headers:\s*backendHeaders/);
   assert.doesNotMatch(gateway, /[?&]token=\$\{?auditToken/);
