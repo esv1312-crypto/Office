@@ -63,6 +63,8 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Add bounded catalog fetches so a stalled source cannot hold Model Scout refresh indefinitely.
 - [x] Add a PostgreSQL-backed registry for known catalog sources with availability, HTTP status, last-check time, and safe metadata.
 - [ ] Persist per-model preflight outcomes in Model Scout state and make qualification stages visible through diagnostics.
+- [x] Preserve each provider's last successful Model Scout snapshot when catalog discovery fails transiently; a successful empty catalog still correctly removes missing models.
+  - Unit coverage checks rate-limit/error preservation versus a successful empty response.
 - [ ] Add repeatable role-specific benchmarks for reasoning, code, structured output, tool calling, long context, and verifier behavior.
 - [ ] Track latency, empty responses, errors, rate limits, and last successful probe per model in the scout registry.
 - [ ] Complete APINEX account quota, terms, privacy, and successful real-request verification before enabling it as a default route.
