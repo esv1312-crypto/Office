@@ -16,11 +16,15 @@ const state = {
   errors:[]
 };
 
-function isZeroPrice(pricing){
-  if (!pricing) return false;
+export function isZeroPrice(pricing){
+  if (!pricing || typeof pricing !== "object") return false;
   const input = pricing.input ?? pricing.prompt;
   const output = pricing.output ?? pricing.completion;
-  return Number(input) === 0 && Number(output) === 0;
+  if (input === undefined || input === null || output === undefined || output === null) return false;
+  const inputPrice = Number(input);
+  const outputPrice = Number(output);
+  return Number.isFinite(inputPrice) && Number.isFinite(outputPrice)
+    && inputPrice === 0 && outputPrice === 0;
 }
 function isFreeModelId(id=""){
   return String(id).endsWith(":free");
@@ -33,7 +37,7 @@ function isExpired(model){
   return Number.isFinite(ts) && ts <= Date.now();
 }
 
-function isUsableFreeModel(model){
+export function isUsableFreeModel(model){
   if (!model?.id || isExpired(model)) return false;
   return isZeroPrice(model?.pricing) || isFreeModelId(model.id);
 }
