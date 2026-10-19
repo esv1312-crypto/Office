@@ -523,8 +523,10 @@ async function ensureEmployeeReady(employee, task) {
   const brain=resolveBrain(employee,task);
   const candidates=[{provider:brain.provider,model:brain.model},...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))];
   const unique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
-  for(const candidate of unique.slice(0,4)){
-    if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
+  const candidatesToProbe=unique
+    .filter(candidate=>!isProviderSuppressed(candidate.provider) && !isProviderModelSuppressed(candidate.provider,candidate.model))
+    .slice(0,4);
+  for(const candidate of candidatesToProbe){
     const check=await preflightModel(candidate.provider,candidate.model,employee);
     if(check.ok) {
       emit("model.preflight_selected",{employeeId:employee.id,role:employee.role,provider:candidate.provider,model:candidate.model});
