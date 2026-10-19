@@ -67,3 +67,15 @@ test("subtask batches are persisted atomically before workers start", async () =
   assert.ok(route.indexOf("await saveTaskSnapshots") < route.indexOf("void executeWorkerTask(record)"));
   assert.match(route, /status\(503\).*subtasks could not be durably accepted/);
 });
+
+
+test("critical task lifecycle transitions await snapshot persistence", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(server, /async function transitionTask\(record, nextStatus, extra = \{\}\)/);
+  assert.match(server, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
+  assert.match(server, /async function runWorkerWatchdog\(\)/);
+  assert.match(server, /setInterval\(\(\)=>void runWorkerWatchdog\(\)\.catch/);
+  const calls = server.split("\\n").filter(line => line.includes("transitionTask(") && !line.includes("function transitionTask("));
+  assert.ok(calls.length >= 17, "expected lifecycle transition call sites to be covered");
+  assert.ok(calls.every(line => line.includes("await transitionTask(")), "every lifecycle transition must await persistence");
+});
