@@ -19,3 +19,26 @@ export function assertTaskTransitionAllowed(currentStatus, nextStatus) {
   }
   return true;
 }
+
+export function normalizeTaskSnapshotAfterRestart(snapshot, now = new Date().toISOString()) {
+  const record = { ...snapshot };
+  delete record.children;
+
+  if (record.status === "planning" || record.status === "running") {
+    record.status = "failed";
+    record.error = "SERVICE_RESTART_INTERRUPTED";
+    record.failedAt = now;
+    record.startedAt = null;
+    record.completedAt = null;
+    record.restartInterrupted = true;
+    return { record, changed: true };
+  }
+
+  if (record.status === "waiting") {
+    record.startedAt = null;
+    record.waitingReason = record.waitingReason || "service_restart";
+    return { record, changed: true };
+  }
+
+  return { record, changed: false };
+}
