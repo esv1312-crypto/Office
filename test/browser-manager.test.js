@@ -101,3 +101,26 @@ test("browser request is blocked when webhook authentication is not configured",
     restoreEnv();
   }
 });
+
+test("browser audit events redact URL query strings and task goals", async () => {
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "false";
+    process.env.TINYFISH_API_KEY = "test-key";
+    const events = [];
+    const manager = createBrowserManager({ emit: (type, data) => events.push({ type, ...data }) });
+    await manager.request({
+      url: "https://example.com/private/path?token=secret-value",
+      goal: "Use secret-value to inspect the page",
+      actionClass: "research"
+    });
+
+    const requested = events.find(event => event.type === "browser.requested");
+    assert.equal(requested.url, "https://example.com");
+    assert.equal(requested.goal, "[redacted]");
+    assert.equal(requested.goalLength, "Use secret-value to inspect the page".length);
+    assert.equal(JSON.stringify(events).includes("secret-value"), false);
+    assert.equal(JSON.stringify(events).includes("/private/path"), false);
+  } finally {
+    restoreEnv();
+  }
+});
