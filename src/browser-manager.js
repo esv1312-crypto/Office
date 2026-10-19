@@ -20,7 +20,7 @@ export function createBrowserManager({emit}) {
     return d;
   }
 
-  function pub(r){ const {approvalToken, ...safe}=r; return safe; }
+  function pub(r){ return {...r}; }
 
   async function start(r){
     if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
