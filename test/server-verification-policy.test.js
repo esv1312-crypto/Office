@@ -25,3 +25,17 @@ test("root recovery replaces the stale result before independent retesting", asy
   assert.match(recovery, /record\.model=fixTask\.model \|\| record\.model/);
   assert.match(recovery, /if\s*\(!recoveredResult\)/);
 });
+
+test("remote backend calls forward the audit token in a header, never in the URL", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("function generateViaGateway");
+  const end = source.indexOf("\nconst TOOL_REGISTRY", start);
+  assert.notEqual(start, -1, "generateViaGateway must exist");
+  assert.notEqual(end, -1, "gateway function boundary must exist");
+  const gateway = source.slice(start, end);
+
+  assert.match(gateway, /backendHeaders\["x-ai-office-audit-token"\]\s*=\s*auditToken/);
+  assert.match(gateway, /fetch\(base\s*\+\s*["']\/api\/backend\/generate["']/);
+  assert.match(gateway, /headers:\s*backendHeaders/);
+  assert.doesNotMatch(gateway, /[?&]token=\$\{?auditToken/);
+});
