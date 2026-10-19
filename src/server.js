@@ -603,8 +603,8 @@ function openRouterPool(employee, preferredModel = null) {
   return result.length ? result : ["openrouter/free"];
 }
 
-async function generateWithOpenRouter(task, employee, preferredModel, taskId=null) {
-  const pool=openRouterPool(employee, preferredModel);
+async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true) {
+  const pool=allowModelFallback ? openRouterPool(employee, preferredModel) : [String(preferredModel||"")].filter(Boolean);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
   const ordered=pool.map((_,i)=>pool[(cursor+i)%pool.length]);
@@ -671,13 +671,13 @@ function normalizeHuggingFaceModel(model) {
   return value.replace(/:(together|groq|sambanova|cerebras|nebius|fireworks|novita|hf-inference)$/i,"");
 }
 
-async function generateWithHuggingFace(task, employee, preferredModel) {
+async function generateWithHuggingFace(task, employee, preferredModel, allowModelFallback=true) {
   const token=String(process.env.HUGGINGFACE_API_KEY || "").trim();
   if(!token) throw Object.assign(new Error("Hugging Face API key is not configured"),{code:"HF_NOT_CONFIGURED"});
   const dynamic=getDynamicPool(employee,"huggingface").filter(model => model.includes("/"));
   const configured=(process.env.HUGGINGFACE_MODELS || "").split(",").map(x=>x.trim()).filter(Boolean);
   const safePreferred = preferredModel && !String(preferredModel).includes(":free") && String(preferredModel).includes("/") ? normalizeHuggingFaceModel(preferredModel) : null;
-  const pool=[safePreferred,...dynamic,...configured].filter(Boolean);
+  const pool=allowModelFallback ? [safePreferred,...dynamic,...configured].filter(Boolean) : [safePreferred].filter(Boolean);
   const models=[...new Set(pool)];
   if(!models.length) throw new Error("No free Hugging Face model is available from Model Scout");
   let lastError;
@@ -745,25 +745,27 @@ async function generateWithOpenAI(task, preferredModel) {
   return {text:response.output_text || "",model};
 }
 
-async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null, taskId = null) {
+async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null, taskId = null, strictCandidate = false) {
   const brain=approvedCandidate
     ? { ...resolveBrain(employee, task), provider:String(approvedCandidate.provider), model:String(approvedCandidate.model), candidates:[approvedCandidate] }
     : resolveBrain(employee, task);
-  const providers=paidTestEnabled()
-    ? ["openrouter"].filter(p=>aiConfigured(p))
-    : Array.isArray(forcedProvider)
-      ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
-      : forcedProvider
-        ? [...new Set([String(forcedProvider).toLowerCase(), ...gatewayProviders(brain.provider)])].filter(p=>aiConfigured(p))
-        : gatewayProviders(brain.provider);
+  const providers=strictCandidate && approvedCandidate
+    ? [String(approvedCandidate.provider).toLowerCase()].filter(p=>aiConfigured(p))
+    : paidTestEnabled()
+      ? ["openrouter"].filter(p=>aiConfigured(p))
+      : Array.isArray(forcedProvider)
+        ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
+        : forcedProvider
+          ? [...new Set([String(forcedProvider).toLowerCase(), ...gatewayProviders(brain.provider)])].filter(p=>aiConfigured(p))
+          : gatewayProviders(brain.provider);
   if(!providers.length) throw Object.assign(new Error("No configured AI provider is available in FREE_ONLY="+freeOnly()),{code:"AI_NOT_CONFIGURED"});
   let lastError;
   for(const provider of providers) {
     const sameAsApproved = approvedCandidate && String(approvedCandidate.provider).toLowerCase()===provider;
     const model=provider==="gemini"
-      ? null
+      ? (sameAsApproved ? String(approvedCandidate.model) : null)
       : provider==="huggingface"
-        ? null
+        ? (sameAsApproved ? String(approvedCandidate.model) : null)
         : provider==="openrouter"
           ? (sameAsApproved ? String(approvedCandidate.model) : openRouterModel())
           : provider==="cloudflare"
@@ -775,8 +777,8 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
     try {
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
-      else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model);
-      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId);
+      else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model,!strictCandidate);
+      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate);
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="apinex") {
         const preflight=await preflightModel(provider,model,employee);
@@ -799,14 +801,15 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
   throw lastError || new Error("All configured AI providers failed");
 }
 
-async function generateViaGateway(task, employee, approvedCandidate = null, taskId = null) {
+async function generateViaGateway(task, employee, approvedCandidate = null, taskId = null, options = {}) {
+  const strictCandidate=options.strictCandidate===true;
   const backendUrls=String(process.env.BACKEND_RUNTIME_URLS || "").split(",").map(x=>x.trim().replace(/\/$/,"")).filter(Boolean);
   // Remote backends are only contacted when a service-to-service audit token is configured.
   const auditToken=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  if(backendUrls.length && process.env.OFFICE_MODE !== "backend" && !auditToken) {
+  if(!strictCandidate && backendUrls.length && process.env.OFFICE_MODE !== "backend" && !auditToken) {
     emit("backend.skipped",{reason:"OFFICE_AUDIT_TOKEN is not configured",backendCount:backendUrls.length});
   }
-  if(backendUrls.length && process.env.OFFICE_MODE !== "backend" && auditToken) {
+  if(!strictCandidate && backendUrls.length && process.env.OFFICE_MODE !== "backend" && auditToken) {
     for(const base of backendUrls) {
       let timeout=null;
       try {
@@ -829,7 +832,7 @@ async function generateViaGateway(task, employee, approvedCandidate = null, task
       }
     }
   }
-  return generateViaLocalGateway(task,employee,null,approvedCandidate,taskId);
+  return generateViaLocalGateway(task,employee,strictCandidate && approvedCandidate ? approvedCandidate.provider : null,approvedCandidate,taskId,strictCandidate);
 }
 
 const TOOL_REGISTRY = {
@@ -1223,7 +1226,7 @@ async function verifyRootTask(record) {
     workerResults:record.workerResults,
     eventEvidence,
     finalResult:String(record.result || "").slice(0,20000)
-  }),verifier,verifierCandidate,record.id);
+  }),verifier,verifierCandidate,record.id,{strictCandidate:true});
   let verification=parseVerificationJson(result.text);
   if(!verification || !["PASS","FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
     emit("verification.retry",{taskId:record.id,employeeId:verifier.id,reason:"invalid verifier JSON"});
@@ -1236,7 +1239,8 @@ async function verifyRootTask(record) {
       JSON.stringify(checklist) + " Candidate final answer: " + String(record.result || "").slice(0,20000) + " Worker results: " + JSON.stringify(record.workerResults) + " Runtime evidence: " + JSON.stringify(compactEvidence),
       verifier,
       verifierCandidate,
-      record.id
+      record.id,
+      {strictCandidate:true}
     );
     verification=parseVerificationJson(result.text);
   }
