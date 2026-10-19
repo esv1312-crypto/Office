@@ -149,13 +149,13 @@ test("provider fallback smoke test does not mutate process-wide model configurat
 
 test("watchdog runtime delegates atomic timeout transitions and recovery to the tested pass", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
-  assert.match(server, /runWorkerWatchdogPass\\(/);
+  assert.match(server, /runWorkerWatchdogPass\(/);
   assert.match(server, /timeoutMs:workerTimeoutMs/);
   const watchdog = await readFile(new URL("../src/worker-watchdog.js", import.meta.url), "utf8");
-  assert.match(watchdog, /await transitionTask\\(record, "failed", \\{/);
+  assert.match(watchdog, /await transitionTask\(record, "failed", \{/);
   assert.match(watchdog, /error: "WORKER_WATCHDOG_TIMEOUT"/);
   assert.match(watchdog, /watchdogFailedAt/);
-  assert.match(watchdog, /recoverFailedWorker\\(parent, record\\)/);
+  assert.match(watchdog, /recoverFailedWorker\(parent, record\)/);
   assert.match(watchdog, /onRecoveryError/);
 });
 
