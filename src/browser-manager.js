@@ -33,7 +33,11 @@ export function createBrowserManager({emit}) {
       r.runId=d?.run_id || d?.runId || null;
       emit("browser.started",{requestId:r.id,runId:r.runId,url:auditUrl(r.url)});
     }catch(e){
-      r.status="failed"; r.error=e?.message||String(e); r.completedAt=new Date().toISOString();
+      const token=r.webhookToken;
+      const rawError=e?.message||String(e);
+      r.error=token?String(rawError).split(token).join("[redacted]"):String(rawError);
+      r.webhookToken=null;
+      r.status="failed"; r.completedAt=new Date().toISOString();
       emit("browser.failed",{requestId:r.id,error:r.error});
     }
     return pub(r);
