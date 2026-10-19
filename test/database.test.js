@@ -138,6 +138,8 @@ test("provider fallback smoke test does not mutate process-wide model configurat
   const route = server.slice(start, end);
   assert.doesNotMatch(route, /process\.env\.(AI_PROVIDER_ORDER|GEMINI_MODELS)\s*=/);
   assert.match(route, /geminiModels:\["definitely-nonexistent-ai-office-test-model"\]/);
+  assert.match(route, /const ok=observed\.geminiFailure&&observed\.providerFallback&&observed\.huggingfaceSuccess/);
+  assert.match(route, /res\.status\(ok\?200:503\)/);
   assert.match(server, /async function generateWithGemini\(task, preferredModel, configuredOverride = null\)/);
   assert.match(server, /generateWithGemini\(task,model,overrides\.geminiModels \|\| null\)/);
 });
