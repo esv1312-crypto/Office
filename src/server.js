@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
-import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
+import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
@@ -2123,7 +2123,7 @@ app.post("/api/tasks", async (req,res)=>{
   return res.status(202).json({ok:true,task:taskSnapshot(record)});
 });
 
-app.post("/api/tasks/:id/subtasks",(req,res)=>{
+app.post("/api/tasks/:id/subtasks",async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
   const parent=tasks.get(req.params.id);
   if(!parent) return res.status(404).json({ok:false,error:"parent task not found"});
@@ -2131,17 +2131,29 @@ app.post("/api/tasks/:id/subtasks",(req,res)=>{
 
   const batch=validateSubtaskBatch(req.body?.subtasks,req.body);
   if(!batch.ok) return res.status(400).json({ok:false,error:batch.error});
-  const created=[];
+  const records=[];
   for(const item of batch.items) {
-    const task=item.task;
     const record=createTaskRecord({
-      task,
+      task:item.task,
       employeeId:String(item?.employeeId || "executor"),
       parentTaskId:parent.id,
       kind:"subtask"
     });
     tasks.set(record.id,record);
-    emit("task.accepted",{taskId:record.id,parentTaskId:parent.id,kind:"subtask",taskLength:String(task||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
+    records.push(record);
+  }
+
+  try {
+    await saveTaskSnapshots(records.map(taskSnapshot));
+  } catch(error) {
+    for(const record of records) tasks.delete(record.id);
+    console.error("[DB] subtask batch persistence failed",error?.message||error);
+    return res.status(503).json({ok:false,error:"subtasks could not be durably accepted; please retry"});
+  }
+
+  const created=[];
+  for(const record of records) {
+    emit("task.accepted",{taskId:record.id,parentTaskId:parent.id,kind:"subtask",taskLength:String(record.task||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
     if(!aiAvailable(record.provider)) {
       transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
       emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
