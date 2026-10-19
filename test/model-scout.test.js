@@ -39,3 +39,20 @@ test("APINEX discovery includes only explicitly free model IDs", () => {
   assert.ok(models.every(model => model.provider === "apinex"));
   assert.ok(models.every(model => model.qualification === "discovered_unverified"));
 });
+
+test("model catalog fetch aborts when the configured timeout elapses", async () => {
+  const { fetchJson } = await import("../src/model-scout.js");
+  await assert.rejects(
+    fetchJson("https://catalog.example/models", {
+      timeoutMs: 1000,
+      fetchImpl: (_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          const error = new Error("request aborted");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      })
+    }),
+    error => error.name === "AbortError"
+  );
+});
