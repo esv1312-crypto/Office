@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, TASK_STATES } from "../src/task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, TASK_STATES, getWatchdogTimeoutAge } from "../src/task-state.js";
 
 test("task state policy contains the expected lifecycle states", () => {
   assert.deepEqual([...TASK_STATES], ["accepted", "planning", "running", "waiting", "completed", "failed", "cancelled"]);
@@ -117,4 +117,27 @@ test("subtask batch validation is atomic and rejects empty or malformed batches 
     ok:true,
     items:[{task:"single task"}]
   });
+});
+
+
+test("watchdog eligibility is deterministic at the timeout boundary", () => {
+  const record = { id: "worker-1", kind: "worker", status: "running", startedAt: "2026-10-20T12:00:00.000Z" };
+  const startedAt = Date.parse(record.startedAt);
+  assert.equal(getWatchdogTimeoutAge(record, startedAt + 999, 1000), null);
+  assert.equal(getWatchdogTimeoutAge(record, startedAt + 1000, 1000), 1000);
+  assert.equal(getWatchdogTimeoutAge(record, startedAt + 2500, 1000), 2500);
+});
+
+test("watchdog ignores root, terminal, unstarted, invalid-time, and already-marked tasks", () => {
+  const now = Date.parse("2026-10-20T12:10:00.000Z");
+  const base = { kind: "worker", status: "running", startedAt: "2026-10-20T12:00:00.000Z" };
+  for (const record of [
+    { ...base, kind: "root" },
+    { ...base, status: "completed" },
+    { ...base, status: "failed" },
+    { ...base, startedAt: null },
+    { ...base, startedAt: "not-a-date" },
+    { ...base, watchdogFailedAt: "2026-10-20T12:09:00.000Z" },
+  ]) assert.equal(getWatchdogTimeoutAge(record, now, 1000), null);
+  assert.equal(getWatchdogTimeoutAge({ ...base, status: "waiting" }, now, 1000), 600000);
 });
