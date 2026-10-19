@@ -155,7 +155,10 @@ function dedupe(models){
 function rankRoles(){
   const roles={};
   for(const role of Object.keys(ROLE_KEYWORDS)){
+    // Catalog discovery is not runtime qualification. Keep unverified entries visible in the scout,
+    // but never expose them to production role pools until a provider-specific probe succeeds.
     const all=dedupe(Object.values(state.providers).flat())
+      .filter(m=>m.qualification !== "discovered_unverified")
       .map(m=>({...m,score:roleScore(m,role)}))
       .sort((a,b)=>b.score-a.score || b.context_length-a.context_length || b.throughput-a.throughput);
     roles[role]=all.slice(0,12);
