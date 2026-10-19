@@ -251,3 +251,38 @@ test("a sensitive goal cannot bypass approval by claiming to be research", async
     restoreEnv();
   }
 });
+
+test("browser capacity rejects excess work without evicting active requests", async () => {
+  const originalFetchBeforeTest = globalThis.fetch;
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "true";
+    process.env.TINYFISH_API_KEY = "test-key";
+    process.env.BROWSER_MAX_REQUESTS = "50";
+    let runNumber = 0;
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ run_id: "active-run-" + (++runNumber) })
+    });
+    const manager = createBrowserManager({ emit: () => {} });
+    let firstRequest = null;
+    for (let index = 0; index < 50; index += 1) {
+      const request = await manager.request({
+        url: "https://example.com/" + index,
+        goal: "Read the public page",
+        actionClass: "research"
+      });
+      if (index === 0) firstRequest = request;
+    }
+
+    await assert.rejects(
+      manager.request({ url: "https://example.com/overflow", goal: "Read the public page", actionClass: "research" }),
+      error => error.code === "BROWSER_CAPACITY_REACHED"
+    );
+    assert.equal(manager.status(firstRequest.id).status, "running");
+    assert.equal(manager.summary().active, 50);
+  } finally {
+    globalThis.fetch = originalFetchBeforeTest;
+    restoreEnv();
+  }
+});
