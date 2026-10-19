@@ -54,17 +54,37 @@ test("planning and running tasks are marked interrupted after restart", () => {
   }
 });
 
-test("waiting tasks remain waiting but clear stale start timestamps", () => {
+test("configuration-blocked waiting tasks remain waiting after restart", () => {
   const { record, changed } = normalizeTaskSnapshotAfterRestart({
     id: "task-2",
     status: "waiting",
+    waitingReason: "ai_not_configured",
     startedAt: "2026-01-01T00:00:00.000Z"
   }, "2026-10-19T12:00:00.000Z");
 
   assert.equal(changed, true);
   assert.equal(record.status, "waiting");
   assert.equal(record.startedAt, null);
-  assert.equal(record.waitingReason, "service_restart");
+  assert.equal(record.waitingReason, "ai_not_configured");
+});
+
+test("parent tasks waiting on in-memory subtasks fail clearly after restart", () => {
+  const { record, changed } = normalizeTaskSnapshotAfterRestart({
+    id: "task-parent",
+    status: "waiting",
+    waitingReason: "subtasks_running",
+    startedAt: "2026-10-19T11:59:00.000Z",
+    subtaskIds: ["task-child"]
+  }, "2026-10-19T12:00:00.000Z");
+
+  assert.equal(changed, true);
+  assert.equal(record.status, "failed");
+  assert.equal(record.error, "SERVICE_RESTART_INTERRUPTED");
+  assert.equal(record.failedAt, "2026-10-19T12:00:00.000Z");
+  assert.equal(record.startedAt, null);
+  assert.equal(record.completedAt, null);
+  assert.equal(record.restartInterrupted, true);
+  assert.equal(record.waitingReason, null);
 });
 
 test("terminal tasks are not rewritten during restart normalization", () => {
