@@ -50,12 +50,12 @@ test("diagnostic routes are protected and root status is minimal", () => {
   for (const marker of protectedPaths) {
     const start = source.indexOf(marker);
     assert.notEqual(start, -1, marker + " exists");
-    const end = source.indexOf("\\napp.", start + 5);
+    const end = source.indexOf("\napp.", start + 5);
     const route = source.slice(start, end < 0 ? source.length : end);
-    assert.match(route, /requireInternalOrAudit\\(req,res\\)/, marker + " is protected");
+    assert.match(route, /requireInternalOrAudit\(req,res\)/, marker + " is protected");
   }
   const rootStart = source.indexOf('app.get("/",');
-  const rootEnd = source.indexOf("\\napp.", rootStart + 5);
+  const rootEnd = source.indexOf("\napp.", rootStart + 5);
   const root = source.slice(rootStart, rootEnd);
   assert.doesNotMatch(root, /provider:|employees:|tasks:|events:/);
 });
@@ -64,14 +64,14 @@ test("audit endpoints accept tokens in headers rather than query strings", () =>
   for (const marker of ['app.get("/api/smoke/fallback"', 'app.get("/api/smoke/recovery"', 'app.get("/api/smoke/evidence"', 'app.get("/api/office-check"']) {
     const start = source.indexOf(marker);
     assert.notEqual(start, -1);
-    const end = source.indexOf("\\napp.", start + 5);
+    const end = source.indexOf("\napp.", start + 5);
     const route = source.slice(start, end < 0 ? source.length : end);
     assert.match(route, /x-ai-office-audit-token/);
-    assert.doesNotMatch(route, /req\\.query\\?\\.token/);
+    assert.doesNotMatch(route, /req\.query\?\.token/);
   }
   const pognaliStart = source.indexOf('app.get("/api/pognali/audit"');
-  const pognaliEnd = source.indexOf("\\napp.", pognaliStart + 5);
+  const pognaliEnd = source.indexOf("\napp.", pognaliStart + 5);
   const pognali = source.slice(pognaliStart, pognaliEnd);
   assert.match(pognali, /x-pognali-audit-token/);
-  assert.doesNotMatch(pognali, /req\\.query\\?\\.token/);
+  assert.doesNotMatch(pognali, /req\.query\?\.token/);
 });
