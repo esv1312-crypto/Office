@@ -321,3 +321,18 @@ test("manual live audit workflow authenticates the task API request", async () =
   assert.match(workflow, /x-ai-office-audit-token/);
   assert.doesNotMatch(workflow, /headers=\{["']Content-Type["']:\s*["']application\/json["']\},\s*method=["']POST["']/);
 });
+
+test("audit and webhook secrets are accepted only through headers, never query strings", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const authStart = source.indexOf("function requireInternalOrAudit");
+  const authEnd = source.indexOf("\nconst workerQueue", authStart);
+  const auth = source.slice(authStart, authEnd);
+  const webhookStart = source.indexOf('app.post("/api/browser/webhook"');
+  const webhookEnd = source.indexOf("\n});", webhookStart);
+  const webhook = source.slice(webhookStart, webhookEnd);
+  assert.match(auth, /req\.headers\["x-ai-office-audit-token"\]/);
+  assert.doesNotMatch(auth, /req\.query/);
+  assert.match(webhook, /req\.headers\["x-ai-office-webhook-secret"\]/);
+  assert.doesNotMatch(webhook, /req\.query/);
+  assert.doesNotMatch(source, /req\.query\?\.token/);
+});
