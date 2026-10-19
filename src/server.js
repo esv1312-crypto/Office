@@ -3,8 +3,9 @@ import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
-import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus } from "./database.js";
+import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, saveResourceSnapshot } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
+import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
 app.use(express.json({limit:"1mb"}));
@@ -54,6 +55,7 @@ const browserRequests = new Map();
 const browserRuns = new Map();
 const browser = createBrowserManager({emit});
 let modelScoutTimer = null;
+let resourceScoutTimer = null;
 const workerWatchdogIntervalMs=Math.max(5000,Number(process.env.WORKER_WATCHDOG_INTERVAL_MS || 15000));
 const workerTimeoutMs=Math.max(30000,Number(process.env.WORKER_TIMEOUT_MS || 600000));
 let workerWatchdogTimer=null;
@@ -1666,6 +1668,35 @@ app.post("/api/browser/webhook",(req,res)=>{
 
 
 
+async function runResourceScan() {
+  const state = await scanResourceSources();
+  await persistResourceSnapshots(state, saveResourceSnapshot);
+  emit("resource_scout.scan_completed", {
+    count: state.count,
+    reachable: state.reachable,
+    unavailable: state.unavailable,
+    sources: state.sources.map(source => ({
+      id: source.id,
+      status: source.status,
+      httpStatus: source.httpStatus,
+      lastCheckedAt: source.lastCheckedAt,
+      lastError: source.lastError
+    }))
+  });
+  return state;
+}
+
+app.get("/api/resource-scout", (_req,res)=>res.json({ok:true,...getResourceScoutState()}));
+
+app.post("/api/resource-scout/scan", async (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  try {
+    res.json({ok:true,...await runResourceScan()});
+  } catch(error) {
+    res.status(500).json({ok:false,error:error?.message||String(error)});
+  }
+});
+
 app.get("/api/resource-manager", (_req,res)=>res.json({
   ok:true,
   manager:"free-ai-resource-manager",
@@ -2078,7 +2109,8 @@ async function bootstrapDatabase() {
         tasks.set(record.id,record);
       }
       events.splice(0,events.length,...(state.events || []));
-      console.log("[DB] persistence ready; restored tasks:",tasks.size,"events:",events.length);
+      restoreResourceSnapshots(state.resources || []);
+      console.log("[DB] persistence ready; restored tasks:",tasks.size,"events:",events.length,"resources:",(state.resources || []).length);
     } else console.log("[DB] persistence disabled; DATABASE_URL is not configured");
   } catch(error) {
     console.error("[DB] initialization failed; continuing without persistence:",error?.message||error);
@@ -2090,6 +2122,8 @@ await bootstrapDatabase();
 app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
   modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), Number(process.env.MODEL_SCOUT_INTERVAL_MS || 3600000));
+  void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
+  resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), Number(process.env.RESOURCE_SCOUT_INTERVAL_MS || 86400000));
   workerWatchdogTimer=setInterval(runWorkerWatchdog,workerWatchdogIntervalMs);
   emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
