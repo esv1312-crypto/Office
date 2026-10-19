@@ -53,11 +53,20 @@ function roleScore(model, role){
   return score;
 }
 
-async function fetchJson(url, options={}){
-  const response = await fetch(url, { ...options, headers: { "Accept":"application/json", ...(options.headers||{}) }});
-  const data = await response.json().catch(()=>({}));
-  if (!response.ok) throw new Error((data?.error?.message || data?.error || ("HTTP "+response.status)));
-  return data;
+export async function fetchJson(url, options={}){
+  const {fetchImpl=fetch, timeoutMs:requestedTimeout, ...requestOptions}=options;
+  const configuredTimeout=Number(requestedTimeout ?? process.env.MODEL_CATALOG_TIMEOUT_MS ?? 10000);
+  const timeoutMs=Number.isFinite(configuredTimeout)?Math.max(1000,configuredTimeout):10000;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),timeoutMs);
+  try {
+    const response = await fetchImpl(url, { ...requestOptions, signal:controller.signal, headers: { "Accept":"application/json", ...(requestOptions.headers||{}) }});
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error((data?.error?.message || data?.error || ("HTTP "+response.status)));
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function discoverOpenRouter(){
