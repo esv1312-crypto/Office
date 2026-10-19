@@ -337,3 +337,33 @@ test("audit secrets are header-only while browser callbacks retain one-time requ
   assert.match(browser, /webhookToken/);
   assert.match(browser, /webhook_url:callback/);
 });
+
+
+test("sensitive employee, state, and task diagnostics require authentication", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const guardedRoutes = [
+    ['app.get("/api/employees"', 'app.get("/api/tools"'],
+    ['app.get("/api/state"', 'app.get("/api/pognali/audit"'],
+    ['app.get("/api/tasks/:id"', 'async function runFinalAuditOnStartup()']
+  ];
+  for (const [startMarker, endMarker] of guardedRoutes) {
+    const start = source.indexOf(startMarker);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    assert.notEqual(start, -1, `missing route marker: ${startMarker}`);
+    assert.notEqual(end, -1, `missing route boundary: ${endMarker}`);
+    assert.match(source.slice(start, end), /requireInternalOrAudit\(req,res\)/);
+  }
+});
+
+test("public health endpoints do not expose model pools or browser configuration", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const healthStart = source.indexOf('app.get("/health"');
+  const healthEnd = source.indexOf('app.get("/api/employees"', healthStart);
+  const healthRoute = source.slice(healthStart, healthEnd);
+  assert.match(healthRoute, /status:"online"/);
+  assert.doesNotMatch(healthRoute, /providerOrder|configuredProviders|githubToolsEnabled|browser\.summary|automationEnabled/);
+  const backendHealthStart = source.indexOf('app.get("/api/backend/health"');
+  const backendHealthEnd = source.indexOf('app.post("/api/backend/generate"', backendHealthStart);
+  const backendHealth = source.slice(backendHealthStart, backendHealthEnd);
+  assert.doesNotMatch(backendHealth, /providerOrder|configuredProviders|githubToolsEnabled|browser/);
+});
