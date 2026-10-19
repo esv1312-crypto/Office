@@ -1664,7 +1664,7 @@ app.post("/api/browser/requests/:id/approve",async (req,res)=>{
 
 app.post("/api/browser/webhook",(req,res)=>{
   const expected=String(process.env.BROWSER_WEBHOOK_SECRET || "").trim();
-  const supplied=String(req.headers["x-ai-office-webhook-secret"] || "").trim();
+  const supplied=String(req.headers["x-ai-office-webhook-secret"] || req.query?.token || "").trim();
   if(!expected || supplied!==expected) return res.status(401).json({ok:false,error:"webhook authentication required"});
 
   try {
