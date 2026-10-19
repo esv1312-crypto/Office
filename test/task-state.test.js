@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, TASK_STATES, getWatchdogTimeoutAge, isVerificationCompletionEligible } from "../src/task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, TASK_STATES, getWatchdogTimeoutAge, isVerificationCompletionEligible, applyPersistedTaskTransition } from "../src/task-state.js";
 
 test("task state policy contains the expected lifecycle states", () => {
   assert.deepEqual([...TASK_STATES], ["accepted", "planning", "running", "waiting", "completed", "failed", "cancelled"]);
@@ -151,4 +151,36 @@ test("root completion requires explicit PASS and every verification check to pas
   assert.equal(isVerificationCompletionEligible({ status: "PASS", checks: [{ passed: true }, { passed: false }] }), false);
   assert.equal(isVerificationCompletionEligible({ status: "PASS", checks: [{ passed: true }, {}] }), false);
   assert.equal(isVerificationCompletionEligible({ status: "PASS", checks: [{ passed: true }, { passed: true }] }), true);
+});
+
+
+test("persisted task transition rolls back all top-level changes when persistence fails", async () => {
+  const record = { id: "task-1", status: "running", task: "keep this", attempts: 2 };
+  await assert.rejects(
+    applyPersistedTaskTransition(record, "failed", { error: "disk unavailable", failedAt: "2026-10-20T00:00:00.000Z" }, async current => {
+      assert.equal(current.status, "failed");
+      assert.equal(current.error, "disk unavailable");
+      throw new Error("database unavailable");
+    }),
+    /database unavailable/
+  );
+  assert.deepEqual(record, { id: "task-1", status: "running", task: "keep this", attempts: 2 });
+});
+
+test("persisted task transition validates state before writing and returns the previous state", async () => {
+  const record = { id: "task-2", status: "running" };
+  let writes = 0;
+  const result = await applyPersistedTaskTransition(record, "completed", { result: "verified" }, async current => {
+    writes += 1;
+    assert.equal(current.status, "completed");
+  });
+  assert.equal(result.previousStatus, "running");
+  assert.equal(result.record, record);
+  assert.equal(record.status, "completed");
+  assert.equal(writes, 1);
+
+  await assert.rejects(applyPersistedTaskTransition(record, "accepted", {}, async () => {
+    writes += 1;
+  }), /Invalid task transition/);
+  assert.equal(writes, 1, "invalid transitions must not be persisted");
 });
