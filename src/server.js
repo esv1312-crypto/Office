@@ -1462,26 +1462,6 @@ async function executeRootTask(record) {
       };
     }
 
-    if (/FINAL GREEN CHECK/i.test(record.task)) {
-      plan = {
-        summary:"Final end-to-end AI-OFFICE integration smoke test.",
-        subtasks:[
-          {employeeId:"analyst",task:"Review the supplied runtime evidence and report whether multi-provider/free-only routing and role selection were actually exercised."},
-          {employeeId:"developer",task:"Review the supplied runtime evidence and report whether parallel workers, model fallback, provider fallback, and recovery behavior were actually exercised."},
-          {employeeId:"verifier",task:"Independently review the supplied runtime evidence and worker outputs; produce a strict PASS/FAIL assessment."},
-          {employeeId:"executor",task:"Review operational event evidence and report actual completed worker tasks and any failures/replacements."}
-        ],
-        verificationChecklist:[
-          "All four worker roles completed their assigned subtasks.",
-          "The configured gateway route successfully produced worker results; if no backend runtime is configured, local gateway execution is expected.",
-          "At least one real model or provider fallback occurred, OR runtime evidence shows the selected route succeeded without needing fallback.",
-          "Free-only mode was active for the tested calls.",
-          "Independent verifier completed and produced a strict PASS/FAIL result.",
-          "The root task completed successfully and final verification is supported by runtime evidence."
-        ]
-      };
-    }
-
     const items=plan.subtasks.slice(0,4);
     record.plan=plan.summary || "";
     record.verificationChecklist=Array.isArray(plan.verificationChecklist) ? plan.verificationChecklist : [];
