@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, TASK_STATES, getWatchdogTimeoutAge } from "../src/task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, TASK_STATES, getWatchdogTimeoutAge, isVerificationCompletionEligible } from "../src/task-state.js";
 
 test("task state policy contains the expected lifecycle states", () => {
   assert.deepEqual([...TASK_STATES], ["accepted", "planning", "running", "waiting", "completed", "failed", "cancelled"]);
@@ -140,4 +140,15 @@ test("watchdog ignores root, terminal, unstarted, invalid-time, and already-mark
     { ...base, watchdogFailedAt: "2026-10-20T12:09:00.000Z" },
   ]) assert.equal(getWatchdogTimeoutAge(record, now, 1000), null);
   assert.equal(getWatchdogTimeoutAge({ ...base, status: "waiting" }, now, 1000), 600000);
+});
+
+
+test("root completion requires explicit PASS and every verification check to pass", () => {
+  assert.equal(isVerificationCompletionEligible(null), false);
+  assert.equal(isVerificationCompletionEligible({ status: "DEGRADED", checks: [{ passed: true }] }), false);
+  assert.equal(isVerificationCompletionEligible({ status: "FAIL", checks: [{ passed: true }] }), false);
+  assert.equal(isVerificationCompletionEligible({ status: "PASS", checks: [] }), false);
+  assert.equal(isVerificationCompletionEligible({ status: "PASS", checks: [{ passed: true }, { passed: false }] }), false);
+  assert.equal(isVerificationCompletionEligible({ status: "PASS", checks: [{ passed: true }, {}] }), false);
+  assert.equal(isVerificationCompletionEligible({ status: "PASS", checks: [{ passed: true }, { passed: true }] }), true);
 });
