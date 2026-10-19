@@ -66,7 +66,8 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Require a no-tools runtime preflight before an explicitly configured APINEX model is used.
 - [x] Add bounded catalog fetches so a stalled source cannot hold Model Scout refresh indefinitely.
 - [x] Add a PostgreSQL-backed registry for known catalog sources with availability, HTTP status, last-check time, and safe metadata.
-- [ ] Persist per-model preflight outcomes in Model Scout state and make qualification stages visible through diagnostics.
+- [x] Record a bounded Model Scout preflight history with pass/fail, latency, expiry, transient status, and normalized error category. The history is available only through authenticated diagnostics; tests cover normalization, retention limits, and runtime integration.
+- [ ] Persist qualification history across process restarts; the current history is in-memory and resets when the runtime restarts.
 - [x] Preserve each provider's last successful Model Scout snapshot when catalog discovery fails transiently; a successful empty catalog still correctly removes missing models.
   - Unit coverage checks rate-limit/error preservation versus a successful empty response.
 - [ ] Add repeatable role-specific benchmarks for reasoning, code, structured output, tool calling, long context, and verifier behavior.
