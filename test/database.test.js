@@ -43,3 +43,10 @@ test("task API acknowledges acceptance only after the initial snapshot is persis
   assert.ok(route.indexOf("await saveTaskSnapshot") < route.indexOf("void executeRootTask(record)"));
   assert.match(route, /status\(503\).*task could not be durably accepted/);
 });
+
+
+test("runtime health and authenticated state expose persistence readiness", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(server, /status:"online",startedAt,persistence:databaseStatus\(\)/);
+  assert.match(server, /workerQueue:\{active:workerQueue\.active,pending:workerQueue\.pending\.length,limit:workerQueue\.limit\},persistence:databaseStatus\(\)/);
+});
