@@ -1,0 +1,33 @@
+name: AI-OFFICE runtime smoke integration
+
+on:
+  push:
+    branches:
+      - main
+      - "audit/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-office-runtime-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Check runtime smoke test syntax
+        run: node --check integration/runtime-smoke.test.js
+      - name: Exercise isolated local runtime without external AI credentials
+        run: node --test integration/runtime-smoke.test.js
