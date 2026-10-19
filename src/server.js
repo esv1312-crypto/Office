@@ -565,7 +565,15 @@ async function ensureEmployeeReady(employee, task, options={}) {
       return candidate;
     }
   }
-  throw Object.assign(new Error("No preflight-approved model is available for "+employee.role),{code:"PREFLIGHT_EXHAUSTED"});
+  const diagnostics=unique.map(candidate=>({
+    provider:candidate.provider,
+    model:candidate.model,
+    excluded:excludedModels.has(candidate.model),
+    providerSuppressed:isProviderSuppressed(candidate.provider),
+    modelSuppressed:isProviderModelSuppressed(candidate.provider,candidate.model)
+  }));
+  emit("model.preflight_exhausted",{employeeId:employee?.id||null,role:employee?.role||null,probes,candidates:diagnostics});
+  throw Object.assign(new Error("No preflight-approved model is available for "+employee.role+"; candidates="+JSON.stringify(diagnostics)),{code:"PREFLIGHT_EXHAUSTED"});
 }
 
 function isProviderSuppressed(provider) {
