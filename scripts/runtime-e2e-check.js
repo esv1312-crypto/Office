@@ -38,6 +38,8 @@ function mockCompletion(body) {
     content = "Both delegated workers returned results. The independent verifier checked the required completion evidence.";
   } else if (user.includes("EVIDENCE-FIRST RULES")) {
     content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
+  } else if (user.includes("AI-OFFICE PREFLIGHT.")) {
+    content = "PREFLIGHT_OK";
   } else {
     content = "READY";
   }
