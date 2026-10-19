@@ -30,7 +30,7 @@ function validateParentLink(parentTaskId, childId=null) {
 
 function requireInternalOrAudit(req,res) {
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.headers["x-ai-office-audit-token"] || req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   const internal=String(req.headers[INTERNAL_TASK_AUTH_HEADER] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
   if(internal || (expected && supplied===expected)) return true;
   res.status(401).json({ok:false,error:"authentication required"}); return false;
