@@ -772,7 +772,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
             ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.CLOUDFLARE_MODEL || null))
             : provider==="apinex"
               ? (sameAsApproved ? String(approvedCandidate.model) : (brain.provider==="apinex" && String(brain.model||"").startsWith("free/") ? String(brain.model) : (String(process.env.APINEX_MODEL || "").startsWith("free/") ? String(process.env.APINEX_MODEL) : null)))
-              : (process.env.OPENAI_MODEL || null);
+              : (sameAsApproved ? String(approvedCandidate.model) : (process.env.OPENAI_MODEL || null));
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly() && !paidTestEnabled(),backend:"local"});
     try {
       let result;
@@ -1219,6 +1219,7 @@ async function verifyRootTask(record) {
     emit("verification.failed",{taskId:record.id,employeeId:verifier.id,reason:"no independent verifier model",error:error?.message||String(error)});
     return false;
   }
+  emit("verification.model_selected",{taskId:record.id,employeeId:verifier.id,provider:verifierCandidate.provider,model:verifierCandidate.model,excludedModelCount:excludedModels.size});
   const eventEvidence=events.filter(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z")).slice(0,120);
   let result=await generateViaGateway(buildVerificationPrompt({
     task:record.task,
@@ -1268,7 +1269,8 @@ async function verifyRootTask(record) {
     checks:verification.checks,
     summary:String(verification.summary || ""),
     verifierId:verifier.id,
-    model:result.model,
+    provider:result.provider || verifierCandidate.provider,
+    model:result.model || verifierCandidate.model,
     verifiedAt:new Date().toISOString()
   };
   record.evidence=verification.checks
@@ -1277,7 +1279,8 @@ async function verifyRootTask(record) {
   emit(passed ? "verification.passed" : "verification.failed",{
     taskId:record.id,
     employeeId:verifier.id,
-    model:result.model,
+    provider:result.provider || verifierCandidate.provider,
+    model:result.model || verifierCandidate.model,
     failedChecks:failedChecks.map(x=>x?.name || "unnamed")
   });
   return passed;
