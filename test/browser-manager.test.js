@@ -5,6 +5,7 @@ import { createBrowserManager } from "../src/browser-manager.js";
 const originalEnabled = process.env.BROWSER_AUTOMATION_ENABLED;
 const originalKey = process.env.TINYFISH_API_KEY;
 const originalWebhookSecret = process.env.BROWSER_WEBHOOK_SECRET;
+const originalFetch = globalThis.fetch;
 
 function restoreEnv() {
   if (originalEnabled === undefined) delete process.env.BROWSER_AUTOMATION_ENABLED;
@@ -86,18 +87,41 @@ test("unsupported browser actions are rejected", async () => {
   }
 });
 
-test("browser request is blocked when webhook authentication is not configured", async () => {
+test("browser webhooks use one-time per-request tokens without exposing them in snapshots", async () => {
+  const originalFetchBeforeTest = globalThis.fetch;
   try {
     process.env.BROWSER_AUTOMATION_ENABLED = "true";
     process.env.TINYFISH_API_KEY = "test-key";
     delete process.env.BROWSER_WEBHOOK_SECRET;
+    let submittedBody = null;
+    globalThis.fetch = async (_url, options) => {
+      submittedBody = JSON.parse(options.body);
+      return { ok: true, status: 200, json: async () => ({ run_id: "run-123" }) };
+    };
     const manager = createBrowserManager({ emit: () => {} });
     const request = await manager.request({ url: "https://example.com", goal: "Read the public page", actionClass: "research" });
 
-    assert.equal(request.status, "blocked");
-    assert.match(request.error, /webhook authentication/i);
-    assert.equal(manager.summary().enabled, false);
+    assert.equal(request.status, "running");
+    assert.equal(request.webhookToken, undefined);
+    assert.equal(manager.status(request.id).webhookToken, undefined);
+    assert.equal(manager.summary().enabled, true);
+
+    const callback = new URL(submittedBody.webhook_url);
+    const token = callback.searchParams.get("token");
+    assert.ok(token);
+    assert.equal(callback.pathname, "/api/browser/webhook");
+
+    const result = manager.webhook({ run_id: "run-123", status: "completed", result: "done" }, token);
+    assert.equal(result.authenticated, true);
+    assert.equal(result.matched, true);
+    assert.equal(manager.status(request.id).status, "completed");
+    assert.equal(manager.status(request.id).webhookToken, undefined);
+
+    const replay = manager.webhook({ run_id: "run-123", status: "completed", result: "replay" }, token);
+    assert.equal(replay.authenticated, false);
+    assert.equal(replay.matched, false);
   } finally {
+    globalThis.fetch = originalFetchBeforeTest;
     restoreEnv();
   }
 });
