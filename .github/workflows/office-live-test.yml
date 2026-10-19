@@ -2,8 +2,6 @@ name: AI-OFFICE Pognali READ-ONLY AUDIT
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
