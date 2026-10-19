@@ -279,3 +279,36 @@ test("production task planning has no hard-coded phrase that overrides user inte
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /FINAL GREEN CHECK/i);
 });
+
+test("provider calls define timeout and tool policy, and APINEX honors preflight restrictions", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const routerStart = source.indexOf("async function generateWithOpenRouter");
+  const routerEnd = source.indexOf("\nfunction normalizeHuggingFaceModel", routerStart);
+  const apinexStart = source.indexOf("async function generateWithApinex");
+  const apinexEnd = source.indexOf("\nasync function generateWithCloudflare", apinexStart);
+  const router = source.slice(routerStart, routerEnd);
+  const apinex = source.slice(apinexStart, apinexEnd);
+
+  assert.match(router, /const enableTools=/);
+  assert.match(router, /const timeoutMs=/);
+  assert.match(router, /taskId,enableTools,timeoutMs/);
+  assert.doesNotMatch(router, /enableTools:true/);
+  assert.match(apinex, /taskId,enableTools,timeoutMs/);
+  assert.doesNotMatch(apinex, /enableTools:true/);
+});
+
+test("independent verifier excludes planner, synthesis, and worker models", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const readyStart = source.indexOf("async function ensureEmployeeReady");
+  const readyEnd = source.indexOf("\nfunction isProviderSuppressed", readyStart);
+  const verifyStart = source.indexOf("async function verifyRootTask");
+  const verifyEnd = source.indexOf("\nasync function executeRootTask", verifyStart);
+  const ready = source.slice(readyStart, readyEnd);
+  const verify = source.slice(verifyStart, verifyEnd);
+
+  assert.match(ready, /options\.excludeModels/);
+  assert.match(ready, /!excludedModels\.has\(x\.model\)/);
+  assert.match(verify, /new Set\(\[record\.model,record\.plannerModel,\.\.\.relatedTasks\.map\(task=>task\.model\)\]/);
+  assert.match(verify, /ensureEmployeeReady\(verifier,record\.task,\{excludeModels\}\)/);
+  assert.match(verify, /\{strictCandidate:true\}/);
+});
