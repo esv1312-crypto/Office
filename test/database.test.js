@@ -124,5 +124,8 @@ test("planned subtasks and recovery workers are persisted before execution", asy
   const recoveryTask = server.indexOf("await saveTaskSnapshots([taskSnapshot(record),taskSnapshot(fixTask)])");
   assert.ok(recoveryTask > 0, "root recovery must persist the parent link and recovery task atomically");
   assert.ok(recoveryTask < server.indexOf('emit("recovery.requested"', recoveryTask));
-  assert.match(replacement, /await transitionTask\(fixTask,"waiting",\{waitingReason:"ai_not_configured"\}\)/);
+  const rootRecoveryStart = server.indexOf("async function recoverRootTask(record)");
+  const rootRecoveryEnd = server.indexOf("async function executeRootTask(record)", rootRecoveryStart);
+  const rootRecovery = server.slice(rootRecoveryStart, rootRecoveryEnd);
+  assert.match(rootRecovery, /await transitionTask\(fixTask,"waiting",\{waitingReason:"ai_not_configured"\}\)/);
 });
