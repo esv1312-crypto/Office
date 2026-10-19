@@ -84,3 +84,17 @@ test("verifier prompts require exact one-to-one checklist mapping on both attemp
   assert.ok(verification.includes(String.raw`\"requirement\":\"exact checklist item string\"`));
   assert.match(verification, /map to exactly one checklist item/);
 });
+
+test("worker recovery is single-flight and reuses a completed replacement", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("function recoverFailedWorker(parent, failedRecord)");
+  const end = source.indexOf("\nasync function performWorkerRecovery", start);
+  assert.notEqual(start, -1, "recoverFailedWorker must exist");
+  assert.notEqual(end, -1, "performWorkerRecovery boundary must exist");
+  const wrapper = source.slice(start, end);
+
+  assert.match(wrapper, /workerRecoveryInFlight\.get\(key\)/);
+  assert.match(wrapper, /workerRecoveryInFlight\.set\(key, promise\)/);
+  assert.match(wrapper, /task\.replacesTaskId === failedRecord\.id/);
+  assert.match(wrapper, /task\.status === "completed"/);
+});
