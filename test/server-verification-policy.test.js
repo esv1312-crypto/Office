@@ -315,7 +315,7 @@ test("independent verifier excludes planner, synthesis, and worker models", asyn
 });
 
 test("manual live audit workflow authenticates the task API request", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/office-pognali-audit.yml", import.meta.url), "utf8");
+  const workflow = await readFile(new URL("../.github/workflows/office-live-test.yml", import.meta.url), "utf8");
   assert.match(workflow, /OFFICE_AUDIT_TOKEN:\s*\$\{\{\s*secrets\.OFFICE_AUDIT_TOKEN\s*\}\}/);
   assert.match(workflow, /Missing required GitHub secret OFFICE_AUDIT_TOKEN/);
   assert.match(workflow, /x-ai-office-audit-token/);
