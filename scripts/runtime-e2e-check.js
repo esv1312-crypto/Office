@@ -15,19 +15,26 @@ const planner = {
   ]
 };
 
+let recoveryVerifierFailedOnce = false;
+
 function mockCompletion(body) {
   const user = String(body?.messages?.at(-1)?.content || "");
   let content;
   if (user.includes('Schema: {"summary":"string","subtasks"')) {
     content = JSON.stringify(planner);
   } else if (user.includes('Schema: {"status":"PASS|FAIL","checks"')) {
+    const forceRecovery = user.includes("FORCE_RECOVERY_TEST");
+    const failThisCheck = forceRecovery && !recoveryVerifierFailedOnce;
+    if (failThisCheck) recoveryVerifierFailedOnce = true;
     content = JSON.stringify({
-      status: "PASS",
-      summary: "Both worker results are supported by runtime completion events.",
+      status: failThisCheck ? "FAIL" : "PASS",
+      summary: failThisCheck
+        ? "Deliberately fail the first verification to exercise recovery and retest."
+        : "Both worker results are supported by runtime completion events.",
       checks: planner.verificationChecklist.map(requirement => ({
         name: requirement,
         requirement,
-        passed: true,
+        passed: !failThisCheck,
         evidence: "The authoritative runtime event stream contains task.completed for worker execution.",
         classification: "FACT",
         source: "runtime event",
@@ -182,6 +189,44 @@ test("full root-task lifecycle completes with delegated workers and independent 
     assert.ok(finalTask.workerResults.every(worker => worker.status === "completed" && worker.result));
     assert.ok(finalTask.subtaskIds.length === 2);
     assert.ok(mockRequests >= 6, `expected preflight + planner + workers + synthesis + verifier requests, got ${mockRequests}`);
+
+    const recoveryAcceptedResponse = await request("/api/tasks", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ai-office-audit-token": token },
+      body: JSON.stringify({ task: "FORCE_RECOVERY_TEST: exercise root recovery and independent retest.", employeeId: "chief" })
+    });
+    const recoveryAcceptedText = await recoveryAcceptedResponse.text();
+    assert.equal(recoveryAcceptedResponse.status, 202, recoveryAcceptedText);
+    const recoveryAccepted = JSON.parse(recoveryAcceptedText);
+    let recoveredRoot;
+    const recoveryDeadline = Date.now() + 25000;
+    while (Date.now() < recoveryDeadline) {
+      const response = await request(`/api/tasks/${encodeURIComponent(recoveryAccepted.task.id)}`, {
+        headers: { "x-ai-office-audit-token": token }
+      });
+      assert.equal(response.status, 200);
+      recoveredRoot = (await response.json()).task;
+      if (["completed", "failed"].includes(recoveredRoot.status)) break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    const recoveryStateResponse = await request("/api/state", { headers: { "x-ai-office-audit-token": token } });
+    const recoveryState = recoveryStateResponse.ok ? await recoveryStateResponse.json() : null;
+    const recoveryEvents = (recoveryState?.events || []).filter(event =>
+      event.taskId === recoveryAccepted.task.id && ["verification.failed", "recovery.requested", "recovery.success", "retest.requested", "retest.passed"].includes(event.type)
+    );
+    assert.equal(recoveredRoot?.status, "completed", `root recovery/retest did not complete: ${JSON.stringify({
+      status: recoveredRoot?.status,
+      error: recoveredRoot?.error,
+      verification: recoveredRoot?.verification,
+      recoveryAttempts: recoveredRoot?.recoveryAttempts,
+      recoveryHistory: recoveredRoot?.recoveryHistory,
+      recoveryEvents
+    })}\n${output}`);
+    assert.equal(recoveredRoot.verification?.status, "PASS");
+    assert.equal(recoveredRoot.recoveryAttempts, 1);
+    assert.ok(recoveredRoot.recoveryHistory.some(item => item.status === "completed"));
+    assert.ok(recoveryEvents.some(event => event.type === "recovery.success"));
+    assert.ok(recoveryEvents.some(event => event.type === "retest.passed"));
   } finally {
     child.kill("SIGTERM");
     await Promise.race([waitForExit, new Promise(resolve => setTimeout(resolve, 5000))]);
