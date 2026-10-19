@@ -197,3 +197,17 @@ test("gateway rejects empty provider results and bounds OpenAI SDK calls", async
   assert.match(openAI, /AI_REQUEST_TIMEOUT_MS/);
   assert.match(source, /if\(!String\(result\?\.text \|\| ""\)\.trim\(\)\) throw Object\.assign\(new Error\(provider\+" returned an empty response"\)/);
 });
+
+test("provider-wide authentication and quota errors stop model-level retries", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const openRouterStart = source.indexOf("async function generateWithOpenRouter");
+  const huggingFaceStart = source.indexOf("async function generateWithHuggingFace");
+  const localGatewayStart = source.indexOf("async function generateViaLocalGateway");
+  const openRouter = source.slice(openRouterStart, huggingFaceStart);
+  const huggingFace = source.slice(huggingFaceStart, localGatewayStart);
+  const localGateway = source.slice(localGatewayStart, source.indexOf("\nasync function generateViaGateway", localGatewayStart));
+
+  assert.match(openRouter, /if\(error\?\.status===401 \|\| error\?\.status===402\) break/);
+  assert.match(huggingFace, /if\(error\?\.status===401 \|\| error\?\.status===402\) break/);
+  assert.match(localGateway, /suppressProvider\(provider,error\?\.message\|\|String\(error\),15\*60\*1000\)/);
+});
