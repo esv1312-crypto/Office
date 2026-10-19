@@ -6,6 +6,12 @@ const SENSITIVE_GOAL_PHRASES = [
   "purchase","buy now","checkout","place order","pay now","connect wallet","grant access",
   "cancel subscription","transfer funds","withdraw funds","save changes"
 ];
+export function normalizeBrowserTerminalStatus(value) {
+  const status=String(value || "").trim().toLowerCase();
+  if(["completed","complete","success","succeeded","finished"].includes(status)) return "completed";
+  if(["failed","error","cancelled","canceled"].includes(status)) return "failed";
+  return null;
+}
 function goalRequiresApproval(goal) {
   const text = String(goal || "").toLowerCase();
   return SENSITIVE_GOAL_PHRASES.some(phrase => text.includes(phrase));
@@ -106,9 +112,12 @@ export function createBrowserManager({emit}) {
     if(!r) return {matched:false,authenticated:false};
     const runId=String(payload.run_id||payload.data?.run_id||"");
     if(!runId || (r.runId && r.runId!==runId)) return {matched:false,authenticated:false};
+    const terminalStatus=normalizeBrowserTerminalStatus(payload.status||payload.data?.status);
+    // Do not consume the one-time token or mutate request state for unknown/non-terminal statuses.
+    if(!terminalStatus) return {matched:false,authenticated:false};
     r.runId=runId;
     r.webhookToken=null;
-    r.status=String(payload.status||payload.data?.status||"UNKNOWN").toLowerCase();
+    r.status=terminalStatus;
     r.completedAt=new Date().toISOString();
     r.result=payload.data?.result??payload.result??null;
     r.error=payload.data?.error?.message||payload.error?.message||null;
