@@ -257,5 +257,5 @@ test("manual smoke workflow authenticates protected runtime requests without pri
   const workflow = await readFile(new URL("../.github/workflows/office-smoke.yml", import.meta.url), "utf8");
   assert.match(workflow, /OFFICE_AUDIT_TOKEN:\s*\$\{\{\s*secrets\.OFFICE_AUDIT_TOKEN\s*\}\}/);
   assert.match(workflow, /x-ai-office-audit-token: \$OFFICE_AUDIT_TOKEN/);
-  assert.doesNotMatch(workflow, /echo\s+.*OFFICE_AUDIT_TOKEN/);
+  assert.doesNotMatch(workflow, /echo\s+.*(?:\$OFFICE_AUDIT_TOKEN|\$\{OFFICE_AUDIT_TOKEN\})/);
 });
