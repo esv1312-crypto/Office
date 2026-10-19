@@ -1535,7 +1535,7 @@ async function executeRootTask(record) {
   }
 }
 
-app.get("/api/backend/health", (_req,res)=>res.json({ok:true,mode:process.env.OFFICE_MODE||"office",aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),freeOnly:freeOnly()}));
+app.get("/api/backend/health", (_req,res)=>res.json({ok:true,mode:process.env.OFFICE_MODE||"office",status:"online"}));
 
 app.post("/api/backend/generate", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
