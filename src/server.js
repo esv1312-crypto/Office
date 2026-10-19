@@ -5,8 +5,9 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
-import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
+import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
+import { runWorkerWatchdogPass } from "./worker-watchdog.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -63,18 +64,15 @@ const workerWatchdogIntervalMs=boundedIntegerSetting(process.env.WORKER_WATCHDOG
 const workerTimeoutMs=boundedIntegerSetting(process.env.WORKER_TIMEOUT_MS,600000,30000,86400000);
 let workerWatchdogTimer=null;
 async function runWorkerWatchdog(){
-  const now=Date.now();
-  for(const record of tasks.values()){
-    const age=getWatchdogTimeoutAge(record,now,workerTimeoutMs);
-    if(age===null) continue;
-    const watchdogFailedAt=new Date(now).toISOString();
-    await transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:watchdogFailedAt,watchdogFailedAt});
-    emit("worker.watchdog_timeout",{taskId:record.id,parentTaskId:record.parentTaskId||null,employeeId:record.employeeId,ageMs:age,timeoutMs:workerTimeoutMs});
-    const parent=record.parentTaskId ? tasks.get(record.parentTaskId) : null;
-    if(parent && ["waiting","running"].includes(parent.status)) {
-      void recoverFailedWorker(parent,record).catch(error=>console.error("[watchdog] recovery failed",error?.message||error));
-    }
-  }
+  return runWorkerWatchdogPass({
+    tasks,
+    nowMs:Date.now(),
+    timeoutMs:workerTimeoutMs,
+    transitionTask,
+    emit,
+    recoverFailedWorker,
+    onRecoveryError:error=>console.error("[watchdog] recovery failed",error?.message||error)
+  });
 }
 
 async function transitionTask(record, nextStatus, extra = {}) {
