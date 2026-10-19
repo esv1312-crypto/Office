@@ -796,11 +796,6 @@ const TOOL_REGISTRY = {
       actionClass: String(args.actionClass || "research")
     })
   },
-  "browser.approve": {
-    description: "Approve a pending browser action after explicit human confirmation.",
-    roles: ["coordinator","executor"],
-    execute: async (args = {}) => browser.approve(String(args.requestId || ""), String(args.approvalToken || ""))
-  },
   "browser.status": {
     description: "Read browser workflow and approval state.",
     roles: ["coordinator","developer","analyst","verifier","executor"],
@@ -1622,6 +1617,7 @@ app.post("/api/browser/request", async (req,res)=>{
 });
 
 app.get("/api/browser/requests/:id",(req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   const result=browser.status(String(req.params.id || ""));
   if(!result) return res.status(404).json({ok:false,error:"browser request not found"});
   res.json({ok:true,...result});
@@ -1630,7 +1626,7 @@ app.get("/api/browser/requests/:id",(req,res)=>{
 app.post("/api/browser/requests/:id/approve",async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
   try {
-    const result=await browser.approve(String(req.params.id || ""),String(req.body?.approvalToken || ""));
+    const result=await browser.approveAuthorized(String(req.params.id || ""));
     res.json({ok:true,...result});
   } catch(error) {
     res.status(error?.code === "BROWSER_APPROVAL_REQUIRED" ? 409 : 400).json({
@@ -1663,7 +1659,8 @@ app.get("/api/resource-manager", (_req,res)=>res.json({
 
 app.get("/api/model-scout", (_req,res)=>res.json({ok:true,...getModelScoutState()}));
 
-app.post("/api/model-scout/refresh", async (_req,res)=>{
+app.post("/api/model-scout/refresh", async (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   try { const state=await refreshModelScout(); res.json({ok:true,...state}); }
   catch(error){ res.status(500).json({ok:false,error:error?.message||String(error)}); }
 });
