@@ -79,7 +79,8 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Create a deterministic end-to-end suite that runs against safe test tasks, a loopback mock provider, and an isolated test database where needed.
   - Runtime CI validates health/auth/task acceptance, full delegated execution, independent verification, and verification-failure recovery/retest without contacting real AI providers.
 - [ ] Add success-rate, time-to-completion, provider-fallback, and stuck-task metrics.
-- [ ] Test concurrent tasks and recovery from provider/browser outages.
+- [x] Test concurrent root tasks against the loopback mock provider; the runtime integration verifies two roots can be accepted together, complete independently, and retain distinct IDs and successful verifier results.
+- [ ] Test recovery from provider/browser outages and provider-fallback/retry exhaustion.
 - [x] Verify PostgreSQL restart recovery and event ordering against a real test database.
   - PostgreSQL 18 CI verifies durable task snapshots, atomic rollback of a partially failing batch, event-time ordering, and an actual Node runtime process restart. A persisted running task is normalized to `failed / SERVICE_RESTART_INTERRUPTED`, while a configuration-blocked task remains `waiting`.
 - [x] Await persistence for critical task-state transitions; revert in-memory state if the snapshot write fails.
