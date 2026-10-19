@@ -101,10 +101,10 @@ export function enforceVerificationEvidence(verification, checklist = [], eviden
     else if (!evidence) reason = "Missing evidence.";
     else if (!classificationValid) reason = "Missing or invalid evidence classification.";
     else if (classification === "ASSUMPTION" || classification === "UNPROVEN") reason = "Evidence is not established fact or supported inference.";
-    else if (!referenceGrounded) reason = "Source/locator does not match supplied code or runtime evidence.";
     else if (requiredItems.length > 0 && !requirement) reason = "Missing checklist requirement mapping.";
     else if (requiredItems.length > 0 && !matchedRequirement) reason = "Check does not map to a required checklist item.";
     else if (duplicateCoverage) reason = "Duplicate coverage for checklist item: " + matchedRequirement + ".";
+    else if (!referenceGrounded) reason = "Source/locator does not match supplied code or runtime evidence.";
 
     return {
       ...check,
