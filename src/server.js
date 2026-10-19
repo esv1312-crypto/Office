@@ -789,17 +789,21 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
 
 async function generateViaGateway(task, employee, approvedCandidate = null, taskId = null) {
   const backendUrls=String(process.env.BACKEND_RUNTIME_URLS || "").split(",").map(x=>x.trim().replace(/\/$/,"")).filter(Boolean);
-  // Provider selection remains scout-driven, but provider fallback is always allowed after the selected provider fails.
-  if(backendUrls.length && process.env.OFFICE_MODE !== "backend") {
+  // Remote backends are only contacted when a service-to-service audit token is configured.
+  const auditToken=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+  if(backendUrls.length && process.env.OFFICE_MODE !== "backend" && !auditToken) {
+    emit("backend.skipped",{reason:"OFFICE_AUDIT_TOKEN is not configured",backendCount:backendUrls.length});
+  }
+  if(backendUrls.length && process.env.OFFICE_MODE !== "backend" && auditToken) {
     for(const base of backendUrls) {
+      let timeout=null;
       try {
         const controller=new AbortController();
-        const timeout=setTimeout(()=>controller.abort(),Number(process.env.BACKEND_REQUEST_TIMEOUT_MS || 120000));
-        const backendHeaders={"Content-Type":"application/json","Connection":"close"};
-        const auditToken=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-        if(auditToken) backendHeaders["x-ai-office-audit-token"]=auditToken;
+        const configuredTimeout=Number(process.env.BACKEND_REQUEST_TIMEOUT_MS || 120000);
+        const timeoutMs=Number.isFinite(configuredTimeout)?Math.max(1000,configuredTimeout):120000;
+        timeout=setTimeout(()=>controller.abort(),timeoutMs);
+        const backendHeaders={"Content-Type":"application/json","Connection":"close","x-ai-office-audit-token":auditToken};
         const response=await fetch(base+"/api/backend/generate",{method:"POST",headers:backendHeaders,signal:controller.signal,body:JSON.stringify({task,employeeId:employee?.id||"executor"})});
-        clearTimeout(timeout);
         const data=await response.json().catch(()=>({}));
         if(response.ok && data?.ok && data?.result?.text) {
           emit("backend.success",{backend:base,employeeId:employee?.id||null,model:data.result.model||null});
@@ -808,6 +812,8 @@ async function generateViaGateway(task, employee, approvedCandidate = null, task
         throw new Error(data?.error || ("Backend HTTP "+response.status));
       } catch(error) {
         emit("backend.failed",{backend:base,employeeId:employee?.id||null,error:error?.message||String(error)});
+      } finally {
+        if(timeout) clearTimeout(timeout);
       }
     }
   }
