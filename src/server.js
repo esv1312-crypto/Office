@@ -1586,20 +1586,26 @@ app.get("/health", (_req,res)=>res.json({
   browser:browser.summary()
 }));
 
-app.get("/api/employees", (_req,res)=>res.json({
-  ok:true,employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)}))
-}));
+app.get("/api/employees", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
+    ok:true,employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)}))
+  });
+});
 
-app.get("/api/tools", (_req,res)=>res.json({
-  ok:true,
-  tools:Object.entries(TOOL_REGISTRY).map(([name,tool]) => ({
-    name,
-    description:tool.description,
-    roles:tool.roles,
-    configured:(tool.requiresEnv || []).every(x => Boolean(process.env[x])),
-    enabled:name !== "github.write_file" || process.env.GITHUB_TOOLS_ENABLED === "true"
-  }))
-}));
+app.get("/api/tools", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
+    ok:true,
+    tools:Object.entries(TOOL_REGISTRY).map(([name,tool]) => ({
+      name,
+      description:tool.description,
+      roles:tool.roles,
+      configured:(tool.requiresEnv || []).every(x => Boolean(process.env[x])),
+      enabled:name !== "github.write_file" || process.env.GITHUB_TOOLS_ENABLED === "true"
+    }))
+  });
+});
 
 app.post("/api/tools/execute", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1621,10 +1627,10 @@ app.post("/api/tools/execute", async (req,res)=>{
 });
 
 
-app.get("/api/browser", (_req,res)=>res.json({
-  ok:true,
-  ...browser.summary()
-}));
+app.get("/api/browser", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({ok:true,...browser.summary()});
+});
 
 app.post("/api/browser/request", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1719,7 +1725,10 @@ app.get("/api/resource-manager", (req,res)=>{
   });
 });
 
-app.get("/api/model-scout", (_req,res)=>res.json({ok:true,...getModelScoutState()}));
+app.get("/api/model-scout", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({ok:true,...getModelScoutState()});
+});
 
 app.post("/api/model-scout/refresh", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
