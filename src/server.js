@@ -5,7 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
+import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
