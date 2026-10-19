@@ -707,10 +707,16 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
           emit("gateway.model_retry_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:retryError?.message || String(retryError)});
         }
       }
-      if (/model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(error?.message || "")) {
-        suppressModel(model,error?.message || "model unavailable",6*60*60*1000,"openrouter");
-      } else if (/429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|high demand|overloaded|empty response/i.test(error?.message || "")) {
-        suppressModel(model,error?.message || "model temporarily unavailable",15*60*1000,"openrouter");
+      const failureMessage=String(error?.message || "");
+      if (error?.status===404 || /model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(failureMessage)) {
+        // Bad/stale model IDs should leave the rotation pool for a long cooldown.
+        suppressModel(model,failureMessage || "model unavailable",6*60*60*1000,"openrouter");
+      } else if (error?.status===408 || (Number(error?.status)>=500 && Number(error?.status)<=599)
+        || /timeout|timed out|abort|429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|high demand|overloaded|empty response|provider returned error/i.test(failureMessage)) {
+        // Free model endpoints often advertise models that are not actually serving.
+        // Cool them down so the next task rotates to a healthier candidate instead of repeating the failure.
+        const cooldownMs=/empty response/i.test(failureMessage) ? 15*60*1000 : 5*60*1000;
+        suppressModel(model,failureMessage || "model temporarily unavailable",cooldownMs,"openrouter");
       }
       if (i<ordered.length-1) {
         emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:error?.message || String(error)});
@@ -751,9 +757,16 @@ async function generateWithHuggingFace(task, employee, preferredModel, allowMode
       return result;
     }catch(error){
       lastError=error;
-      emit("gateway.model_failed",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model,error:error?.message||String(error),transient:Boolean(error?.transient)});
+      const failureMessage=String(error?.message || "");
+      emit("gateway.model_failed",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model,error:failureMessage||String(error),transient:Boolean(error?.transient)});
+      if(error?.status===404 || /model.*(not found|does not exist)|invalid model/i.test(failureMessage)) {
+        suppressModel(model,failureMessage || "model unavailable",6*60*60*1000,"huggingface");
+      } else if(error?.status===408 || (Number(error?.status)>=500 && Number(error?.status)<=599)
+        || /timeout|timed out|abort|429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|overloaded|empty response|provider returned error/i.test(failureMessage)) {
+        suppressModel(model,failureMessage || "model temporarily unavailable",/empty response/i.test(failureMessage)?15*60*1000:5*60*1000,"huggingface");
+      }
       if(error?.status===401 || error?.status===402 || error?.status===429) break;
-      if(models.indexOf(model)<models.length-1) emit("gateway.model_fallback",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",from:model,to:models[models.indexOf(model)+1],reason:error?.message||String(error)});
+      if(models.indexOf(model)<models.length-1) emit("gateway.model_fallback",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",from:model,to:models[models.indexOf(model)+1],reason:failureMessage||String(error)});
     }
   }
   throw lastError || new Error("All Hugging Face free models failed");
