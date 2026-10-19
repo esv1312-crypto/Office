@@ -28,6 +28,6 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Check runtime smoke test syntax
-        run: node --check integration/runtime-smoke.test.js
+        run: node --check scripts/runtime-smoke-check.js
       - name: Exercise isolated local runtime without external AI credentials
-        run: node --test integration/runtime-smoke.test.js
+        run: node --test scripts/runtime-smoke-check.js
