@@ -273,3 +273,8 @@ test("event identifiers remain monotonic when history is capped and restored", a
   assert.match(bootstrap, /nextEventId=Math\.max\(0,\.\.\.events\.map\(event=>Number\(event\.id\)\|\|0\)\)\+1/);
   assert.doesNotMatch(source, /id:\s*events\.length\s*\+\s*1/);
 });
+
+test("production task planning has no hard-coded phrase that overrides user intent", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /FINAL GREEN CHECK/i);
+});
