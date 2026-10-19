@@ -252,3 +252,10 @@ test("APINEX requires a free-model preflight with tools disabled before task exe
   assert.match(gateway, /const preflight=await preflightModel\(provider,model,employee\)/);
   assert.match(gateway, /if\(!preflight\.ok\) throw/);
 });
+
+test("manual smoke workflow authenticates protected runtime requests without printing the token", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/office-smoke.yml", import.meta.url), "utf8");
+  assert.match(workflow, /OFFICE_AUDIT_TOKEN:\s*\$\{\{\s*secrets\.OFFICE_AUDIT_TOKEN\s*\}\}/);
+  assert.match(workflow, /x-ai-office-audit-token: \$OFFICE_AUDIT_TOKEN/);
+  assert.doesNotMatch(workflow, /echo\s+.*OFFICE_AUDIT_TOKEN/);
+});
