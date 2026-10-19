@@ -30,3 +30,16 @@ test("configured PostgreSQL failure prevents degraded startup without persistenc
   assert.match(server, /DATABASE_STARTUP_FAILED: DATABASE_URL is configured but persistence could not be initialized/);
   assert.doesNotMatch(server, /initialization failed; continuing without persistence/);
 });
+
+
+test("task API acknowledges acceptance only after the initial snapshot is persisted", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf('app.post("/api/tasks"');
+  const end = server.indexOf('\napp.post("/api/tasks/:id/subtasks"', start);
+  const route = server.slice(start, end);
+  assert.match(route, /app\.post\("\/api\/tasks", async/);
+  assert.match(route, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
+  assert.ok(route.indexOf("await saveTaskSnapshot") < route.indexOf('emit("task.accepted"'));
+  assert.ok(route.indexOf("await saveTaskSnapshot") < route.indexOf("void executeRootTask(record)"));
+  assert.match(route, /status\(503\).*task could not be durably accepted/);
+});
