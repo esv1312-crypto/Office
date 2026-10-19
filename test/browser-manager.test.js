@@ -5,6 +5,8 @@ import { createBrowserManager } from "../src/browser-manager.js";
 const originalEnabled = process.env.BROWSER_AUTOMATION_ENABLED;
 const originalKey = process.env.TINYFISH_API_KEY;
 const originalWebhookSecret = process.env.BROWSER_WEBHOOK_SECRET;
+const originalMaxRequests = process.env.BROWSER_MAX_REQUESTS;
+const originalRetentionMs = process.env.BROWSER_REQUEST_RETENTION_MS;
 const originalFetch = globalThis.fetch;
 
 function restoreEnv() {
@@ -14,6 +16,10 @@ function restoreEnv() {
   else process.env.TINYFISH_API_KEY = originalKey;
   if (originalWebhookSecret === undefined) delete process.env.BROWSER_WEBHOOK_SECRET;
   else process.env.BROWSER_WEBHOOK_SECRET = originalWebhookSecret;
+  if (originalMaxRequests === undefined) delete process.env.BROWSER_MAX_REQUESTS;
+  else process.env.BROWSER_MAX_REQUESTS = originalMaxRequests;
+  if (originalRetentionMs === undefined) delete process.env.BROWSER_REQUEST_RETENTION_MS;
+  else process.env.BROWSER_REQUEST_RETENTION_MS = originalRetentionMs;
 }
 
 test("safe browser request is blocked, not left queued, when automation is disabled", async () => {
@@ -199,6 +205,29 @@ test("early browser webhook callback is not overwritten by the start response", 
     assert.equal(events.some(event => event.type === "browser.started"), false);
   } finally {
     globalThis.fetch = originalFetchBeforeTest;
+    restoreEnv();
+  }
+});
+
+test("browser request storage is bounded", async () => {
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "false";
+    process.env.TINYFISH_API_KEY = "test-key";
+    process.env.BROWSER_MAX_REQUESTS = "50";
+    const manager = createBrowserManager({ emit: () => {} });
+    let firstRequest = null;
+    for (let index = 0; index < 51; index += 1) {
+      const request = await manager.request({
+        url: "https://example.com/" + index,
+        goal: "Read the public page",
+        actionClass: "research"
+      });
+      if (index === 0) firstRequest = request;
+    }
+
+    assert.equal(manager.summary().failed, 50);
+    assert.equal(manager.status(firstRequest.id), null);
+  } finally {
     restoreEnv();
   }
 });
