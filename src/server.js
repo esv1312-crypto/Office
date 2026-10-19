@@ -908,9 +908,22 @@ function toolPolicy(employee, toolName, args = {}) {
   return true;
 }
 
+function safeToolArgs(toolName, args = {}) {
+  const input = args && typeof args === "object" ? args : {};
+  if (toolName === "github.write_file") return {path:String(input.path || "").slice(0,300),branch:String(input.branch || "").slice(0,120),contentLength:String(input.content ?? "").length};
+  if (toolName === "github.read_file") return {path:String(input.path || "").slice(0,300),ref:String(input.ref || "").slice(0,120)};
+  if (toolName === "browser.request") {
+    let hostname = null;
+    try { hostname = new URL(String(input.url || "")).hostname; } catch (_) {}
+    return {hostname,actionClass:String(input.actionClass || "research"),goalLength:String(input.goal || "").length};
+  }
+  if (toolName === "browser.status") return {requestId:String(input.requestId || "").slice(0,100)};
+  return {argumentNames:Object.keys(input).slice(0,20)};
+}
+
 async function executeTool({employeeId = "executor", toolName, args = {}, taskId = null}) {
   const employee = getEmployee(employeeId);
-  emit("tool.requested", {taskId, employeeId:employee.id, role:employee.role, tool:toolName, args});
+  emit("tool.requested", {taskId, employeeId:employee.id, role:employee.role, tool:toolName, args:safeToolArgs(toolName,args)});
   let tool;
   try {
     tool = TOOL_REGISTRY[toolName];
