@@ -72,3 +72,17 @@ export function validateSubtaskBatch(input, fallback = {}) {
   }
   return { ok: true, items: normalized };
 }
+
+
+// Return elapsed milliseconds only when a non-root worker is eligible for watchdog failure.
+// Invalid timestamps and already-processed records are deliberately ignored.
+export function getWatchdogTimeoutAge(record, nowMs, timeoutMs) {
+  if (!record || record.kind === "root") return null;
+  if (!["running", "waiting"].includes(record.status)) return null;
+  if (!record.startedAt || record.watchdogFailedAt) return null;
+  const startedAtMs = Date.parse(record.startedAt);
+  if (!Number.isFinite(startedAtMs)) return null;
+  const ageMs = nowMs - startedAtMs;
+  if (!Number.isFinite(ageMs) || ageMs < timeoutMs) return null;
+  return ageMs;
+}
