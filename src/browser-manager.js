@@ -22,7 +22,7 @@ export function createBrowserManager({emit}) {
     return d;
   }
 
-  function pub(r){ return {...r,approvalToken:r.status==="waiting_approval"?r.approvalToken:undefined}; }
+  function pub(r){ const {approvalToken, ...safe}=r; return safe; }
 
   async function start(r){
     if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
@@ -45,7 +45,7 @@ export function createBrowserManager({emit}) {
     if(!SAFE_ACTIONS.has(action)&&!SENSITIVE_ACTIONS.has(action)) throw Object.assign(new Error("unsupported browser action"),{code:"BROWSER_POLICY_DENIED"});
     if(freeOnly() && /billing|purchase|upgrade|paid/i.test(goal+" "+action)) throw Object.assign(new Error("paid browser action blocked by FREE_ONLY policy"),{code:"BROWSER_POLICY_DENIED"});
     const needs=SENSITIVE_ACTIONS.has(action);
-    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,approvalToken:needs?randomToken():null,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,result:null,error:null};
+    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,result:null,error:null};
     requests.set(r.id,r);
     emit("browser.requested",{requestId:r.id,taskId,url,goal,actionClass:action,requiresApproval:needs,status:r.status});
     if(needs){ emit("approval.requested",{requestId:r.id,taskId,url,goal,actionClass:action,approvalRequired:true}); return pub(r); }
@@ -54,12 +54,12 @@ export function createBrowserManager({emit}) {
     return start(r);
   }
 
-  async function approve(id,token){
+  async function approveAuthorized(id){
     const r=requests.get(id);
     if(!r) throw Object.assign(new Error("browser request not found"),{code:"BROWSER_NOT_FOUND"});
     if(r.status!=="waiting_approval") return pub(r);
-    if(!token || token!==r.approvalToken) throw Object.assign(new Error("valid human approval token is required"),{code:"BROWSER_APPROVAL_REQUIRED"});
-    r.approvedAt=new Date().toISOString(); emit("approval.granted",{requestId:id,taskId:r.taskId,actionClass:r.actionClass});
+    r.approvedAt=new Date().toISOString();
+    emit("approval.granted",{requestId:id,taskId:r.taskId,actionClass:r.actionClass,source:"authenticated_control_plane"});
     return start(r);
   }
 
@@ -96,5 +96,5 @@ export function createBrowserManager({emit}) {
       nextAction:key()?(enabled()?"Browser execution is live":"Enable browser automation only after confirming spending policy"):"Configure browser backend credentials"
     };
   }
-  return {request,approve,status,summary,webhook};
+  return {request,approveAuthorized,status,summary,webhook};
 }
