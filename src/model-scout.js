@@ -175,6 +175,17 @@ function rankRoles(){
   state.rolePools=roles;
 }
 
+export function resolveProviderDiscovery(previousModels, result){
+  if(result?.status==="fulfilled" && Array.isArray(result.value)){
+    return {ok:true,models:result.value,error:null};
+  }
+  return {
+    ok:false,
+    models:Array.isArray(previousModels)?previousModels:[],
+    error:result?.reason?.message || String(result?.reason || "provider discovery failed")
+  };
+}
+
 export async function refreshModelScout(){
   if(state.refreshing) return getModelScoutState();
   state.refreshing=true;
@@ -187,11 +198,12 @@ export async function refreshModelScout(){
       const result=results[i];
       // A failed catalog request is not evidence that every previously known model disappeared.
       // Preserve the last successful provider snapshot and its routing pool on transient errors.
-      if(result.status==="rejected"){
-        state.errors.push(provider+": "+(result.reason?.message || String(result.reason)));
+      const outcome=resolveProviderDiscovery(state.providers[provider],result);
+      if(!outcome.ok){
+        state.errors.push(provider+": "+outcome.error);
         continue;
       }
-      const models=result.value;
+      const models=outcome.models;
       const seen=new Set(models.map(x=>x.routeModel || x.id));
       for(const model of models) state.catalog[provider].set(model.routeModel || model.id,model);
       for(const [key,model] of state.catalog[provider]){
