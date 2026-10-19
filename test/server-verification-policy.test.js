@@ -186,3 +186,14 @@ test("preflight budget is applied after suppressed candidates are filtered", asy
   assert.match(helper, /unique\s*\.filter\(candidate\s*=>\s*!isProviderSuppressed\(candidate\.provider\)\s*&&\s*!isProviderModelSuppressed\(candidate\.provider,candidate\.model\)\)\s*\.slice\(0,4\)/);
   assert.doesNotMatch(helper, /for\s*\(const candidate of unique\.slice\(0,4\)\)/);
 });
+
+test("gateway rejects empty provider results and bounds OpenAI SDK calls", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const openAIStart = source.indexOf("async function generateWithOpenAI");
+  const localGatewayStart = source.indexOf("async function generateViaLocalGateway");
+  const openAI = source.slice(openAIStart, localGatewayStart);
+
+  assert.match(openAI, /new OpenAI\(\{apiKey:process\.env\.OPENAI_API_KEY,timeout\}\)/);
+  assert.match(openAI, /AI_REQUEST_TIMEOUT_MS/);
+  assert.match(source, /if\(!String\(result\?\.text \|\| ""\)\.trim\(\)\) throw Object\.assign\(new Error\(provider\+" returned an empty response"\)/);
+});
