@@ -24,7 +24,7 @@ Browser execution is blocked unless all required settings are present:
 - `TINYFISH_API_KEY`
 - `OFFICE_PUBLIC_URL` pointing to this runtime's public HTTPS URL
 
-The runtime creates a cryptographically random, one-time token for each browser request and includes it in the callback URL because the external asynchronous browser API accepts a callback URL rather than a custom callback header. The token is removed from public request snapshots and consumed after the first valid callback; replayed or unknown tokens are rejected. Sensitive browser actions still require explicit approval through the authenticated control plane.
+The runtime creates a cryptographically random, one-time token for each browser request and includes it in the callback URL because the external asynchronous browser API accepts a callback URL rather than a custom callback header. The token is removed from public request snapshots and consumed after the first valid callback; replayed or unknown tokens are rejected. Sensitive browser actions still require explicit approval through the authenticated control plane.\n\nBrowser request state is currently process-local and is not restored from PostgreSQL. If the runtime restarts mid-workflow, the old request ID will no longer resolve and its one-time callback token will no longer authenticate. Do not automatically replay browser actions after restart: a request may have reached the external browser provider before the runtime lost state, and replaying a sensitive action could duplicate a purchase, message, account change, or other side effect. The operator must inspect external state as appropriate, then submit a new browser request and obtain fresh approval for sensitive actions.
 
 ## Model discovery
 
