@@ -116,7 +116,7 @@ function freeOnly() {
 }
 
 function providerOrder() {
-  return (process.env.AI_PROVIDER_ORDER || "openrouter,huggingface,gemini,cloudflare,apinex")
+  return (process.env.AI_PROVIDER_ORDER || "openrouter,huggingface,gemini,cloudflare")
     .split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
 }
 
