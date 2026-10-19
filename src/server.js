@@ -551,7 +551,12 @@ async function preflightModel(provider, model, employee) {
 
 async function ensureEmployeeReady(employee, task, options={}) {
   const brain=resolveBrain(employee,task);
-  const candidates=[{provider:brain.provider,model:brain.model},...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))];
+  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[String(employee?.role||"executor")] || [];
+  const candidates=[
+    {provider:brain.provider,model:brain.model},
+    ...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id})),
+    ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
+  ];
   const excludedModels=new Set(options.excludeModels || []);
   const allUnique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
   const unique=allUnique.filter(x=>!excludedModels.has(x.model));
