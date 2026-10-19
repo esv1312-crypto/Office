@@ -227,6 +227,47 @@ test("full root-task lifecycle completes with delegated workers and independent 
     assert.ok(recoveredRoot.recoveryHistory.some(item => item.status === "completed"));
     assert.ok(recoveryEvents.some(event => event.type === "recovery.success"));
     assert.ok(recoveryEvents.some(event => event.type === "retest.passed"));
+
+    // Submit two independent roots together to catch shared mutable state and task-ID collisions.
+    const concurrentAccepted = await Promise.all(["CONCURRENT_A", "CONCURRENT_B"].map(async marker => {
+      const response = await request("/api/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-ai-office-audit-token": token },
+        body: JSON.stringify({ task: `${marker}: verify independent concurrent task handling.`, employeeId: "chief" })
+      });
+      const responseText = await response.text();
+      assert.equal(response.status, 202, responseText);
+      const body = JSON.parse(responseText);
+      assert.ok(body.task?.id);
+      return { marker, id: body.task.id };
+    }));
+    assert.notEqual(concurrentAccepted[0].id, concurrentAccepted[1].id);
+    const concurrentDeadline = Date.now() + 30000;
+    const concurrentFinal = new Map();
+    while (Date.now() < concurrentDeadline && concurrentFinal.size < concurrentAccepted.length) {
+      await Promise.all(concurrentAccepted.map(async item => {
+        if (concurrentFinal.has(item.id)) return;
+        const response = await request(`/api/tasks/${encodeURIComponent(item.id)}`, {
+          headers: { "x-ai-office-audit-token": token }
+        });
+        assert.equal(response.status, 200);
+        const task = (await response.json()).task;
+        if (["completed", "failed"].includes(task.status)) concurrentFinal.set(item.id, task);
+      }));
+      if (concurrentFinal.size < concurrentAccepted.length) await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    for (const item of concurrentAccepted) {
+      const task = concurrentFinal.get(item.id);
+      assert.equal(task?.status, "completed", `concurrent task ${item.marker} did not complete: ${JSON.stringify({
+        status: task?.status,
+        error: task?.error,
+        verification: task?.verification,
+        workerResults: task?.workerResults
+      })}\n${output}`);
+      assert.equal(task.verification?.status, "PASS");
+      assert.equal(task.workerResults?.length, 2);
+      assert.ok(task.workerResults.every(worker => worker.status === "completed" && worker.result));
+    }
   } finally {
     child.kill("SIGTERM");
     await Promise.race([waitForExit, new Promise(resolve => setTimeout(resolve, 5000))]);
