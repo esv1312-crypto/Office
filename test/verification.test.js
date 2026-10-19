@@ -144,3 +144,56 @@ test("a verifier's explicit FAIL is never upgraded to PASS", () => {
 
   assert.equal(result.status, "FAIL");
 });
+
+
+test("a passing verifier claim is rejected when authoritative runtime status says failed", () => {
+  const taskId = "07f6ac84-2f21-428a-befb-989fefe27d95";
+  const result = enforceVerificationEvidence({
+    status: "PASS",
+    checks: [{
+      name: "Task completed",
+      requirement: "Confirm task completed",
+      passed: true,
+      evidence: "The task completed successfully.",
+      classification: "FACT",
+      source: "runtime events",
+      locator: "task.state_changed taskId " + taskId
+    }]
+  }, ["Confirm task completed"], {
+    eventEvidence: [{
+      type: "task.state_changed",
+      taskId,
+      status: "failed",
+      ts: "2026-10-20T10:00:00.000Z"
+    }]
+  });
+
+  assert.equal(result.status, "FAIL");
+  assert.equal(result.checks[0].passed, false);
+  assert.match(result.checks[0].evidence, /authoritative runtime status.*failed/i);
+});
+
+test("a claim that all workers completed is rejected when a worker remains failed", () => {
+  const result = enforceVerificationEvidence({
+    status: "PASS",
+    checks: [{
+      name: "All four worker roles completed their assigned subtasks",
+      requirement: "All four worker roles completed their assigned subtasks",
+      passed: true,
+      evidence: "Runtime records show the worker outcomes.",
+      classification: "FACT",
+      source: "runtime events",
+      locator: "task.state_changed"
+    }]
+  }, ["All four worker roles completed their assigned subtasks"], {
+    workerResults: [
+      { taskId: "worker-1", employeeId: "analyst", status: "completed" },
+      { taskId: "worker-2", employeeId: "developer", status: "failed" }
+    ],
+    eventEvidence: [{ type: "task.state_changed", taskId: "worker-1", status: "completed" }]
+  });
+
+  assert.equal(result.status, "FAIL");
+  assert.equal(result.checks[0].passed, false);
+  assert.match(result.checks[0].evidence, /all workers completed conflicts/i);
+});
