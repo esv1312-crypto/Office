@@ -1264,7 +1264,7 @@ async function verifyRootTask(record) {
   const excludedModels=new Set([record.model,record.plannerModel,...relatedTasks.map(task=>task.model)].filter(Boolean));
   let verifierCandidate;
   try {
-    verifierCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels});
+    verifierCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels:excludedModels});
   } catch(error) {
     record.verification={status:"FAIL",checks:[{name:"Independent verifier availability",passed:false,evidence:"No separately qualified model was available for independent verification.",classification:"UNPROVEN",source:"Model Gateway preflight",locator:"ensureEmployeeReady()"}],summary:"Verification failed closed because no independent verifier model was available: "+String(error?.message||error),verifierId:verifier.id,model:null,verifiedAt:new Date().toISOString()};
     record.evidence=[];
