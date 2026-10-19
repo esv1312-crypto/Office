@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ai-office-unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   node-tests:
     runs-on: ubuntu-latest
