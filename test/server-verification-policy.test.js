@@ -200,7 +200,8 @@ test("gateway rejects empty provider results and bounds OpenAI SDK calls", async
   const openAI = source.slice(openAIStart, localGatewayStart);
 
   assert.match(openAI, /new OpenAI\(\{apiKey:process\.env\.OPENAI_API_KEY,timeout\}\)/);
-  assert.match(openAI, /AI_REQUEST_TIMEOUT_MS/);
+  assert.match(openAI, /aiRequestTimeoutMs\(\)/);
+  assert.match(source, /function aiRequestTimeoutMs\(\)[\s\S]*AI_REQUEST_TIMEOUT_MS/);
   assert.match(source, /if\(!String\(result\?\.text \|\| ""\)\.trim\(\)\) throw Object\.assign\(new Error\(provider\+" returned an empty response"\)/);
 });
 
@@ -228,7 +229,7 @@ test("remote backend calls require a token and always clear their timeout", asyn
   const gateway = source.slice(start, end);
 
   assert.match(gateway, /OFFICE_AUDIT_TOKEN is not configured/);
-  assert.match(gateway, /if\(backendUrls\.length && process\.env\.OFFICE_MODE !== "backend" && auditToken\)/);
+  assert.match(gateway, /if\(!strictCandidate && backendUrls\.length && process\.env\.OFFICE_MODE !== "backend" && auditToken\)/);
   assert.match(gateway, /"x-ai-office-audit-token":auditToken/);
   assert.match(gateway, /finally\s*\{\s*if\(timeout\) clearTimeout\(timeout\);\s*\}/);
 });
