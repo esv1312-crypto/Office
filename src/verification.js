@@ -64,12 +64,12 @@ function detectRuntimeContradiction(check, context = {}) {
     check?.source || "",
     check?.locator || ""
   ].join(" ");
-  const claimsSuccess = /\\b(completed|complete|passed|pass|succeeded|success|successful|finished|verified)\\b/i.test(claimText);
+  const claimsSuccess = /\b(completed|complete|passed|pass|succeeded|success|successful|finished|verified)\b/i.test(claimText);
   if (!claimsSuccess) return "";
 
   const workerResults = Array.isArray(context.workerResults) ? context.workerResults : [];
   const eventEvidence = Array.isArray(context.eventEvidence) ? context.eventEvidence : [];
-  const taskIds = [...new Set(claimText.match(/\\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\b/gi) || [])];
+  const taskIds = [...new Set(claimText.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi) || [])];
 
   for (const taskId of taskIds) {
     const snapshot = workerResults.find(item => String(item?.taskId || "").toLowerCase() === taskId.toLowerCase());
@@ -91,7 +91,7 @@ function detectRuntimeContradiction(check, context = {}) {
     }
   }
 
-  const claimsAllWorkersSucceeded = /\\b(all|every|each)\\b.{0,45}\\b(workers?|subtasks?|roles?)\\b.{0,60}\\b(completed|finished|succeeded|passed)\\b/i.test(claimText);
+  const claimsAllWorkersSucceeded = /\b(all|every|each)\b.{0,45}\b(workers?|subtasks?|roles?)\b.{0,60}\b(completed|finished|succeeded|passed)\b/i.test(claimText);
   if (claimsAllWorkersSucceeded && workerResults.length) {
     const recoveredTaskIds = new Set(workerResults
       .filter(item => String(item?.status || "").toLowerCase() === "completed" && item?.replacesTaskId)
