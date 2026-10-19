@@ -86,3 +86,10 @@ export function getWatchdogTimeoutAge(record, nowMs, timeoutMs) {
   if (!Number.isFinite(ageMs) || ageMs < timeoutMs) return null;
   return ageMs;
 }
+
+
+// Root tasks may complete only when verification explicitly passes and every check passes.
+export function isVerificationCompletionEligible(verification) {
+  if (!verification || verification.status !== "PASS" || !Array.isArray(verification.checks)) return false;
+  return verification.checks.length > 0 && verification.checks.every(check => check && check.passed === true);
+}
