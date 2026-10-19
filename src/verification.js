@@ -9,7 +9,7 @@ function normalizeReference(value) {
 
 function readLocalSource(source, repoRoot = process.cwd()) {
   const pathText=String(source || "").replace(/\\/g,"/");
-  const allowed=/^(src|test|docs|\\.github)\\//i.test(pathText) || /^(README(?:\\.[^/]+)?|package\\.json|render\\.yaml)$/i.test(pathText);
+  const allowed=/^(src|test|docs|\.github)\//i.test(pathText) || /^(README(?:\.[^/]+)?|package\.json|render\.yaml)$/i.test(pathText);
   if(!allowed) return { recognized:false, content:"" };
   const root=resolve(repoRoot);
   const target=resolve(root,pathText);
