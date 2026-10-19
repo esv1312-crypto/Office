@@ -71,11 +71,13 @@ async function runWorkerWatchdog(){
     if(age < workerTimeoutMs) continue;
     if(record.kind==="root") continue;
     if(record.watchdogFailedAt) continue;
-    record.watchdogFailedAt=new Date(now).toISOString();
-    await transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:record.watchdogFailedAt});
+    const watchdogFailedAt=new Date(now).toISOString();
+    await transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:watchdogFailedAt,watchdogFailedAt});
     emit("worker.watchdog_timeout",{taskId:record.id,parentTaskId:record.parentTaskId||null,employeeId:record.employeeId,ageMs:age,timeoutMs:workerTimeoutMs});
     const parent=record.parentTaskId ? tasks.get(record.parentTaskId) : null;
-    if(parent && ["waiting","running"].includes(parent.status)) void recoverFailedWorker(parent,record);
+    if(parent && ["waiting","running"].includes(parent.status)) {
+      void recoverFailedWorker(parent,record).catch(error=>console.error("[watchdog] recovery failed",error?.message||error));
+    }
   }
 }
 
