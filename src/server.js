@@ -553,7 +553,8 @@ async function ensureEmployeeReady(employee, task, options={}) {
   const brain=resolveBrain(employee,task);
   const candidates=[{provider:brain.provider,model:brain.model},...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))];
   const excludedModels=new Set(options.excludeModels || []);
-  const unique=candidates.filter(x=>x.provider&&x.model&&!excludedModels.has(x.model)).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
+  const allUnique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
+  const unique=allUnique.filter(x=>!excludedModels.has(x.model));
   let probes=0;
   for(const candidate of unique){
     if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
@@ -565,7 +566,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
       return candidate;
     }
   }
-  const diagnostics=unique.map(candidate=>({
+  const diagnostics=allUnique.map(candidate=>({
     provider:candidate.provider,
     model:candidate.model,
     excluded:excludedModels.has(candidate.model),
