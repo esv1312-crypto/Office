@@ -47,7 +47,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Bound numeric runtime settings so invalid environment values cannot produce a NaN worker limit or near-zero recurring timer.
 - [x] Expose PostgreSQL enabled/ready state in `/health` and authenticated `/api/state` diagnostics.
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
-- [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
+- [x] Reject passing verifier claims that contradict an identified task’s authoritative final state or claim all workers completed when any worker result remains unresolved; regression tests cover both cases.
 - [x] Document browser-request restart behavior: in-memory requests and one-time callback tokens are lost; never replay potentially side-effecting browser actions automatically after restart.
 - [x] Authenticate `.github/workflows/office-smoke.yml` and send the required `task` field to `/api/tasks`.
 - [x] Authenticate `.github/workflows/office-live-test.yml` with `OFFICE_AUDIT_TOKEN` and send the required audit header to `/api/tasks`.
