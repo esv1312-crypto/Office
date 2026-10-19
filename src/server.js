@@ -158,7 +158,12 @@ function aiConfigured(provider) {
   if (provider === "gemini") return Boolean(process.env.GEMINI_API_KEY);
   if (provider === "openrouter") return Boolean(openRouterApiKey());
   if (provider === "cloudflare") return Boolean(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID);
-  if (provider === "apinex") return Boolean(String(process.env.APINEX_API_KEY || "").trim());
+  if (provider === "apinex") {
+    const keyPresent = Boolean(String(process.env.APINEX_API_KEY || "").trim());
+    const configuredModel = String(process.env.APINEX_MODEL || "").trim();
+    const discoveredModel = Object.values(getModelScoutState().rolePools || {}).flat().some(model => model.provider === "apinex" && String(model.routeModel || model.id || "").startsWith("free/"));
+    return keyPresent && ((freeOnly() && configuredModel.startsWith("free/")) || discoveredModel || (!freeOnly() && Boolean(configuredModel)));
+  }
   if (provider === "openai") return !freeOnly() && Boolean(process.env.OPENAI_API_KEY);
   return false;
 }
