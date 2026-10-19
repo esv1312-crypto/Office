@@ -603,7 +603,10 @@ function openRouterPool(employee, preferredModel = null) {
   return result.length ? result : ["openrouter/free"];
 }
 
-async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true) {
+async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
+  const enableTools=enableToolsOverride===null ? toolSchemasForEmployee(employee).length>0 : Boolean(enableToolsOverride);
+  const configuredTimeout=Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000);
+  const timeoutMs=timeoutMsOverride===null ? (Number.isFinite(configuredTimeout)?Math.max(5000,configuredTimeout):30000) : timeoutMsOverride;
   const pool=allowModelFallback ? openRouterPool(employee, preferredModel) : [String(preferredModel||"")].filter(Boolean);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
@@ -638,7 +641,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
             provider:"openrouter",
             baseUrl:"https://openrouter.ai/api/v1/chat/completions",
             apiKey:openRouterApiKey(),
-            model,task,employeeId:employee?.id||"executor",taskId,enableTools:true,
+            model,task,employeeId:employee?.id||"executor",taskId,enableTools,timeoutMs,
             headers:{
               "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
               "X-Title":"AI-OFFICE"
@@ -715,7 +718,7 @@ async function generateWithApinex(task, employee, preferredModel, taskId=null, e
     provider:"apinex",
     baseUrl:"https://api.apinex.bond/v1/chat/completions",
     apiKey:String(process.env.APINEX_API_KEY || "").trim(),
-    model,task,employeeId:employee?.id||"executor",taskId,enableTools:true
+    model,task,employeeId:employee?.id||"executor",taskId,enableTools,timeoutMs
   });
 }
 
@@ -778,12 +781,13 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model);
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model,!strictCandidate);
-      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate);
+      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate,!strictCandidate && toolSchemasForEmployee(employee).length>0,Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="apinex") {
         const preflight=await preflightModel(provider,model,employee);
         if(!preflight.ok) throw Object.assign(new Error("APINEX model failed preflight"),{code:"PREFLIGHT_FAILED"});
-        result=await generateWithApinex(task,employee,model,taskId,true);
+        const enableTools=!strictCandidate && toolSchemasForEmployee(employee).length>0;
+        result=await generateWithApinex(task,employee,model,taskId,enableTools,Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
       }
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
       else throw new Error("Unsupported AI provider: "+provider);
