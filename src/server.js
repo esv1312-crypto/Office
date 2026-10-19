@@ -1025,7 +1025,29 @@ function replacementCandidates(failedRecord) {
   return [...sameRole,...sameSkills,...all].filter((e,i,a)=>a.findIndex(x=>x.id===e.id)===i);
 }
 
-async function recoverFailedWorker(parent, failedRecord) {
+const workerRecoveryInFlight = new Map();
+
+function recoverFailedWorker(parent, failedRecord) {
+  const succeeded = [...tasks.values()].find(task =>
+    task.parentTaskId === parent.id &&
+    task.kind === "replacement" &&
+    task.replacesTaskId === failedRecord.id &&
+    task.status === "completed"
+  );
+  if (succeeded) return Promise.resolve(succeeded);
+
+  const key = parent.id + ":" + failedRecord.id;
+  const inFlight = workerRecoveryInFlight.get(key);
+  if (inFlight) return inFlight;
+
+  const promise = performWorkerRecovery(parent, failedRecord).finally(() => {
+    if (workerRecoveryInFlight.get(key) === promise) workerRecoveryInFlight.delete(key);
+  });
+  workerRecoveryInFlight.set(key, promise);
+  return promise;
+}
+
+async function performWorkerRecovery(parent, failedRecord) {
   const max=Number(process.env.MAX_WORKER_REPLACEMENTS || 2);
   parent.workerRecoveryAttempts=Number(parent.workerRecoveryAttempts || 0);
   parent.workerRecoveryHistory=Array.isArray(parent.workerRecoveryHistory) ? parent.workerRecoveryHistory : [];
