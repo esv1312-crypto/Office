@@ -81,6 +81,6 @@ test("verifier prompts require exact one-to-one checklist mapping on both attemp
 
   assert.match(prompt, /"requirement":"exact checklist item string"/);
   assert.match(prompt, /map to exactly one checklist item/);
-  assert.match(verification, /"requirement":"exact checklist item string"/);
+  assert.ok(verification.includes(String.raw`\"requirement\":\"exact checklist item string\"`));
   assert.match(verification, /map to exactly one checklist item/);
 });
