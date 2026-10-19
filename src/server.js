@@ -1720,6 +1720,7 @@ app.get("/api/gateway", (_req,res)=>res.json({
     gemini:{configured:aiConfigured("gemini"),models:(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean)},
     openrouter:{configured:aiConfigured("openrouter"),models:employees().filter(e=>resolveBrain(e).provider==="openrouter").map(e=>({employeeId:e.id,model:resolveBrain(e).model})),defaultModel:openRouterModel()},
     cloudflare:{configured:aiConfigured("cloudflare"),models:[process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct"]},
+    apinex:{configured:aiConfigured("apinex"),freeOnlyEnforced:freeOnly(),models:getModelScoutState().rolePools.executor.filter(x=>x.provider==="apinex").map(x=>x.routeModel||x.id)},
     openai:{configured:aiConfigured("openai"),blockedByFreeOnly:freeOnly(),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
   }
 }));
