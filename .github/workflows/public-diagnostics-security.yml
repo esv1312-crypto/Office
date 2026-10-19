@@ -1,0 +1,21 @@
+name: Public diagnostics security tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/server.js"
+      - "test/security-public-diagnostics.test.js"
+      - ".github/workflows/public-diagnostics-security.yml"
+  push:
+    branches: ["security/harden-public-diagnostics"]
+
+jobs:
+  security-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test test/security-public-diagnostics.test.js
