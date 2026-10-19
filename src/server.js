@@ -147,6 +147,12 @@ function openRouterChatCompletionsUrl() {
   return "https://openrouter.ai/api/v1/chat/completions";
 }
 
+function isLoopbackAiTestMode() {
+  return process.env.NODE_ENV === "test"
+    && process.env.OFFICE_TEST_ALLOW_LOCAL_AI_ENDPOINT === "true"
+    && Boolean(String(process.env.OFFICE_TEST_OPENROUTER_URL || "").trim());
+}
+
 function openRouterModel() {
   const configured = String(process.env.OPENROUTER_MODEL || "").trim();
   return /^(sk-or-|or-)/i.test(configured) || !configured ? "openrouter/free" : configured;
@@ -2310,10 +2316,14 @@ async function bootstrapDatabase() {
 await bootstrapDatabase();
 
 const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
-  void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
-  modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
-  void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
-  resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));
+  if (isLoopbackAiTestMode()) {
+    emit("test.local_ai_mode",{modelScout:"disabled",resourceScout:"disabled",endpoint:"loopback-only"});
+  } else {
+    void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
+    modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
+    void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
+    resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));
+  }
   workerWatchdogTimer=setInterval(()=>void runWorkerWatchdog().catch(error=>console.error("[watchdog] run failed",error?.message||error)),workerWatchdogIntervalMs);
   emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
