@@ -1139,6 +1139,12 @@ async function performWorkerRecovery(parent, failedRecord) {
     replacement.replacesTaskId=failedRecord.id;
     replacement.replacementAttempt=parent.workerRecoveryAttempts;
     tasks.set(replacement.id,replacement);
+    try {
+      await saveTaskSnapshot(taskSnapshot(replacement));
+    } catch (error) {
+      tasks.delete(replacement.id);
+      throw new Error("replacement task could not be durably accepted");
+    }
     emit("replacement.requested",{
       taskId:parent.id,
       failedTaskId:failedRecord.id,
@@ -1390,6 +1396,13 @@ async function recoverRootTask(record) {
     fixTask.recoveryAttempt = record.recoveryAttempts;
     tasks.set(fixTask.id,fixTask);
     record.recoveryTaskIds.push(fixTask.id);
+    try {
+      await saveTaskSnapshots([taskSnapshot(record),taskSnapshot(fixTask)]);
+    } catch (error) {
+      tasks.delete(fixTask.id);
+      record.recoveryTaskIds.pop();
+      throw new Error("recovery task could not be durably accepted");
+    }
     emit("recovery.requested",{
       taskId:record.id,
       recoveryTaskId:fixTask.id,
@@ -1520,10 +1533,18 @@ async function executeRootTask(record) {
       });
       tasks.set(child.id,child);
       record.subtaskIds.push(child.id);
-      emit("task.accepted",{taskId:child.id,parentTaskId:record.id,kind:"subtask",taskLength:String(child.task||"").length,employeeId:child.employeeId,role:child.role,provider:child.provider,model:child.model});
       children.push(child);
     }
 
+    try {
+      await saveTaskSnapshots(children.map(taskSnapshot));
+    } catch (error) {
+      for (const child of children) tasks.delete(child.id);
+      throw new Error("planned subtask batch could not be durably accepted");
+    }
+    for (const child of children) {
+      emit("task.accepted",{taskId:child.id,parentTaskId:record.id,kind:"subtask",taskLength:String(child.task||"").length,employeeId:child.employeeId,role:child.role,provider:child.provider,model:child.model});
+    }
     await transitionTask(record,"waiting",{waitingReason:"subtasks_running",subtaskIds:record.subtaskIds});
     await Promise.all(children.map(child=>executeWorkerTask(child)));
 
