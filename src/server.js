@@ -13,6 +13,7 @@ app.use(express.json({limit:"1mb"}));
 
 const startedAt = new Date().toISOString();
 const events = [];
+let nextEventId = 1;
 const tasks = new Map();
 const INTERNAL_TASK_AUTH_HEADER = "x-ai-office-internal";
 function validateParentLink(parentTaskId, childId=null) {
@@ -96,7 +97,7 @@ const DEFAULT_EMPLOYEES = [
 ];
 
 function emit(type, data = {}) {
-  const event = { id: events.length + 1, ts: new Date().toISOString(), type, ...data };
+  const event = { id: nextEventId++, ts: new Date().toISOString(), type, ...data };
   events.unshift(event);
   if (events.length > 500) events.pop();
   console.log("[EVENT]", JSON.stringify(event));
@@ -2159,6 +2160,7 @@ async function bootstrapDatabase() {
     if(enabled) {
       const state = await loadDatabaseState();
       events.splice(0,events.length,...(state.events || []).reverse());
+      nextEventId=Math.max(0,...events.map(event=>Number(event.id)||0))+1;
       for(const snapshot of state.tasks || []) {
         const normalized=normalizeTaskSnapshotAfterRestart(snapshot);
         const record=normalized.record;
@@ -2167,7 +2169,7 @@ async function bootstrapDatabase() {
           await saveTaskSnapshot(taskSnapshot(record));
           if(record.restartInterrupted) {
             const restartEvent={
-              id:events.length+1,
+              id:nextEventId++,
               ts:new Date().toISOString(),
               type:"task.restart_interrupted",
               taskId:record.id,
