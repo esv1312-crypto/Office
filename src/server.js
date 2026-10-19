@@ -127,7 +127,7 @@ function freeOnly() {
 }
 
 function providerOrder() {
-  return (process.env.AI_PROVIDER_ORDER || "openrouter,huggingface,gemini,cloudflare")
+  return (process.env.AI_PROVIDER_ORDER || "openrouter,huggingface,gemini,cloudflare,apinex")
     .split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
 }
 
@@ -156,6 +156,7 @@ function aiConfigured(provider) {
   if (provider === "gemini") return Boolean(process.env.GEMINI_API_KEY);
   if (provider === "openrouter") return Boolean(openRouterApiKey());
   if (provider === "cloudflare") return Boolean(process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID);
+  if (provider === "apinex") return Boolean(String(process.env.APINEX_API_KEY || "").trim());
   if (provider === "openai") return !freeOnly() && Boolean(process.env.OPENAI_API_KEY);
   return false;
 }
@@ -693,6 +694,19 @@ async function generateWithHuggingFace(task, employee, preferredModel) {
   throw lastError || new Error("All Hugging Face free models failed");
 }
 
+async function generateWithApinex(task, employee, preferredModel, taskId=null) {
+  const model=String(preferredModel || process.env.APINEX_MODEL || "free/gpt-6-luna").trim();
+  if(freeOnly() && !model.startsWith("free/")) {
+    throw Object.assign(new Error("APINEX model is not in the explicitly free/* category; blocked by AI_FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"});
+  }
+  return callOpenAICompatible({
+    provider:"apinex",
+    baseUrl:"https://api.apinex.bond/v1/chat/completions",
+    apiKey:String(process.env.APINEX_API_KEY || "").trim(),
+    model,task,employeeId:employee?.id||"executor",taskId,enableTools:true
+  });
+}
+
 async function generateWithCloudflare(task, preferredModel) {
   const model=preferredModel || process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct";
   return callOpenAICompatible({
@@ -740,7 +754,9 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
           ? (sameAsApproved ? String(approvedCandidate.model) : openRouterModel())
           : provider==="cloudflare"
             ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.CLOUDFLARE_MODEL || null))
-            : (process.env.OPENAI_MODEL || null);
+            : provider==="apinex"
+              ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.APINEX_MODEL || "free/gpt-6-luna"))
+              : (process.env.OPENAI_MODEL || null);
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly() && !paidTestEnabled(),backend:"local"});
     try {
       let result;
@@ -748,6 +764,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model);
       else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId);
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
+      else if(provider==="apinex") result=await generateWithApinex(task,employee,model,taskId);
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
       else throw new Error("Unsupported AI provider: "+provider);
       emit("gateway.success",{employeeId:employee.id,provider,model:result.model,freeOnly:freeOnly() && !paidTestEnabled(),paidTest:paidTestEnabled(),backend:"local"});
