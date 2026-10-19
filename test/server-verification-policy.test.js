@@ -175,16 +175,22 @@ test("task acceptance events log lengths rather than raw user task text", async 
   assert.ok(acceptedEvents.every(event => !/\btask\s*:/.test(event)));
 });
 
-test("preflight budget is applied after suppressed candidates are filtered", async () => {
+test("preflight skips suppressed candidates dynamically and stops on provider-wide failures", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = source.indexOf("async function ensureEmployeeReady");
   const end = source.indexOf("\nfunction isProviderSuppressed", start);
+  const preflightStart = source.indexOf("async function preflightModel");
   assert.notEqual(start, -1, "ensureEmployeeReady must exist");
   assert.notEqual(end, -1, "preflight helper boundary must exist");
   const helper = source.slice(start, end);
+  const preflight = source.slice(preflightStart, start);
 
-  assert.match(helper, /unique\s*\.filter\(candidate\s*=>\s*!isProviderSuppressed\(candidate\.provider\)\s*&&\s*!isProviderModelSuppressed\(candidate\.provider,candidate\.model\)\)\s*\.slice\(0,4\)/);
-  assert.doesNotMatch(helper, /for\s*\(const candidate of unique\.slice\(0,4\)\)/);
+  assert.match(helper, /let probes=0/);
+  assert.match(helper, /for\(const candidate of unique\)/);
+  assert.match(helper, /if\(isProviderSuppressed\(candidate\.provider\) \|\| isProviderModelSuppressed\(candidate\.provider,candidate\.model\)\) continue/);
+  assert.match(helper, /if\(probes>=4\) break/);
+  assert.match(preflight, /if\(error\?\.status===401 \|\| error\?\.status===402\) suppressProvider/);
+  assert.match(preflight, /else if\(error\?\.status===429\) suppressProvider/);
 });
 
 test("gateway rejects empty provider results and bounds OpenAI SDK calls", async () => {
