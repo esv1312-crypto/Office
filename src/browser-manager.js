@@ -30,8 +30,10 @@ export function createBrowserManager({emit}) {
     try{
       const callback=publicUrl()+"/api/browser/webhook?token="+encodeURIComponent(r.webhookToken);
       const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:callback});
-      r.runId=d?.run_id || d?.runId || null;
-      emit("browser.started",{requestId:r.id,runId:r.runId,url:auditUrl(r.url)});
+      const responseRunId=d?.run_id || d?.runId || null;
+      if(r.runId && responseRunId && r.runId!==responseRunId) throw new Error("browser callback run ID did not match accepted run");
+      if(!r.runId) r.runId=responseRunId;
+      if(r.status==="running") emit("browser.started",{requestId:r.id,runId:r.runId,url:auditUrl(r.url)});
     }catch(e){
       const token=r.webhookToken;
       const rawError=e?.message||String(e);
