@@ -69,7 +69,8 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [ ] Add success-rate, time-to-completion, provider-fallback, and stuck-task metrics.
 - [ ] Test concurrent tasks and recovery from provider/browser outages.
 - [ ] Verify PostgreSQL restart recovery and event ordering against a real test database.
-- [ ] Await persistence for critical task-state transitions or add transaction boundaries to eliminate the remaining abrupt-termination write-loss window.
+- [x] Await persistence for critical task-state transitions; revert in-memory state if the snapshot write fails.
+- [x] Persist internal office-audit, evidence-smoke, recovery-smoke, and Pognali-audit task acceptance before starting workers or returning acceptance.
 
 ## P2 — developer experience
 
