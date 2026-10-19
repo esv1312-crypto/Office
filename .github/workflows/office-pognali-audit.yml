@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Keep live audit manual
-        if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[office pognali audit]')
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[office pognali audit]') == false
         run: echo "No audit marker present; no external task was sent."
       - name: Build read-only Pognali source dossier
         if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[office pognali audit]')
