@@ -498,7 +498,7 @@ async function preflightModel(provider, model, employee) {
       result=await generateWithCloudflare(probe,model,PREFLIGHT_TIMEOUT_MS);
     } else if(provider==="apinex"){
       if(!String(model||"").startsWith("free/")) throw new Error("APINEX preflight requires an explicitly free/* model ID");
-      result=await generateWithApinex(probe,employee,model,null,false);
+      result=await generateWithApinex(probe,employee,model,null,false,PREFLIGHT_TIMEOUT_MS);
     } else {
       throw new Error("Unsupported preflight provider: "+provider);
     }
@@ -617,7 +617,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
         provider:"openrouter",
         baseUrl:"https://openrouter.ai/api/v1/chat/completions",
         apiKey:openRouterApiKey(),
-        model,task,employeeId:employee?.id||"executor",taskId,enableTools,
+        model,task,employeeId:employee?.id||"executor",taskId,enableTools,timeoutMs,
         headers:{
           "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
           "X-Title":"AI-OFFICE"
@@ -701,7 +701,7 @@ async function generateWithHuggingFace(task, employee, preferredModel) {
   throw lastError || new Error("All Hugging Face free models failed");
 }
 
-async function generateWithApinex(task, employee, preferredModel, taskId=null, enableTools=true) {
+async function generateWithApinex(task, employee, preferredModel, taskId=null, enableTools=true, timeoutMs=null) {
   const model=String(preferredModel || process.env.APINEX_MODEL || "").trim();
   if(!model) {
     throw Object.assign(new Error("No APINEX model has been discovered or explicitly configured; refusing to guess a model ID"),{code:"APINEX_MODEL_UNVERIFIED"});
