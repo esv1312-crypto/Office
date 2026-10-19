@@ -1689,7 +1689,10 @@ async function runResourceScan() {
   return state;
 }
 
-app.get("/api/resource-scout", (_req,res)=>res.json({ok:true,...getResourceScoutState()}));
+app.get("/api/resource-scout", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({ok:true,...getResourceScoutState()});
+});
 
 app.post("/api/resource-scout/scan", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1700,7 +1703,9 @@ app.post("/api/resource-scout/scan", async (req,res)=>{
   }
 });
 
-app.get("/api/resource-manager", (_req,res)=>res.json({
+app.get("/api/resource-manager", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
   ok:true,
   manager:"free-ai-resource-manager",
   policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},
@@ -1716,7 +1721,9 @@ app.post("/api/model-scout/refresh", async (req,res)=>{
   catch(error){ res.status(500).json({ok:false,error:error?.message||String(error)}); }
 });
 
-app.get("/api/model-pools", (_req,res)=>res.json({
+app.get("/api/model-pools", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
   ok:true,
   provider:"dynamic",
   freeOnly:freeOnly(),
@@ -1725,7 +1732,9 @@ app.get("/api/model-pools", (_req,res)=>res.json({
   scout:getModelScoutState()
 }));
 
-app.get("/api/env-diagnostic", (_req,res)=>res.json({
+app.get("/api/env-diagnostic", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
   ok:true,
   note:"Presence-only diagnostic. Secret values are never returned.",
   environment:{
@@ -1745,7 +1754,9 @@ app.get("/api/env-diagnostic", (_req,res)=>res.json({
   }
 }));
 
-app.get("/api/gateway", (_req,res)=>res.json({
+app.get("/api/gateway", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
   ok:true,
   freeOnly:freeOnly(),
   order:providerOrder(),
