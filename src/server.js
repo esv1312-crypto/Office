@@ -34,7 +34,7 @@ function validateParentLink(parentTaskId, childId=null) {
 
 function requireInternalOrAudit(req,res) {
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.headers["x-ai-office-audit-token"] || req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   const internal=String(req.headers[INTERNAL_TASK_AUTH_HEADER] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
   if(internal || (expected && supplied===expected)) return true;
   res.status(401).json({ok:false,error:"authentication required"}); return false;
@@ -1714,7 +1714,7 @@ app.post("/api/browser/requests/:id/approve",async (req,res)=>{
 });
 
 app.post("/api/browser/webhook",(req,res)=>{
-  const supplied=String(req.headers["x-ai-office-webhook-secret"] || req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-webhook-secret"] || "").trim();
   if(!supplied) return res.status(401).json({ok:false,error:"webhook authentication required"});
 
   try {
@@ -1836,7 +1836,7 @@ app.get("/api/gateway", (req,res)=>{
 
 app.get("/api/smoke/fallback", async (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/fallback?run=1 creates one internal controlled provider-fallback test"});
   const before=events.length;
@@ -1861,7 +1861,7 @@ app.get("/api/smoke/fallback", async (req,res)=>{
 
 app.get("/api/smoke/recovery", async (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/recovery?run=1&token=..."});
   const root=createTaskRecord({task:"INTERNAL READ-ONLY RECOVERY TEST. Produce a short evidence-rich confirmation that the recovery worker can replace a failed worker and return a usable result.",employeeId:"chief",kind:"root"});
@@ -1878,7 +1878,7 @@ app.get("/api/smoke/recovery", async (req,res)=>{
 
 app.get("/api/smoke/evidence", (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") {
     return res.json({ok:true,usage:"GET /api/smoke/evidence?run=1 creates one internal read-only evidence smoke test"});
@@ -1988,7 +1988,7 @@ async function startOfficeAudit() {
 
 app.get("/api/office-check", async (req,res)=>{ 
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   const internal=String(req.headers["x-ai-office-internal"] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
   if((!expected || supplied !== expected) && !internal) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1&token=..."});
@@ -2012,7 +2012,7 @@ app.get("/api/state", (req,res)=>{
 
 app.get("/api/pognali/audit", async (req,res)=>{
   const expected=String(process.env.POGNALI_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-pognali-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   const files=[
     "README.txt","BUILD_PIPELINE.md","build.gradle","settings.gradle","gradle.properties",
