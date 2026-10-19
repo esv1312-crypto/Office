@@ -62,7 +62,7 @@ let resourceScoutTimer = null;
 const workerWatchdogIntervalMs=boundedIntegerSetting(process.env.WORKER_WATCHDOG_INTERVAL_MS,15000,5000,3600000);
 const workerTimeoutMs=boundedIntegerSetting(process.env.WORKER_TIMEOUT_MS,600000,30000,86400000);
 let workerWatchdogTimer=null;
-function runWorkerWatchdog(){
+async function runWorkerWatchdog(){
   const now=Date.now();
   for(const record of tasks.values()){
     if(!["running","waiting"].includes(record.status)) continue;
@@ -72,19 +72,28 @@ function runWorkerWatchdog(){
     if(record.kind==="root") continue;
     if(record.watchdogFailedAt) continue;
     record.watchdogFailedAt=new Date(now).toISOString();
-    transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:record.watchdogFailedAt});
+    await transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:record.watchdogFailedAt});
     emit("worker.watchdog_timeout",{taskId:record.id,parentTaskId:record.parentTaskId||null,employeeId:record.employeeId,ageMs:age,timeoutMs:workerTimeoutMs});
     const parent=record.parentTaskId ? tasks.get(record.parentTaskId) : null;
     if(parent && ["waiting","running"].includes(parent.status)) void recoverFailedWorker(parent,record);
   }
 }
 
-function transitionTask(record, nextStatus, extra = {}) {
+async function transitionTask(record, nextStatus, extra = {}) {
   assertTaskTransitionAllowed(record.status,nextStatus);
   const previousStatus = record.status;
+  const previousRecord = { ...record };
   record.status = nextStatus;
   Object.assign(record, extra);
-  void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
+  try {
+    await saveTaskSnapshot(taskSnapshot(record));
+  } catch (error) {
+    for (const key of Object.keys(record)) {
+      if (!Object.prototype.hasOwnProperty.call(previousRecord,key)) delete record[key];
+    }
+    Object.assign(record,previousRecord);
+    throw error;
+  }
   emit("task.state_changed", {taskId:record.id,parentTaskId:record.parentTaskId || null,previousStatus,status:nextStatus});
   return record;
 }
@@ -1055,7 +1064,7 @@ function buildWorkerPrompt(record,employee){
 async function executeWorkerTask(record) {
   await acquireWorkerSlot(record.id);
   try {
-    transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1});
+    await transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1});
     const employee=getEmployee(record.employeeId);
     record.employeeId=employee.id; record.employee=employee.name; record.role=employee.role;
     const ready=await ensureEmployeeReady(employee,record.task);
@@ -1067,12 +1076,12 @@ async function executeWorkerTask(record) {
       emit("task.late_result_ignored",{taskId:record.id,employeeId:employee.id,reason:"worker was already failed by watchdog"});
       return result.text;
     }
-    transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
+    await transitionTask(record,"completed",{result:result.text,completedAt:new Date().toISOString()});
     emit("task.completed",{taskId:record.id,employeeId:employee.id,provider:record.provider,model:record.model,evidenceCount:record.evidenceSummary.length});
     return result.text;
   } catch(error) {
     const message=error?.message||String(error);
-    transitionTask(record,"failed",{error:message,failedAt:new Date().toISOString()});
+    await transitionTask(record,"failed",{error:message,failedAt:new Date().toISOString()});
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:message});
     return null;
   } finally {
@@ -1432,7 +1441,7 @@ async function recoverRootTask(record) {
     record.recoveryHistory.push({attempt:record.recoveryAttempts,status:"completed",taskId:fixTask.id});
     emit("recovery.success",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts});
 
-    transitionTask(record,"running",{recoveryRequired:false,recoveryAttempt:record.recoveryAttempts});
+    await transitionTask(record,"running",{recoveryRequired:false,recoveryAttempt:record.recoveryAttempts});
     emit("retest.requested",{taskId:record.id,attempt:record.recoveryAttempts});
 
     const passed = await verifyRootTask(record);
@@ -1443,7 +1452,7 @@ async function recoverRootTask(record) {
 
     emit("retest.failed",{taskId:record.id,attempt:record.recoveryAttempts});
     if (record.recoveryAttempts < record.maxRecoveryAttempts) {
-      transitionTask(record,"failed",{
+      await transitionTask(record,"failed",{
         error:"Verification failed after recovery attempt " + record.recoveryAttempts,
         failedAt:new Date().toISOString(),
         recoveryRequired:true
@@ -1472,7 +1481,7 @@ function buildPlanningPrompt(task) {
 
 async function executeRootTask(record) {
   try {
-    transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
+    await transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
     const chief=getEmployee("chief");
     const planResult=await generateViaGateway(buildPlanningPrompt(record.task),chief,null,record.id);
     record.plannerModel=planResult.model || null;
@@ -1515,7 +1524,7 @@ async function executeRootTask(record) {
       children.push(child);
     }
 
-    transitionTask(record,"waiting",{waitingReason:"subtasks_running",subtaskIds:record.subtaskIds});
+    await transitionTask(record,"waiting",{waitingReason:"subtasks_running",subtaskIds:record.subtaskIds});
     await Promise.all(children.map(child=>executeWorkerTask(child)));
 
     const failed=children.filter(x=>x.status==="failed");
@@ -1537,7 +1546,7 @@ async function executeRootTask(record) {
     const stillFailed=children.filter(x=>x.status==="failed" && !recoveredTaskIds.has(x.id));
     if(stillFailed.length) throw new Error("Worker and replacement attempts failed");
 
-    transitionTask(record,"running",{waitingReason:null});
+    await transitionTask(record,"running",{waitingReason:null});
     const synthesisPrompt=[
       "You are the Chief of Staff of AI-OFFICE.",
       "Synthesize the worker results into the final answer to the original task.",
@@ -1567,7 +1576,7 @@ async function executeRootTask(record) {
 
     let verificationPassed=await verifyRootTask(record);
     if(!verificationPassed) {
-      transitionTask(record,"failed",{
+      await transitionTask(record,"failed",{
         error:"Verification failed",
         failedAt:new Date().toISOString(),
         recoveryRequired:true
@@ -1578,7 +1587,7 @@ async function executeRootTask(record) {
       if (!recovered) {
         record.error="Recovery attempts exhausted";
         record.failedAt=new Date().toISOString();
-        transitionTask(record,"failed",{recoveryRequired:false,error:record.error,failedAt:record.failedAt});
+        await transitionTask(record,"failed",{recoveryRequired:false,error:record.error,failedAt:record.failedAt});
         emit("task.failed",{
           taskId:record.id,
           employeeId:"chief",
@@ -1592,7 +1601,7 @@ async function executeRootTask(record) {
       }
     }
 
-    transitionTask(record,"completed",{
+    await transitionTask(record,"completed",{
       completedAt:new Date().toISOString(),
       evidence:record.evidence,
       recoveryRequired:false
@@ -1608,7 +1617,7 @@ async function executeRootTask(record) {
     });
   } catch(error) {
     if(record.status!=="failed") {
-      transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
+      await transitionTask(record,"failed",{error:error?.message || String(error),failedAt:new Date().toISOString()});
     }
     emit("task.failed",{taskId:record.id,employeeId:record.employeeId,provider:record.provider,error:record.error});
   }
@@ -2078,7 +2087,7 @@ SOURCE DOSSIER:
     void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
     emit("task.accepted",{taskId:record.id,parentTaskId:null,kind:"root",taskLength:String(taskText||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model,source:"pognali_read_only_audit"});
     if(!aiAvailable(record.provider)){
-      transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+      await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
       emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
     } else void executeRootTask(record);
     res.status(202).json({ok:true,task:taskSnapshot(record),readOnly:true,sourceRepo:"esv1312-crypto/pognali3",filesAudited:files.length});
@@ -2113,7 +2122,7 @@ app.post("/api/tasks", async (req,res)=>{
   emit("task.accepted",{taskId:record.id,parentTaskId:record.parentTaskId,kind:record.kind,taskLength:String(task||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
 
   if(!aiAvailable(record.provider)) {
-    transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+    await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
     emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
     return res.status(202).json({ok:true,task:taskSnapshot(record)});
   }
@@ -2155,7 +2164,7 @@ app.post("/api/tasks/:id/subtasks",async (req,res)=>{
   for(const record of records) {
     emit("task.accepted",{taskId:record.id,parentTaskId:parent.id,kind:"subtask",taskLength:String(record.task||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
     if(!aiAvailable(record.provider)) {
-      transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+      await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
       emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
     } else {
       void executeWorkerTask(record);
@@ -2233,7 +2242,7 @@ const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
   void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
   resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));
-  workerWatchdogTimer=setInterval(runWorkerWatchdog,workerWatchdogIntervalMs);
+  workerWatchdogTimer=setInterval(()=>void runWorkerWatchdog().catch(error=>console.error("[watchdog] run failed",error?.message||error)),workerWatchdogIntervalMs);
   emit("worker.watchdog_started",{intervalMs:workerWatchdogIntervalMs,timeoutMs:workerTimeoutMs});
   emit("office.started",{provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),employees:employees().length});
   // Controlled one-shot final audit; disable RUN_FINAL_AUDIT_ON_START after this run.
