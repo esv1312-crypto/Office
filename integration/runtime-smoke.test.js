@@ -83,8 +83,9 @@ test("runtime smoke: public health is minimal, control routes require auth, and 
       },
       body: JSON.stringify({ task: "Runtime smoke test: no external provider calls", employeeId: "chief" })
     });
-    assert.equal(acceptedResponse.status, 202, await acceptedResponse.text());
-    const acceptedBody = await acceptedResponse.json();
+    const acceptedText = await acceptedResponse.text();
+    assert.equal(acceptedResponse.status, 202, acceptedText);
+    const acceptedBody = JSON.parse(acceptedText);
     assert.equal(acceptedBody.ok, true);
     assert.equal(acceptedBody.task.status, "waiting");
     assert.equal(acceptedBody.task.waitingReason, "ai_not_configured");
