@@ -755,7 +755,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
           : provider==="cloudflare"
             ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.CLOUDFLARE_MODEL || null))
             : provider==="apinex"
-              ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.APINEX_MODEL || "free/gpt-6-luna"))
+              ? (sameAsApproved ? String(approvedCandidate.model) : (brain.provider==="apinex" && String(brain.model||"").startsWith("free/") ? String(brain.model) : (process.env.APINEX_MODEL || "free/gpt-6-luna")))
               : (process.env.OPENAI_MODEL || null);
     emit("gateway.route",{employeeId:employee.id,role:employee.role,provider,model,taskKind:brain.taskKind,candidates:brain.candidates.slice(0,5),freeOnly:freeOnly() && !paidTestEnabled(),backend:"local"});
     try {
@@ -1700,7 +1700,8 @@ app.get("/api/env-diagnostic", (_req,res)=>res.json({
     OPENROUTER_MODEL:Boolean(String(process.env.OPENROUTER_MODEL || "").trim()),
     GEMINI_API_KEY:Boolean(String(process.env.GEMINI_API_KEY || "").trim()),
     CLOUDFLARE_API_TOKEN:Boolean(String(process.env.CLOUDFLARE_API_TOKEN || "").trim()),
-    CLOUDFLARE_ACCOUNT_ID:Boolean(String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim())
+    CLOUDFLARE_ACCOUNT_ID:Boolean(String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim()),
+    APINEX_API_KEY:Boolean(String(process.env.APINEX_API_KEY || "").trim())
   },
   gateway:{
     huggingface:aiConfigured("huggingface"),
