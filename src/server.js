@@ -1474,7 +1474,7 @@ async function executeRootTask(record) {
       });
       tasks.set(child.id,child);
       record.subtaskIds.push(child.id);
-      emit("task.accepted",{taskId:child.id,parentTaskId:record.id,kind:"subtask",task:child.task,employeeId:child.employeeId,role:child.role,provider:child.provider,model:child.model});
+      emit("task.accepted",{taskId:child.id,parentTaskId:record.id,kind:"subtask",taskLength:String(child.task||"").length,employeeId:child.employeeId,role:child.role,provider:child.provider,model:child.model});
       children.push(child);
     }
 
@@ -2039,7 +2039,7 @@ SOURCE DOSSIER:
     const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
     tasks.set(record.id,record);
     void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
-    emit("task.accepted",{taskId:record.id,parentTaskId:null,kind:"root",task:taskText,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model,source:"pognali_read_only_audit"});
+    emit("task.accepted",{taskId:record.id,parentTaskId:null,kind:"root",taskLength:String(taskText||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model,source:"pognali_read_only_audit"});
     if(!aiAvailable(record.provider)){
       transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
       emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
@@ -2067,7 +2067,7 @@ app.post("/api/tasks", (req,res)=>{
   });
   tasks.set(record.id,record);
   void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
-  emit("task.accepted",{taskId:record.id,parentTaskId:record.parentTaskId,kind:record.kind,task,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
+  emit("task.accepted",{taskId:record.id,parentTaskId:record.parentTaskId,kind:record.kind,taskLength:String(task||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
 
   if(!aiAvailable(record.provider)) {
     transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
@@ -2098,7 +2098,7 @@ app.post("/api/tasks/:id/subtasks",(req,res)=>{
       kind:"subtask"
     });
     tasks.set(record.id,record);
-    emit("task.accepted",{taskId:record.id,parentTaskId:parent.id,kind:"subtask",task,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
+    emit("task.accepted",{taskId:record.id,parentTaskId:parent.id,kind:"subtask",taskLength:String(task||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
     if(!aiAvailable(record.provider)) {
       transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
       emit("task.waiting_for_ai",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
