@@ -1,5 +1,15 @@
 const SENSITIVE_ACTIONS = new Set(["signup","login","create_key","connect_account","billing","purchase","delete","send","write"]);
 const SAFE_ACTIONS = new Set(["research","read","docs","pricing","status"]);
+const SENSITIVE_GOAL_PHRASES = [
+  "delete my account","delete account","remove account","create account","sign up","log in",
+  "change password","reset password","submit form","send message","publish post","upload file",
+  "purchase","buy now","checkout","place order","pay now","connect wallet","grant access",
+  "cancel subscription","transfer funds","withdraw funds","save changes"
+];
+function goalRequiresApproval(goal) {
+  const text = String(goal || "").toLowerCase();
+  return SENSITIVE_GOAL_PHRASES.some(phrase => text.includes(phrase));
+}
 
 export function createBrowserManager({emit}) {
   const requests=new Map();
@@ -72,7 +82,7 @@ export function createBrowserManager({emit}) {
     const action=String(actionClass||"research").toLowerCase();
     if(!SAFE_ACTIONS.has(action)&&!SENSITIVE_ACTIONS.has(action)) throw Object.assign(new Error("unsupported browser action"),{code:"BROWSER_POLICY_DENIED"});
     if(freeOnly() && /billing|purchase|upgrade|paid/i.test(goal+" "+action)) throw Object.assign(new Error("paid browser action blocked by FREE_ONLY policy"),{code:"BROWSER_POLICY_DENIED"});
-    const needs=SENSITIVE_ACTIONS.has(action);
+    const needs=SENSITIVE_ACTIONS.has(action) || goalRequiresApproval(goal);
     const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,webhookToken:null,result:null,error:null};
     requests.set(r.id,r);
     emit("browser.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,requiresApproval:needs,status:r.status});
