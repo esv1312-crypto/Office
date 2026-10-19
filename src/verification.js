@@ -142,9 +142,11 @@ export function enforceVerificationEvidence(verification, checklist = [], eviden
     const classificationValid = VALID_CLASSIFICATIONS.has(classification);
     const evidenceComplete = Boolean(source && locator && evidence && classificationValid);
     const referenceGrounded = evidenceComplete && referenceIsGrounded(check,evidenceContext);
+    const runtimeContradiction = detectRuntimeContradiction(check,evidenceContext);
     const safeToPass = check?.passed === true
       && evidenceComplete
       && referenceGrounded
+      && !runtimeContradiction
       && coverageValid
       && (classification === "FACT" || classification === "INFERENCE");
 
@@ -157,7 +159,8 @@ export function enforceVerificationEvidence(verification, checklist = [], eviden
     else if (requiredItems.length > 0 && !requirement) reason = "Missing checklist requirement mapping.";
     else if (requiredItems.length > 0 && !matchedRequirement) reason = "Check does not map to a required checklist item.";
     else if (duplicateCoverage) reason = "Duplicate coverage for checklist item: " + matchedRequirement + ".";
-    else if (!referenceGrounded) reason = "Source/locator does not match supplied code or runtime evidence.";\n    else if (runtimeContradiction) reason = runtimeContradiction;
+    else if (!referenceGrounded) reason = "Source/locator does not match supplied code or runtime evidence.";
+    else if (runtimeContradiction) reason = runtimeContradiction;
 
     return {
       ...check,
