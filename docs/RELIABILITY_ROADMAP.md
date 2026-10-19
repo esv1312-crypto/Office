@@ -18,9 +18,12 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] GitHub writes require an explicit working branch; model-provided branch overrides and protected branches are rejected by default.
 - [x] Public health endpoints return minimal service status rather than provider/tool/browser configuration.
 - [x] The independent verifier receives the candidate final answer on both initial and retry checks.
+- [x] The verifier must use a preflighted model distinct from planner, synthesis, and worker models; verification fails closed if no independent candidate exists.
+- [x] Strict verifier calls disable tools and do not fall back to another model after selection.
 - [x] Verification requires one-to-one checklist coverage; duplicate, missing, or unmapped requirements fail closed.
 - [x] Removed the hard-coded task-phrase override so production planning does not replace a user task with a special smoke-test plan.
 - [x] Empty provider responses are rejected; preflight requires the exact `PREFLIGHT_OK` sentinel.
+- [x] OpenRouter calls use defined timeout/tool policy; APINEX honors the no-tools preflight and request timeout.
 - [x] OpenAI SDK calls have a bounded timeout; catalog requests time out.
 - [x] Provider-wide authentication/quota failures stop repeated model attempts; rate-limit responses suppress the provider briefly.
 - [x] Root recovery installs the replacement result before re-verifying it.
