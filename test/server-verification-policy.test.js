@@ -212,3 +212,17 @@ test("provider-wide authentication and quota errors stop model-level retries", a
   assert.match(localGateway, /suppressProvider\(provider,error\?\.message\|\|String\(error\),15\*60\*1000\)/);
   assert.match(localGateway, /else if\(error\?\.status===429\) suppressProvider\(provider,error\?\.message\|\|String\(error\),60\*1000\)/);
 });
+
+test("remote backend calls require a token and always clear their timeout", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function generateViaGateway");
+  const end = source.indexOf("\nconst TOOL_REGISTRY", start);
+  assert.notEqual(start, -1, "generateViaGateway must exist");
+  assert.notEqual(end, -1, "gateway boundary must exist");
+  const gateway = source.slice(start, end);
+
+  assert.match(gateway, /OFFICE_AUDIT_TOKEN is not configured/);
+  assert.match(gateway, /if\(backendUrls\.length && process\.env\.OFFICE_MODE !== "backend" && auditToken\)/);
+  assert.match(gateway, /"x-ai-office-audit-token":auditToken/);
+  assert.match(gateway, /finally\s*\{\s*if\(timeout\) clearTimeout\(timeout\);\s*\}/);
+});
