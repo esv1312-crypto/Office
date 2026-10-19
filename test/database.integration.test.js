@@ -6,6 +6,9 @@ test("PostgreSQL integration: task snapshots persist, batches roll back atomical
   skip: !testDatabaseUrl
 }, async () => {
   const previousDatabaseUrl = process.env.DATABASE_URL;
+  const databaseName = decodeURIComponent(new URL(testDatabaseUrl).pathname.slice(1));
+  assert.match(databaseName, /(?:^|[_-])(test|integration)(?:$|[_-])/i,
+    "TEST_DATABASE_URL must target an explicitly named test/integration database");
   const {
     initDatabase,
     saveTaskSnapshot,
