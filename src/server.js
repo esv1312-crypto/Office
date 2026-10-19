@@ -502,7 +502,6 @@ async function preflightModel(provider, model, employee) {
     if(responseText !== "PREFLIGHT_OK") {
       throw new Error(responseText ? "preflight returned unexpected response" : "preflight empty response");
     }
-    const ok=true;
     const entry={ok:true,provider,model,role:employee?.role||null,latencyMs:Date.now()-started,expiresAt:Date.now()+PREFLIGHT_TTL_MS};
     preflightCache.set(key,entry);
     emit("model.preflight_passed",{employeeId:employee?.id||null,role:employee?.role||null,provider,model,latencyMs:entry.latencyMs,ttlMs:PREFLIGHT_TTL_MS});
