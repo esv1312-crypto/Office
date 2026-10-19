@@ -622,6 +622,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
     } catch(error) {
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
+      if(error?.status===401 || error?.status===402) break;
       if (/empty response/i.test(error?.message || "") && i===0) {
         emit("gateway.model_retry",{employeeId:employee?.id || null,role,provider:"openrouter",model,reason:"empty_response",retryIndex:1});
         try {
@@ -687,6 +688,7 @@ async function generateWithHuggingFace(task, employee, preferredModel) {
     }catch(error){
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model,error:error?.message||String(error),transient:Boolean(error?.transient)});
+      if(error?.status===401 || error?.status===402) break;
       if(models.indexOf(model)<models.length-1) emit("gateway.model_fallback",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",from:model,to:models[models.indexOf(model)+1],reason:error?.message||String(error)});
     }
   }
@@ -776,6 +778,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       return result;
     } catch(error) {
       lastError=error;
+      if(error?.status===401 || error?.status===402) suppressProvider(provider,error?.message||String(error),15*60*1000);
       emit("gateway.provider_failed",{employeeId:employee.id,provider,error:error?.message||String(error),transient:Boolean(error?.transient),freeOnly:freeOnly(),backend:"local"});
       if(providers[providers.indexOf(provider)+1]) emit("gateway.fallback",{from:provider,to:providers[providers.indexOf(provider)+1],reason:error?.message||String(error),backend:"local"});
     }
