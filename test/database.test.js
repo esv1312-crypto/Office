@@ -91,7 +91,7 @@ test("internal audit and smoke task endpoints persist acceptance before starting
   assert.ok(officeAudit.indexOf("await saveTaskSnapshot") < officeAudit.indexOf("void executeRootTask(record)"));
 
   const evidenceStart = server.indexOf('app.get("/api/smoke/evidence"');
-  const evidenceEnd = server.indexOf("\\n\\nasync function runResourceScan", evidenceStart);
+  const evidenceEnd = server.indexOf("async function runResourceScan", evidenceStart);
   const evidenceRoute = server.slice(evidenceStart, evidenceEnd);
   assert.match(evidenceRoute, /app\.get\("\/api\/smoke\/evidence", async/);
   assert.match(evidenceRoute, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
