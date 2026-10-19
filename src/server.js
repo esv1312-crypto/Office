@@ -1986,7 +1986,7 @@ async function startOfficeAudit() {
     const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
     tasks.set(record.id,record);
     emit("office_check.started",{taskId:record.id,readOnly:true,filesAudited:files});
-    if(!aiAvailable(record.provider)) transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+    if(!aiAvailable(record.provider)) await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
     else void executeRootTask(record);
     return record;
   } catch(error) {
