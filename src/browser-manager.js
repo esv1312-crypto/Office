@@ -5,6 +5,7 @@ export function createBrowserManager({emit}) {
   const requests=new Map();
   const freeOnly=()=>String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
   const key=()=>process.env["TINY"+"FISH_API_KEY"];
+  const webhookToken=()=>String(process.env.BROWSER_WEBHOOK_TOKEN || "").trim();
   const enabled=()=>String(process.env.BROWSER_AUTOMATION_ENABLED || "false").toLowerCase()==="true";
   const publicUrl=()=>String(process.env.OFFICE_PUBLIC_URL || "https://ai-office-runtime-8pir.onrender.com").replace(/\/+$/,"");
 
@@ -25,9 +26,11 @@ export function createBrowserManager({emit}) {
   async function start(r){
     if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
     if(!key()){ r.status="blocked"; r.error="Browser backend is not configured"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
+    if(!webhookToken()){ r.status="blocked"; r.error="Browser webhook authentication is not configured"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
     r.status="running"; r.startedAt=new Date().toISOString();
     try{
-      const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:publicUrl()+"/api/browser/webhook"});
+      const callback=publicUrl()+"/api/browser/webhook?token="+encodeURIComponent(webhookToken());
+      const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:callback});
       r.runId=d?.run_id || d?.runId || null;
       emit("browser.started",{requestId:r.id,runId:r.runId,url:r.url});
     }catch(e){
@@ -79,7 +82,7 @@ export function createBrowserManager({emit}) {
     const a=[...requests.values()];
     return {
       manager:"browser-manager",
-      enabled:Boolean(enabled() && key()),
+      enabled:Boolean(enabled() && key() && webhookToken()),
       managerLoaded:true,
       backendConfigured:Boolean(key()),
       backend:key()?"tinyfish":"external-browser-bridge",
@@ -91,7 +94,7 @@ export function createBrowserManager({emit}) {
       active:a.filter(x=>x.status==="running").length,
       completed:a.filter(x=>x.status==="completed").length,
       failed:a.filter(x=>x.status==="failed"||x.status==="blocked").length,
-      nextAction:key()?(enabled()?"Browser execution is live":"Enable browser automation only after confirming spending policy"):"Configure browser backend credentials"
+      nextAction:!key()?"Configure browser backend credentials":!webhookToken()?"Configure BROWSER_WEBHOOK_TOKEN":!enabled()?"Enable browser automation only after confirming spending policy":"Browser execution is live"
     };
   }
   return {request,approveAuthorized,status,summary,webhook};
