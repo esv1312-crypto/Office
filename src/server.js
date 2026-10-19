@@ -511,7 +511,9 @@ async function preflightModel(provider, model, employee) {
     const message=error?.message||String(error);
     const transient=Boolean(error?.transient)||/402|404|408|409|429|quota|rate.?limit|timeout|temporarily|unavailable|overloaded|empty response|does not exist|not found/i.test(message);
     const ttl= /402|404|does not exist|not found|invalid model/i.test(message) ? 6*60*60*1000 : 15*60*1000;
-    suppressModel(model,message,ttl,provider);
+    if(error?.status===401 || error?.status===402) suppressProvider(provider,message,15*60*1000);
+    else if(error?.status===429) suppressProvider(provider,message,60*1000);
+    else suppressModel(model,message,ttl,provider);
     const entry={ok:false,provider,model,role:employee?.role||null,error:message,transient,failedAt:new Date().toISOString(),expiresAt:Date.now()+Math.min(ttl,PREFLIGHT_TTL_MS)};
     preflightCache.set(key,entry);
     emit("model.preflight_failed",{employeeId:employee?.id||null,role:employee?.role||null,provider,model,error:message,transient});
@@ -523,10 +525,11 @@ async function ensureEmployeeReady(employee, task) {
   const brain=resolveBrain(employee,task);
   const candidates=[{provider:brain.provider,model:brain.model},...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))];
   const unique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
-  const candidatesToProbe=unique
-    .filter(candidate=>!isProviderSuppressed(candidate.provider) && !isProviderModelSuppressed(candidate.provider,candidate.model))
-    .slice(0,4);
-  for(const candidate of candidatesToProbe){
+  let probes=0;
+  for(const candidate of unique){
+    if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
+    if(probes>=4) break;
+    probes++;
     const check=await preflightModel(candidate.provider,candidate.model,employee);
     if(check.ok) {
       emit("model.preflight_selected",{employeeId:employee.id,role:employee.role,provider:candidate.provider,model:candidate.model});
