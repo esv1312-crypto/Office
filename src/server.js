@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
-import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, saveResourceSnapshot } from "./database.js";
+import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart } from "./task-state.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
@@ -2195,7 +2195,7 @@ async function bootstrapDatabase() {
 
 await bootstrapDatabase();
 
-app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
+const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
   modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), Number(process.env.MODEL_SCOUT_INTERVAL_MS || 3600000));
   void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
@@ -2207,3 +2207,31 @@ app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   void runFinalAuditOnStartup();
   console.log("AI-OFFICE runtime listening on",process.env.PORT || 10000,"provider:",aiProvider(),"configuredProviders:",providerOrder().filter(aiConfigured).join(","),"employees:",employees().length);
 });
+
+let shutdownPromise=null;
+async function shutdownRuntime(signal) {
+  if(shutdownPromise) return shutdownPromise;
+  shutdownPromise=(async()=>{
+    console.log("[shutdown] draining runtime after",signal);
+    if(modelScoutTimer) clearInterval(modelScoutTimer);
+    if(resourceScoutTimer) clearInterval(resourceScoutTimer);
+    if(workerWatchdogTimer) clearInterval(workerWatchdogTimer);
+    const forceTimer=setTimeout(()=>{
+      console.error("[shutdown] HTTP close is taking too long; closing active connections");
+      if(typeof httpServer.closeAllConnections==="function") httpServer.closeAllConnections();
+    },8000);
+    forceTimer.unref();
+    try {
+      await new Promise(resolve=>httpServer.close(resolve));
+      await closeDatabase();
+      console.log("[shutdown] persistence queue drained and database pool closed");
+    } finally {
+      clearTimeout(forceTimer);
+    }
+  })().catch(error=>{
+    console.error("[shutdown] graceful shutdown failed",error?.message||error);
+  });
+  return shutdownPromise;
+}
+process.once("SIGTERM",()=>{ void shutdownRuntime("SIGTERM"); });
+process.once("SIGINT",()=>{ void shutdownRuntime("SIGINT"); });
