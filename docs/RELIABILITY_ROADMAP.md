@@ -18,11 +18,11 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 
 ## P1 — model quality and resource scout
 
-- [ ] Keep model discovery separate from model qualification: discovered does not mean tested.
+- [x] Keep model discovery separate from model qualification: discovered does not mean tested.\n- [ ] Add explicit per-model probe results and prevent unqualified models from becoming preferred routes.
 - [ ] Add repeatable benchmark tasks for reasoning, code, structured output, tool calling, long context, and verifier behavior.
 - [ ] Track latency, empty responses, error rates, rate limits, and last successful probe per model.
-- [ ] Add an API/resource registry with source, authentication requirements, pricing evidence, terms, rate limits, privacy notes, last checked time, and test results.
-- [ ] Add APINEX as a candidate provider only after official API/auth/pricing terms are verified; never treat the catalog label alone as proof of free availability.
+- [x] Add a PostgreSQL-backed registry for known catalog sources with availability, HTTP status, last-check time, and safe metadata.\n- [ ] Expand catalog parsing into individual API records with authentication requirements, pricing evidence, terms, rate limits, privacy notes, and qualification tests.
+- [x] Add APINEX as an optional OpenAI-compatible provider and discover only IDs explicitly prefixed free/.\n- [ ] Verify APINEX account quota and terms with the owner before adding an API key or using it in production.
 - [ ] Require explicit approval before adding a provider to production routing or changing billing/security configuration.
 
 ## P1 — reliability and observability
