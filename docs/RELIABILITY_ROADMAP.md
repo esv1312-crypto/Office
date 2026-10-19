@@ -34,7 +34,9 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] PostgreSQL event history is retained and loaded by event timestamp rather than insertion timing.
 - [x] Database writes are serialized and drained when the process shuts down gracefully.
 - [x] CI syntax checks cover runtime, test, and script files; `npm test` runs syntax checks before unit tests.
-- [ ] Finish the route-by-route authorization review, including legacy query-token compatibility and every manual workflow.
+- [x] Protected audit/control routes now accept audit credentials through headers rather than query strings; the one-time browser callback token remains supported because the browser provider receives a callback URL and the token is per-request.
+- [x] The manual `office-live-test.yml` workflow now requires `secrets.OFFICE_AUDIT_TOKEN` and sends it in `x-ai-office-audit-token`; a unit test guards this contract.
+- [ ] Finish the route-by-route authorization review, including every remaining manual workflow and external callback configuration.
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
 - [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
 - [ ] Persist pending browser requests or document the exact recovery behavior when the process restarts mid-browser workflow.
