@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { isZeroPrice, isUsableFreeModel, resolveProviderDiscovery } from "../src/model-scout.js";
+import { isZeroPrice, isUsableFreeModel, resolveProviderDiscovery, recordModelQualification, getModelScoutState } from "../src/model-scout.js";
 
 test("explicit zero input and output pricing is free", () => {
   assert.equal(isZeroPrice({ input: "0", output: "0" }), true);
@@ -78,4 +78,53 @@ test("Model Scout routes provider refreshes through the last-good-snapshot polic
   assert.match(source, /const outcome=resolveProviderDiscovery\(state\.providers\[provider\],result\)/);
   assert.match(source, /if\(!outcome\.ok\)\{[\s\S]*?state\.errors\.push\(provider\+": "\+outcome\.error\);[\s\S]*?continue;/);
   assert.match(source, /const seen=new Set\(models\.map\(x=>x\.routeModel \|\| x\.id\)\)/);
+});
+
+test("Model Scout stores bounded preflight qualification results", () => {
+  assert.equal(recordModelQualification({
+    provider: "OpenRouter", model: "vendor/model:free", role: "verifier",
+    ok: true, latencyMs: 123, checkedAt: "2026-10-20T12:00:00.000Z",
+    expiresAt: "2026-10-20T12:10:00.000Z"
+  }), true);
+  assert.equal(recordModelQualification({
+    provider: "openrouter", model: "vendor/bad-model", role: "verifier",
+    ok: false, latencyMs: 250, errorCategory: "rate_limited", transient: true,
+    checkedAt: "2026-10-20T12:00:00.000Z"
+  }), true);
+  const state = getModelScoutState();
+  const passed = state.qualification.find(x => x.model === "vendor/model:free");
+  const failed = state.qualification.find(x => x.model === "vendor/bad-model");
+  assert.equal(passed.status, "passed");
+  assert.equal(passed.latencyMs, 123);
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.errorCategory, "rate_limited");
+  assert.equal(failed.transient, true);
+  assert.equal("error" in failed, false);
+});
+
+test("Model Scout normalizes qualification categories and limits retained history", () => {
+  recordModelQualification({
+    provider: "openrouter", model: "vendor/model-a", role: "developer",
+    ok: false, errorCategory: "unexpected provider response", checkedAt: "invalid-date"
+  });
+  const item = getModelScoutState().qualification.find(x => x.model === "vendor/model-a");
+  assert.equal(item.errorCategory, "provider_error");
+  assert.ok(Number.isFinite(Date.parse(item.checkedAt)));
+  for (let i = 0; i < 105; i++) {
+    recordModelQualification({
+      provider: "test-provider", model: "entry-" + i, role: "test",
+      ok: i % 2 === 0, checkedAt: new Date(Date.UTC(2026, 9, 20, 12, 0, i)).toISOString()
+    });
+  }
+  const state = getModelScoutState();
+  assert.equal(state.qualificationSummary.retained, 100);
+  assert.ok(state.qualification.length <= 100);
+  assert.equal(state.qualification.some(x => x.model === "entry-0"), false);
+});
+
+test("runtime reports model preflight results to Model Scout", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(source, /recordModelQualification/);
+  assert.match(source, /ok:true,latencyMs:entry\.latencyMs/);
+  assert.match(source, /ok:false,latencyMs:Date\.now\(\)-started/);
 });
