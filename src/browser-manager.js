@@ -15,17 +15,18 @@ export function createBrowserManager({emit}) {
   const requests=new Map();
   const retentionMs=()=>{const value=Number(process.env.BROWSER_REQUEST_RETENTION_MS || 86400000);return Number.isFinite(value)?Math.max(60000,value):86400000;};
   const maxRequests=()=>{const value=Number(process.env.BROWSER_MAX_REQUESTS || 500);return Number.isFinite(value)?Math.max(50,Math.floor(value)):500;};
-  function pruneRequests(){
+  function pruneRequests(reserveSlot=false){
     const cutoff=Date.now()-retentionMs();
     for(const [id,r] of requests){
       if(["completed","failed","blocked"].includes(r.status)) r.webhookToken=null;
       if(Date.parse(r.createdAt)<cutoff){r.webhookToken=null;requests.delete(id);}
     }
     const max=maxRequests();
-    if(requests.size<max) return;
+    const target=reserveSlot?max-1:max;
+    if(requests.size<=target) return;
     const oldest=[...requests.entries()].sort((a,b)=>Date.parse(a[1].createdAt)-Date.parse(b[1].createdAt));
     for(const [id,r] of oldest){
-      if(requests.size<max) break;
+      if(requests.size<=target) break;
       if(["completed","failed","blocked","waiting_approval"].includes(r.status)){r.webhookToken=null;requests.delete(id);}
     }
   }
@@ -72,7 +73,7 @@ export function createBrowserManager({emit}) {
   }
 
   async function request({taskId=null,url="",goal="",actionClass="research"}){
-    pruneRequests();
+    pruneRequests(true);
     if(requests.size>=maxRequests()) throw Object.assign(new Error("browser request capacity reached"),{code:"BROWSER_CAPACITY_REACHED"});
     if(!url || !goal) throw Object.assign(new Error("url and goal are required"),{code:"BROWSER_INVALID"});
     const action=String(actionClass||"research").toLowerCase();
