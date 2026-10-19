@@ -171,5 +171,6 @@ test("root task cannot transition to completed unless the persisted verifier rec
   assert.ok(completionGate > initialVerification, "completion gate must follow verification");
   assert.ok(completedTransition > completionGate, "completion gate must precede completed transition");
   assert.match(root, /if\(!verificationPassed\)[\s\S]*?await recoverRootTask\(record\)/);
-  assert.match(server, /export function isVerificationCompletionEligible\(verification\)/);
+  const taskState = await readFile(new URL("../src/task-state.js", import.meta.url), "utf8");
+  assert.match(taskState, /export function isVerificationCompletionEligible\(verification\)/);
 });
