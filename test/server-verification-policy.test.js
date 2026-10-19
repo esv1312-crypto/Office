@@ -132,3 +132,17 @@ test("GitHub write tool cannot silently write to main or override its configured
   assert.match(tool, /path\.split\("\/"\)\.some\(segment => segment === "\." \|\| segment === "\.\."/);
   assert.doesNotMatch(tool, /process\.env\.GITHUB_BRANCH \|\| "main"/);
 });
+
+test("browser webhook route delegates authentication to the scoped request token", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf('app.post("/api/browser/webhook"');
+  const end = source.indexOf("\napp.", start + 1);
+  assert.notEqual(start, -1, "browser webhook route must exist");
+  assert.notEqual(end, -1, "browser webhook route boundary must exist");
+  const route = source.slice(start, end);
+
+  assert.match(route, /browser\.webhook\(req\.body \|\| \{\},supplied\)/);
+  assert.match(route, /result\?\.authenticated/);
+  assert.match(route, /status\(401\)/);
+  assert.doesNotMatch(route, /BROWSER_WEBHOOK_SECRET/);
+});
