@@ -1547,12 +1547,7 @@ app.post("/api/backend/generate", async (req,res)=>{
   catch(error) { res.status(503).json({ok:false,error:error?.message||String(error),code:error?.code||null}); }
 });
 
-app.get("/", (_req,res)=>res.json({
-  service:"ai-office-runtime",status:"online",provider:aiProvider(),
-  mode:employees().length ? "office" : "control-plane",startedAt,tasks:tasks.size,events:events.length,
-  employees:employees().length
-}));
-
+app.get("/", (_req,res)=>res.json({ok:true,service:"ai-office-runtime",status:"online"}));
 app.get("/health", (_req,res)=>res.json({ok:true,service:"ai-office-runtime",status:"online",startedAt}));
 
 app.get("/api/employees", (req,res)=>{
@@ -1562,7 +1557,7 @@ app.get("/api/employees", (req,res)=>{
   });
 });
 
-app.get("/api/tools", (_req,res)=>res.json({
+app.get("/api/tools", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
   ok:true,
   tools:Object.entries(TOOL_REGISTRY).map(([name,tool]) => ({
     name,
@@ -1571,7 +1566,7 @@ app.get("/api/tools", (_req,res)=>res.json({
     configured:(tool.requiresEnv || []).every(x => Boolean(process.env[x])),
     enabled:name !== "github.write_file" || process.env.GITHUB_TOOLS_ENABLED === "true"
   }))
-}));
+});
 
 app.post("/api/tools/execute", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1593,10 +1588,10 @@ app.post("/api/tools/execute", async (req,res)=>{
 });
 
 
-app.get("/api/browser", (_req,res)=>res.json({
+app.get("/api/browser", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
   ok:true,
   ...browser.summary()
-}));
+});
 
 app.post("/api/browser/request", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1616,6 +1611,7 @@ app.post("/api/browser/request", async (req,res)=>{
 });
 
 app.get("/api/browser/requests/:id",(req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   const result=browser.status(String(req.params.id || ""));
   if(!result) return res.status(404).json({ok:false,error:"browser request not found"});
   res.json({ok:true,...result});
@@ -1647,31 +1643,32 @@ app.post("/api/browser/webhook",(req,res)=>{
 
 
 
-app.get("/api/resource-manager", (_req,res)=>res.json({
+app.get("/api/resource-manager", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
   ok:true,
   manager:"free-ai-resource-manager",
   policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},
   ...inspectFreeProviders(),
   gatewayOrder:[...new Set([...providerOrder(),"huggingface"])]
-}));
+});
 
-app.get("/api/model-scout", (_req,res)=>res.json({ok:true,...getModelScoutState()}));
+app.get("/api/model-scout", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({ok:true,...getModelScoutState()});
 
 app.post("/api/model-scout/refresh", async (_req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
   try { const state=await refreshModelScout(); res.json({ok:true,...state}); }
   catch(error){ res.status(500).json({ok:false,error:error?.message||String(error)}); }
 });
 
-app.get("/api/model-pools", (_req,res)=>res.json({
+app.get("/api/model-pools", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
   ok:true,
   provider:"dynamic",
   freeOnly:freeOnly(),
   rotation:"round_robin_per_role",
   pools:Object.fromEntries(employees().map(e=>[e.id,openRouterPool(e)])),
   scout:getModelScoutState()
-}));
+});
 
-app.get("/api/env-diagnostic", (_req,res)=>res.json({
+app.get("/api/env-diagnostic", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
   ok:true,
   note:"Presence-only diagnostic. Secret values are never returned.",
   environment:{
@@ -1688,9 +1685,9 @@ app.get("/api/env-diagnostic", (_req,res)=>res.json({
     gemini:aiConfigured("gemini"),
     cloudflare:aiConfigured("cloudflare")
   }
-}));
+});
 
-app.get("/api/gateway", (_req,res)=>res.json({
+app.get("/api/gateway", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({
   ok:true,
   freeOnly:freeOnly(),
   order:providerOrder(),
@@ -1701,11 +1698,11 @@ app.get("/api/gateway", (_req,res)=>res.json({
     cloudflare:{configured:aiConfigured("cloudflare"),models:[process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct"]},
     openai:{configured:aiConfigured("openai"),blockedByFreeOnly:freeOnly(),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
   }
-}));
+});
 
 app.get("/api/smoke/fallback", async (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/fallback?run=1 creates one internal controlled provider-fallback test"});
   const before=events.length;
@@ -1730,7 +1727,7 @@ app.get("/api/smoke/fallback", async (req,res)=>{
 
 app.get("/api/smoke/recovery", async (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/recovery?run=1&token=..."});
   const root=createTaskRecord({task:"INTERNAL READ-ONLY RECOVERY TEST. Produce a short evidence-rich confirmation that the recovery worker can replace a failed worker and return a usable result.",employeeId:"chief",kind:"root"});
@@ -1747,7 +1744,7 @@ app.get("/api/smoke/recovery", async (req,res)=>{
 
 app.get("/api/smoke/evidence", (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") {
     return res.json({ok:true,usage:"GET /api/smoke/evidence?run=1 creates one internal read-only evidence smoke test"});
@@ -1857,7 +1854,7 @@ async function startOfficeAudit() {
 
 app.get("/api/office-check", async (req,res)=>{ 
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   const internal=String(req.headers["x-ai-office-internal"] || "")==="1" && ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(String(req.socket?.remoteAddress || ""));
   if((!expected || supplied !== expected) && !internal) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run||"")!=="1") return res.json({ok:true,usage:"GET /api/office-check?run=1&token=..."});
@@ -1881,7 +1878,7 @@ app.get("/api/state", (req,res)=>{
 
 app.get("/api/pognali/audit", async (req,res)=>{
   const expected=String(process.env.POGNALI_AUDIT_TOKEN || "").trim();
-  const supplied=String(req.query?.token || "").trim();
+  const supplied=String(req.headers["x-pognali-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   const files=[
     "README.txt","BUILD_PIPELINE.md","build.gradle","settings.gradle","gradle.properties",
