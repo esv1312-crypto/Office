@@ -1,0 +1,34 @@
+name: AI-OFFICE unit tests
+
+on:
+  push:
+    branches:
+      - main
+      - "security/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-office-unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          for file in src/*.js test/*.js scripts/*.js; do
+            node --check "$file"
+          done
+      - name: Run unit tests
+        run: npm test
