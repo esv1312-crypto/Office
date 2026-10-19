@@ -146,3 +146,23 @@ test("browser webhook route delegates authentication to the scoped request token
   assert.match(route, /status\(401\)/);
   assert.doesNotMatch(route, /BROWSER_WEBHOOK_SECRET/);
 });
+
+test("public health endpoints expose only minimal service status", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const rootStart = source.indexOf('app.get("/",');
+  const healthStart = source.indexOf('app.get("/health"');
+  const employeesStart = source.indexOf('app.get("/api/employees"');
+  const backendStart = source.indexOf('app.get("/api/backend/health"');
+  const backendEnd = source.indexOf("\napp.", backendStart + 1);
+  assert.notEqual(rootStart, -1);
+  assert.notEqual(healthStart, -1);
+  assert.notEqual(employeesStart, -1);
+  assert.notEqual(backendStart, -1);
+  const root = source.slice(rootStart, healthStart);
+  const health = source.slice(healthStart, employeesStart);
+  const backend = source.slice(backendStart, backendEnd);
+
+  assert.doesNotMatch(root, /provider:|tasks:|events:|employees:/);
+  assert.doesNotMatch(health, /providerOrder|aiConfigured|githubToolsEnabled|browser:/);
+  assert.doesNotMatch(backend, /configuredProviders|aiConfigured|freeOnly/);
+});
