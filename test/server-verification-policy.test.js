@@ -39,3 +39,16 @@ test("remote backend calls forward the audit token in a header, never in the URL
   assert.match(gateway, /headers:\s*backendHeaders/);
   assert.doesNotMatch(gateway, /[?&]token=\$\{?auditToken/);
 });
+
+test("model preflight accepts only the explicit sentinel response", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function preflightModel");
+  const end = source.indexOf("\nfunction isProviderSuppressed", start);
+  assert.notEqual(start, -1, "preflightModel must exist");
+  assert.notEqual(end, -1, "preflight function boundary must exist");
+  const preflight = source.slice(start, end);
+
+  assert.match(preflight, /responseText\s*!==\s*["']PREFLIGHT_OK["']/);
+  assert.match(preflight, /preflight returned unexpected response/);
+  assert.match(preflight, /preflight empty response/);
+});
