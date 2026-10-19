@@ -3,6 +3,27 @@ const SAFE_ACTIONS = new Set(["research","read","docs","pricing","status"]);
 
 export function createBrowserManager({emit}) {
   const requests=new Map();
+  const retentionMs=()=>{const value=Number(process.env.BROWSER_REQUEST_RETENTION_MS || 86400000);return Number.isFinite(value)?Math.max(60000,value):86400000;};
+  const maxRequests=()=>{const value=Number(process.env.BROWSER_MAX_REQUESTS || 500);return Number.isFinite(value)?Math.max(50,Math.floor(value)):500;};
+  function pruneRequests(){
+    const cutoff=Date.now()-retentionMs();
+    for(const [id,r] of requests){
+      if(["completed","failed","blocked"].includes(r.status)) r.webhookToken=null;
+      if(Date.parse(r.createdAt)<cutoff){r.webhookToken=null;requests.delete(id);}
+    }
+    const max=maxRequests();
+    if(requests.size<=max) return;
+    const oldest=[...requests.entries()].sort((a,b)=>Date.parse(a[1].createdAt)-Date.parse(b[1].createdAt));
+    for(const [id,r] of oldest){
+      if(requests.size<=max) break;
+      if(["completed","failed","blocked","waiting_approval"].includes(r.status)){r.webhookToken=null;requests.delete(id);}
+    }
+    for(const [id,r] of oldest){
+      if(requests.size<=max) break;
+      r.webhookToken=null;
+      requests.delete(id);
+    }
+  }
   const freeOnly=()=>String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
   const key=()=>process.env["TINY"+"FISH_API_KEY"];
   const enabled=()=>String(process.env.BROWSER_AUTOMATION_ENABLED || "false").toLowerCase()==="true";
@@ -26,7 +47,7 @@ export function createBrowserManager({emit}) {
   async function start(r){
     if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
     if(!key()){ r.status="blocked"; r.error="Browser backend is not configured"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
-    r.status="running"; r.startedAt=new Date().toISOString();
+    r.status="running"; r.startedAt=new Date().toISOString(); r.webhookToken=crypto.randomUUID();
     try{
       const callback=publicUrl()+"/api/browser/webhook?token="+encodeURIComponent(r.webhookToken);
       const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:callback});
@@ -46,12 +67,13 @@ export function createBrowserManager({emit}) {
   }
 
   async function request({taskId=null,url="",goal="",actionClass="research"}){
+    pruneRequests();
     if(!url || !goal) throw Object.assign(new Error("url and goal are required"),{code:"BROWSER_INVALID"});
     const action=String(actionClass||"research").toLowerCase();
     if(!SAFE_ACTIONS.has(action)&&!SENSITIVE_ACTIONS.has(action)) throw Object.assign(new Error("unsupported browser action"),{code:"BROWSER_POLICY_DENIED"});
     if(freeOnly() && /billing|purchase|upgrade|paid/i.test(goal+" "+action)) throw Object.assign(new Error("paid browser action blocked by FREE_ONLY policy"),{code:"BROWSER_POLICY_DENIED"});
     const needs=SENSITIVE_ACTIONS.has(action);
-    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,webhookToken:crypto.randomUUID(),result:null,error:null};
+    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,webhookToken:null,result:null,error:null};
     requests.set(r.id,r);
     emit("browser.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,requiresApproval:needs,status:r.status});
     if(needs){ emit("approval.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,approvalRequired:true}); return pub(r); }
@@ -61,6 +83,7 @@ export function createBrowserManager({emit}) {
   }
 
   async function approveAuthorized(id){
+    pruneRequests();
     const r=requests.get(id);
     if(!r) throw Object.assign(new Error("browser request not found"),{code:"BROWSER_NOT_FOUND"});
     if(r.status!=="waiting_approval") return pub(r);
@@ -70,6 +93,7 @@ export function createBrowserManager({emit}) {
   }
 
   function webhook(payload={}, suppliedToken=""){
+    pruneRequests();
     const token=String(suppliedToken||"");
     const r=[...requests.values()].find(x=>x.webhookToken && x.webhookToken===token);
     if(!r) return {matched:false,authenticated:false};
@@ -85,9 +109,10 @@ export function createBrowserManager({emit}) {
     return {matched:true,authenticated:true,requestId:r.id,status:r.status};
   }
 
-  function status(id){ const r=requests.get(id); return r?pub(r):null; }
+  function status(id){ pruneRequests(); const r=requests.get(id); return r?pub(r):null; }
 
   function summary(){
+    pruneRequests();
     const a=[...requests.values()];
     return {
       manager:"browser-manager",
