@@ -174,3 +174,31 @@ test("browser provider errors cannot leak a per-request callback token", async (
     restoreEnv();
   }
 });
+
+test("early browser webhook callback is not overwritten by the start response", async () => {
+  const originalFetchBeforeTest = globalThis.fetch;
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "true";
+    process.env.TINYFISH_API_KEY = "test-key";
+    const events = [];
+    let manager;
+    let callbackResult;
+    globalThis.fetch = async (_url, options) => {
+      const submitted = JSON.parse(options.body);
+      const token = new URL(submitted.webhook_url).searchParams.get("token");
+      callbackResult = manager.webhook({ run_id: "run-early", status: "completed", result: "done" }, token);
+      return { ok: true, status: 200, json: async () => ({ run_id: "run-early" }) };
+    };
+    manager = createBrowserManager({ emit: (type, data) => events.push({ type, ...data }) });
+    const request = await manager.request({ url: "https://example.com", goal: "Read the public page", actionClass: "research" });
+
+    assert.equal(callbackResult.authenticated, true);
+    assert.equal(request.status, "completed");
+    assert.equal(request.runId, "run-early");
+    assert.ok(events.some(event => event.type === "browser.completed"));
+    assert.equal(events.some(event => event.type === "browser.started"), false);
+  } finally {
+    globalThis.fetch = originalFetchBeforeTest;
+    restoreEnv();
+  }
+});
