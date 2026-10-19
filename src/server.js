@@ -5,7 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart } from "./task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch } from "./task-state.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -2124,11 +2124,11 @@ app.post("/api/tasks/:id/subtasks",(req,res)=>{
   if(!parent) return res.status(404).json({ok:false,error:"parent task not found"});
   if(["completed","cancelled"].includes(parent.status)) return res.status(409).json({ok:false,error:"cannot add subtask to a closed task"});
 
-  const items=Array.isArray(req.body?.subtasks) ? req.body.subtasks : [req.body];
+  const batch=validateSubtaskBatch(req.body?.subtasks,req.body);
+  if(!batch.ok) return res.status(400).json({ok:false,error:batch.error});
   const created=[];
-  for(const item of items) {
-    const task=String(item?.task || "").trim();
-    if(!task) return res.status(400).json({ok:false,error:"each subtask requires task"});
+  for(const item of batch.items) {
+    const task=item.task;
     const record=createTaskRecord({
       task,
       employeeId:String(item?.employeeId || "executor"),
