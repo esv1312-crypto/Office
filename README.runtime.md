@@ -11,6 +11,8 @@ The runtime starts without an API key in control-plane mode and switches to AI m
 
 Control-plane endpoints that expose task state, tool availability, provider configuration, model pools, or resource diagnostics require the existing `OFFICE_AUDIT_TOKEN` through the `x-ai-office-audit-token` header. Query-token compatibility remains for existing internal smoke/audit calls; avoid query tokens in new integrations because URLs may be logged.
 
+The read-only Pognali audit workflow can be started manually or by an explicitly marked commit containing `[office pognali audit]`. It reads a source snapshot and submits a read-only audit task to the production AI-OFFICE runtime. Do not use the marker unless a live production task is intended.
+
 Public health endpoints should remain minimal and must not expose secret values.
 
 ## GitHub write safety
