@@ -148,3 +148,29 @@ test("browser audit events redact URL query strings and task goals", async () =>
     restoreEnv();
   }
 });
+
+test("browser provider errors cannot leak a per-request callback token", async () => {
+  const originalFetchBeforeTest = globalThis.fetch;
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "true";
+    process.env.TINYFISH_API_KEY = "test-key";
+    let token = "";
+    const events = [];
+    globalThis.fetch = async (_url, options) => {
+      const submitted = JSON.parse(options.body);
+      token = new URL(submitted.webhook_url).searchParams.get("token");
+      throw new Error("provider rejected callback " + submitted.webhook_url);
+    };
+    const manager = createBrowserManager({ emit: (type, data) => events.push({ type, ...data }) });
+    const request = await manager.request({ url: "https://example.com", goal: "Read the public page", actionClass: "research" });
+
+    assert.equal(request.status, "failed");
+    assert.ok(token);
+    assert.equal(request.error.includes(token), false);
+    assert.equal(JSON.stringify(events).includes(token), false);
+    assert.equal(request.webhookToken, undefined);
+  } finally {
+    globalThis.fetch = originalFetchBeforeTest;
+    restoreEnv();
+  }
+});
