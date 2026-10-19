@@ -1687,14 +1687,15 @@ app.post("/api/browser/requests/:id/approve",async (req,res)=>{
 });
 
 app.post("/api/browser/webhook",(req,res)=>{
-  const expected=String(process.env.BROWSER_WEBHOOK_SECRET || "").trim();
   const supplied=String(req.headers["x-ai-office-webhook-secret"] || req.query?.token || "").trim();
-  if(!expected || supplied!==expected) return res.status(401).json({ok:false,error:"webhook authentication required"});
+  if(!supplied) return res.status(401).json({ok:false,error:"webhook authentication required"});
 
   try {
-    res.status(200).json({ok:true,...browser.webhook(req.body || {})});
-  } catch(error) {
-    res.status(200).json({ok:false,error:error?.message || String(error)});
+    const result=browser.webhook(req.body || {},supplied);
+    if(!result?.authenticated) return res.status(401).json({ok:false,error:"webhook authentication required"});
+    return res.status(200).json({ok:true,...result});
+  } catch(_) {
+    return res.status(500).json({ok:false,error:"webhook processing failed"});
   }
 });
 
