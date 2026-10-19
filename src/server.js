@@ -866,7 +866,7 @@ const TOOL_REGISTRY = {
       if (protectedBranches.has(configuredBranch) && String(process.env.GITHUB_ALLOW_PROTECTED_BRANCH_WRITES || "false").toLowerCase() !== "true") {
         throw Object.assign(new Error("Writes to protected branches are disabled by policy"), {code:"TOOL_POLICY_DENIED"});
       }
-      if (path.startsWith("/") || path.split("/").some(segment => segment === "." || segment === "..") || /[?#\\r\\n]/.test(path)) {
+      if (path.startsWith("/") || path.split("/").some(segment => segment === "." || segment === "..") || /[?#\r\n]/.test(path)) {
         throw Object.assign(new Error("github.write_file path is invalid"), {code:"TOOL_POLICY_DENIED"});
       }
 
