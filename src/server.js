@@ -2112,7 +2112,7 @@ async function bootstrapDatabase() {
     const enabled = await initDatabase();
     if(enabled) {
       const state = await loadDatabaseState();
-      events.splice(0,events.length,...(state.events || []));
+      events.splice(0,events.length,...(state.events || []).reverse());
       for(const snapshot of state.tasks || []) {
         const normalized=normalizeTaskSnapshotAfterRestart(snapshot);
         const record=normalized.record;
