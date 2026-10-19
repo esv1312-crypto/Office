@@ -153,6 +153,11 @@ function isLoopbackAiTestMode() {
     && Boolean(String(process.env.OFFICE_TEST_OPENROUTER_URL || "").trim());
 }
 
+function shouldSkipBackgroundScouts() {
+  return process.env.NODE_ENV === "test"
+    && (isLoopbackAiTestMode() || process.env.OFFICE_TEST_DISABLE_BACKGROUND_SCOUTS === "true");
+}
+
 function openRouterModel() {
   const configured = String(process.env.OPENROUTER_MODEL || "").trim();
   return /^(sk-or-|or-)/i.test(configured) || !configured ? "openrouter/free" : configured;
