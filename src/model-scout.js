@@ -13,7 +13,8 @@ const state = {
   catalog:{openrouter:new Map(),huggingface:new Map(),apinex:new Map()},
   rolePools:{coordinator:[],developer:[],analyst:[],verifier:[],executor:[]},
   inactive:{openrouter:new Map(),huggingface:new Map(),apinex:new Map()},
-  errors:[]
+  errors:[],
+  qualification:new Map()
 };
 
 export function isZeroPrice(pricing){
@@ -220,6 +221,35 @@ export async function refreshModelScout(){
   }
 }
 
+const MAX_QUALIFICATION_RECORDS=100;
+const ALLOWED_QUALIFICATION_ERRORS=new Set(["auth","quota","model_unavailable","rate_limited","timeout","invalid_response","provider_error"]);
+
+export function recordModelQualification({provider,model,role,ok,latencyMs=null,errorCategory=null,transient=false,checkedAt=new Date().toISOString(),expiresAt=null}={}){
+  const safeProvider=String(provider||"").trim().toLowerCase().slice(0,40);
+  const safeModel=String(model||"").trim().slice(0,240);
+  const safeRole=String(role||"").trim().slice(0,40);
+  if(!safeProvider||!safeModel||!safeRole) return false;
+  const key=safeProvider+":"+safeModel+":"+safeRole;
+  const parsedTime=Date.parse(checkedAt);
+  const checkedAtIso=Number.isFinite(parsedTime)?new Date(parsedTime).toISOString():new Date().toISOString();
+  const expiry=Date.parse(expiresAt||"");
+  const entry={
+    provider:safeProvider,model:safeModel,role:safeRole,
+    status:ok===true?"passed":"failed",
+    checkedAt:checkedAtIso,
+    latencyMs:Number.isFinite(Number(latencyMs))&&Number(latencyMs)>=0?Math.round(Number(latencyMs)):null,
+    expiresAt:Number.isFinite(expiry)?new Date(expiry).toISOString():null,
+    transient:Boolean(transient),
+    errorCategory:ok===true?null:(ALLOWED_QUALIFICATION_ERRORS.has(errorCategory)?errorCategory:"provider_error")
+  };
+  state.qualification.delete(key);
+  state.qualification.set(key,entry);
+  while(state.qualification.size>MAX_QUALIFICATION_RECORDS){
+    state.qualification.delete(state.qualification.keys().next().value);
+  }
+  return true;
+}
+
 export function getModelScoutState(){
   return {
     refreshedAt:state.refreshedAt,
@@ -240,6 +270,8 @@ export function getModelScoutState(){
       apinex:[...state.inactive.apinex.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince}))
     },
     errors:[...state.errors],
+    qualification:[...state.qualification.values()].sort((a,b)=>b.checkedAt.localeCompare(a.checkedAt)),
+    qualificationSummary:{passed:[...state.qualification.values()].filter(x=>x.status==="passed").length,failed:[...state.qualification.values()].filter(x=>x.status==="failed").length,retained:state.qualification.size},
     policy:{
       freeDefinition:"explicit zero input/output pricing or a provider-documented free model identifier; APINEX is restricted to free/* IDs",
       expiredModelsExcluded:true,
