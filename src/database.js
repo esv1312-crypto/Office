@@ -87,6 +87,28 @@ export async function saveTaskSnapshot(snapshot) {
   ));
 }
 
+export async function saveTaskSnapshots(snapshots = []) {
+  if (!dbReady || !Array.isArray(snapshots) || snapshots.length === 0) return;
+  return enqueueWrite(async () => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const snapshot of snapshots) {
+        await client.query(
+          "INSERT INTO ai_office_tasks(id,parent_task_id,payload,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(id) DO UPDATE SET parent_task_id=EXCLUDED.parent_task_id,payload=EXCLUDED.payload,updated_at=NOW()",
+          [snapshot.id, snapshot.parentTaskId || null, snapshot]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      try { await client.query("ROLLBACK"); } catch {}
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+}
+
 export async function saveEvent(type, payload) {
   if (!dbReady) return;
   const eventTime=payload?.ts || payload?.createdAt || new Date().toISOString();
