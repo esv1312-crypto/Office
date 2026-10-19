@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isZeroPrice, isUsableFreeModel } from "../src/model-scout.js";
+import { isZeroPrice, isUsableFreeModel, resolveProviderDiscovery } from "../src/model-scout.js";
 
 test("explicit zero input and output pricing is free", () => {
   assert.equal(isZeroPrice({ input: "0", output: "0" }), true);
@@ -55,4 +55,18 @@ test("model catalog fetch aborts when the configured timeout elapses", async () 
     }),
     error => error.name === "AbortError"
   );
+});
+
+
+test("provider discovery failure preserves the last successful model snapshot", () => {
+  const previous = [{ id: "provider/model:free" }];
+  const failed = resolveProviderDiscovery(previous, { status: "rejected", reason: new Error("HTTP 429 rate limit") });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.models, previous);
+  assert.match(failed.error, /429/);
+
+  const succeeded = resolveProviderDiscovery(previous, { status: "fulfilled", value: [] });
+  assert.equal(succeeded.ok, true);
+  assert.deepEqual(succeeded.models, []);
+  assert.equal(succeeded.error, null);
 });
