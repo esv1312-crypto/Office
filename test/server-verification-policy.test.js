@@ -248,7 +248,7 @@ test("APINEX requires a free-model preflight with tools disabled before task exe
   assert.match(apinex, /taskId,enableTools/);
   assert.match(preflight, /provider==="apinex"/);
   assert.match(preflight, /preflight requires an explicitly free\/\* model ID/);
-  assert.match(preflight, /generateWithApinex\(probe,employee,model,null,false\)/);
+  assert.match(preflight, /generateWithApinex\(probe,employee,model,null,false,PREFLIGHT_TIMEOUT_MS\)/);
   assert.match(gateway, /const preflight=await preflightModel\(provider,model,employee\)/);
   assert.match(gateway, /if\(!preflight\.ok\) throw/);
 });
