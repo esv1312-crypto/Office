@@ -1,8 +1,6 @@
 const SENSITIVE_ACTIONS = new Set(["signup","login","create_key","connect_account","billing","purchase","delete","send","write"]);
 const SAFE_ACTIONS = new Set(["research","read","docs","pricing","status"]);
 
-function randomToken(){ return crypto.randomUUID().replaceAll("-",""); }
-
 export function createBrowserManager({emit}) {
   const requests=new Map();
   const freeOnly=()=>String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
