@@ -32,6 +32,12 @@ export async function initDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS ai_office_events_task_idx ON ai_office_events(task_id, id);
+    CREATE TABLE IF NOT EXISTS ai_office_resources (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'discovered',
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
   dbReady = true;
   return true;
@@ -39,13 +45,15 @@ export async function initDatabase() {
 
 export async function loadDatabaseState() {
   if (!dbReady) return {tasks:[], events:[]};
-  const [tasks, events] = await Promise.all([
+  const [tasks, events, resources] = await Promise.all([
     pool.query("SELECT id,parent_task_id,payload FROM ai_office_tasks ORDER BY updated_at ASC"),
-    pool.query("SELECT task_id,event_type,payload,created_at FROM ai_office_events ORDER BY id DESC LIMIT 500")
+    pool.query("SELECT task_id,event_type,payload,created_at FROM ai_office_events ORDER BY id DESC LIMIT 500"),
+    pool.query("SELECT id,status,payload FROM ai_office_resources ORDER BY updated_at DESC")
   ]);
   return {
     tasks: tasks.rows.map(r => r.payload),
-    events: events.rows.reverse().map(r => ({type:r.event_type,...r.payload,createdAt:r.created_at}))
+    events: events.rows.reverse().map(r => ({type:r.event_type,...r.payload,createdAt:r.created_at})),
+    resources: resources.rows.map(r => r.payload)
   };
 }
 
@@ -68,4 +76,12 @@ export async function saveEvent(type, payload) {
 
 export function databaseStatus() {
   return {enabled:databaseEnabled(),ready:dbReady};
+}
+
+export async function saveResourceSnapshot(resource) {
+  if (!dbReady || !resource?.id) return;
+  await pool.query(
+    "INSERT INTO ai_office_resources(id,status,payload,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(id) DO UPDATE SET status=EXCLUDED.status,payload=EXCLUDED.payload,updated_at=NOW()",
+    [String(resource.id), String(resource.status || "discovered"), resource]
+  );
 }
