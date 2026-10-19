@@ -22,3 +22,11 @@ test("database writes are serialized and drained on graceful shutdown", async ()
   assert.match(server, /process\.once\("SIGINT"/);
   assert.match(server, /await closeDatabase\(\)/);
 });
+
+
+test("configured PostgreSQL failure prevents degraded startup without persistence", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(server, /databaseEnabled\(\)/);
+  assert.match(server, /DATABASE_STARTUP_FAILED: DATABASE_URL is configured but persistence could not be initialized/);
+  assert.doesNotMatch(server, /initialization failed; continuing without persistence/);
+});
