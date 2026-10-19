@@ -166,3 +166,11 @@ test("public health endpoints expose only minimal service status", async () => {
   assert.doesNotMatch(health, /providerOrder|aiConfigured|githubToolsEnabled|browser:/);
   assert.doesNotMatch(backend, /configuredProviders|aiConfigured|freeOnly/);
 });
+
+test("task acceptance events log lengths rather than raw user task text", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const acceptedEvents = [...source.matchAll(/emit\("task\.accepted",\{[^\n]*\}\);/g)].map(match => match[0]);
+  assert.ok(acceptedEvents.length >= 3, "task acceptance events should remain observable");
+  assert.ok(acceptedEvents.every(event => /taskLength:/.test(event)));
+  assert.ok(acceptedEvents.every(event => !/\btask\s*:/.test(event)));
+});
