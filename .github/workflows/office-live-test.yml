@@ -13,6 +13,9 @@ jobs:
   launch:
     runs-on: ubuntu-latest
     steps:
+      - name: Explicitly skip external audit work on push
+        if: github.event_name != 'workflow_dispatch'
+        run: echo "Manual-only audit workflow; push events do not contact AI-OFFICE or Pognali."
       - name: Build read-only Pognali source dossier
         if: github.event_name == 'workflow_dispatch'
         run: |
