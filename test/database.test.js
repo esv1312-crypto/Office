@@ -111,8 +111,10 @@ test("planned subtasks and recovery workers are persisted before execution", asy
   const planStart = server.indexOf("async function executeRootTask(record)");
   const planEnd = server.indexOf("\nasync function", planStart + 10);
   const rootExecution = server.slice(planStart, planEnd);
-  assert.match(rootExecution, /await saveTaskSnapshots\(children\.map\(taskSnapshot\)\)/);
-  assert.ok(rootExecution.indexOf("await saveTaskSnapshots(children.map(taskSnapshot))") < rootExecution.indexOf('emit("task.accepted"'));
+  assert.match(rootExecution, /await saveTaskSnapshots\(\[taskSnapshot\(record\),\.\.\.children\.map\(taskSnapshot\)\]\)/);
+  assert.match(rootExecution, /const previousSubtaskIds=\[\.\.\.record\.subtaskIds\]/);
+  assert.match(rootExecution, /record\.subtaskIds=previousSubtaskIds/);
+  assert.ok(rootExecution.indexOf("await saveTaskSnapshots([taskSnapshot(record),...children.map(taskSnapshot)])") < rootExecution.indexOf('emit("task.accepted"'));
   assert.ok(rootExecution.indexOf("await saveTaskSnapshots(children.map(taskSnapshot))") < rootExecution.indexOf("Promise.all(children.map(child=>executeWorkerTask(child)))"));
 
   const replacementStart = server.indexOf("async function performWorkerRecovery");
