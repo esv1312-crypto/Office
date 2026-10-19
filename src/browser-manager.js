@@ -22,16 +22,11 @@ export function createBrowserManager({emit}) {
       if(Date.parse(r.createdAt)<cutoff){r.webhookToken=null;requests.delete(id);}
     }
     const max=maxRequests();
-    if(requests.size<=max) return;
+    if(requests.size<max) return;
     const oldest=[...requests.entries()].sort((a,b)=>Date.parse(a[1].createdAt)-Date.parse(b[1].createdAt));
     for(const [id,r] of oldest){
-      if(requests.size<=max) break;
+      if(requests.size<max) break;
       if(["completed","failed","blocked","waiting_approval"].includes(r.status)){r.webhookToken=null;requests.delete(id);}
-    }
-    for(const [id,r] of oldest){
-      if(requests.size<=max) break;
-      r.webhookToken=null;
-      requests.delete(id);
     }
   }
   const freeOnly=()=>String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
@@ -78,6 +73,7 @@ export function createBrowserManager({emit}) {
 
   async function request({taskId=null,url="",goal="",actionClass="research"}){
     pruneRequests();
+    if(requests.size>=maxRequests()) throw Object.assign(new Error("browser request capacity reached"),{code:"BROWSER_CAPACITY_REACHED"});
     if(!url || !goal) throw Object.assign(new Error("url and goal are required"),{code:"BROWSER_INVALID"});
     const action=String(actionClass||"research").toLowerCase();
     if(!SAFE_ACTIONS.has(action)&&!SENSITIVE_ACTIONS.has(action)) throw Object.assign(new Error("unsupported browser action"),{code:"BROWSER_POLICY_DENIED"});
