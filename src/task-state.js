@@ -20,6 +20,27 @@ export function assertTaskTransitionAllowed(currentStatus, nextStatus) {
   return true;
 }
 
+export async function applyPersistedTaskTransition(record, nextStatus, extra = {}, persistSnapshot) {
+  if (typeof persistSnapshot !== "function") {
+    throw new TypeError("persistSnapshot must be a function");
+  }
+  assertTaskTransitionAllowed(record.status, nextStatus);
+  const previousStatus = record.status;
+  const previousRecord = { ...record };
+  record.status = nextStatus;
+  Object.assign(record, extra);
+  try {
+    await persistSnapshot(record);
+  } catch (error) {
+    for (const key of Object.keys(record)) {
+      if (!Object.prototype.hasOwnProperty.call(previousRecord, key)) delete record[key];
+    }
+    Object.assign(record, previousRecord);
+    throw error;
+  }
+  return { record, previousStatus };
+}
+
 export function normalizeTaskSnapshotAfterRestart(snapshot, now = new Date().toISOString()) {
   const record = { ...snapshot };
   delete record.children;
