@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
-import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, saveResourceSnapshot, closeDatabase } from "./database.js";
+import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch } from "./task-state.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
@@ -2201,7 +2201,11 @@ async function bootstrapDatabase() {
       console.log("[DB] persistence ready; restored tasks:",tasks.size,"events:",events.length,"resources:",(state.resources || []).length);
     } else console.log("[DB] persistence disabled; DATABASE_URL is not configured");
   } catch(error) {
-    console.error("[DB] initialization failed; continuing without persistence:",error?.message||error);
+    console.error("[DB] initialization failed:",error?.message||error);
+    if(databaseEnabled()) {
+      throw new Error("DATABASE_STARTUP_FAILED: DATABASE_URL is configured but persistence could not be initialized; refusing to start in degraded mode.");
+    }
+    throw error;
   }
 }
 
