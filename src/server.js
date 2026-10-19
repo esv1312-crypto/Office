@@ -5,7 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, saveResourceSnapshot } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
-import { assertTaskTransitionAllowed } from "./task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart } from "./task-state.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -2113,19 +2113,22 @@ async function bootstrapDatabase() {
     if(enabled) {
       const state = await loadDatabaseState();
       for(const snapshot of state.tasks || []) {
-        const record = {...snapshot};
-        delete record.children;
-        if(record.status === "running") {
-          record.status = "failed";
-          record.error = "SERVICE_RESTART_INTERRUPTED";
-          record.failedAt = new Date().toISOString();
-          record.startedAt = null;
-          record.completedAt = null;
-        } else if(record.status === "waiting") {
-          record.startedAt = null;
-          record.waitingReason = record.waitingReason || "service_restart";
-        }
+        const normalized=normalizeTaskSnapshotAfterRestart(snapshot);
+        const record=normalized.record;
         tasks.set(record.id,record);
+        if(normalized.changed) {
+          await saveTaskSnapshot(taskSnapshot(record));
+          if(record.restartInterrupted) {
+            await saveEvent("task.restart_interrupted",{
+              taskId:record.id,
+              parentTaskId:record.parentTaskId || null,
+              kind:record.kind || null,
+              previousStatus:snapshot.status,
+              status:record.status,
+              reason:record.error
+            });
+          }
+        }
       }
       events.splice(0,events.length,...(state.events || []));
       restoreResourceSnapshots(state.resources || []);
