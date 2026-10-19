@@ -2112,6 +2112,7 @@ async function bootstrapDatabase() {
     const enabled = await initDatabase();
     if(enabled) {
       const state = await loadDatabaseState();
+      events.splice(0,events.length,...(state.events || []));
       for(const snapshot of state.tasks || []) {
         const normalized=normalizeTaskSnapshotAfterRestart(snapshot);
         const record=normalized.record;
@@ -2119,18 +2120,23 @@ async function bootstrapDatabase() {
         if(normalized.changed) {
           await saveTaskSnapshot(taskSnapshot(record));
           if(record.restartInterrupted) {
-            await saveEvent("task.restart_interrupted",{
+            const restartEvent={
+              id:events.length+1,
+              ts:new Date().toISOString(),
+              type:"task.restart_interrupted",
               taskId:record.id,
               parentTaskId:record.parentTaskId || null,
               kind:record.kind || null,
               previousStatus:snapshot.status,
               status:record.status,
               reason:record.error
-            });
+            };
+            events.unshift(restartEvent);
+            if(events.length>500) events.pop();
+            await saveEvent("task.restart_interrupted",restartEvent);
           }
         }
       }
-      events.splice(0,events.length,...(state.events || []));
       restoreResourceSnapshots(state.resources || []);
       console.log("[DB] persistence ready; restored tasks:",tasks.size,"events:",events.length,"resources:",(state.resources || []).length);
     } else console.log("[DB] persistence disabled; DATABASE_URL is not configured");
