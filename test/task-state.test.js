@@ -34,8 +34,8 @@ test("idempotent same-state updates are allowed", () => {
   for (const state of TASK_STATES) assert.equal(assertTaskTransitionAllowed(state, state), true);
 });
 
-test("planning and running tasks are marked interrupted after restart", () => {
-  for (const status of ["planning", "running"]) {
+test("accepted, planning, and running tasks are marked interrupted after restart", () => {
+  for (const status of ["accepted", "planning", "running"]) {
     const { record, changed } = normalizeTaskSnapshotAfterRestart({
       id: "task-1",
       status,
