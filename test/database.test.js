@@ -75,7 +75,7 @@ test("critical task lifecycle transitions await snapshot persistence", async () 
   assert.match(server, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
   assert.match(server, /async function runWorkerWatchdog\(\)/);
   assert.match(server, /setInterval\(\(\)=>void runWorkerWatchdog\(\)\.catch/);
-  const calls = server.split("\\n").filter(line => line.includes("transitionTask(") && !line.includes("function transitionTask("));
+  const calls = server.split("\n").filter(line => line.includes("transitionTask(") && !line.includes("function transitionTask("));
   assert.ok(calls.length >= 17, "expected lifecycle transition call sites to be covered");
   assert.ok(calls.every(line => line.includes("await transitionTask(")), "every lifecycle transition must await persistence");
 });
