@@ -231,3 +231,23 @@ test("browser request storage is bounded", async () => {
     restoreEnv();
   }
 });
+
+test("a sensitive goal cannot bypass approval by claiming to be research", async () => {
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "false";
+    delete process.env.TINYFISH_API_KEY;
+    const events = [];
+    const manager = createBrowserManager({ emit: (type, data) => events.push({ type, ...data }) });
+    const request = await manager.request({
+      url: "https://example.com/account",
+      goal: "Delete my account",
+      actionClass: "research"
+    });
+
+    assert.equal(request.status, "waiting_approval");
+    assert.equal(request.requiresApproval, true);
+    assert.ok(events.some(event => event.type === "approval.requested"));
+  } finally {
+    restoreEnv();
+  }
+});
