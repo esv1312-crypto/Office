@@ -212,10 +212,10 @@ function isTransientGeminiError(status, message = "") {
     || /high demand|temporarily|unavailable|overloaded|rate.?limit|resource.?exhausted/i.test(message);
 }
 
-async function callGemini(model, task) {
+async function callGemini(model, task, timeoutMs=null) {
   emit("ai.start", {provider:"gemini", model});
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(process.env.GEMINI_TIMEOUT_MS || 25000));
+  const timeout = setTimeout(() => controller.abort(), Number(timeoutMs || process.env.GEMINI_TIMEOUT_MS || 25000));
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(process.env.GEMINI_API_KEY);
   let response;
   try {
@@ -358,11 +358,11 @@ function buildToolAwareSystemPrompt(employee){
   ].join("\n");
 }
 
-async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={},employeeId=null,taskId=null,enableTools=false}) {
+async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={},employeeId=null,taskId=null,enableTools=false,timeoutMs=null}) {
   if(provider==="openrouter"&&paidTestEnabled()) paidTestReserve(task);
   emit("ai.start",{provider,model});
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000));
+  const timeout=setTimeout(()=>controller.abort(),Number(timeoutMs || process.env.AI_REQUEST_TIMEOUT_MS || 30000));
   try {
     const messages=[
       {role:"system",content:enableTools ? buildToolAwareSystemPrompt(getEmployee(employeeId||"executor")) : "You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
@@ -487,14 +487,14 @@ async function preflightModel(provider, model, employee) {
   try {
     let result;
     if(provider==="openrouter"){
-      result=await callOpenAICompatible({provider,baseUrl:"https://openrouter.ai/api/v1/chat/completions",apiKey:openRouterApiKey(),model,task:probe});
+      result=await callOpenAICompatible({provider,baseUrl:"https://openrouter.ai/api/v1/chat/completions",apiKey:openRouterApiKey(),model,task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
     } else if(provider==="huggingface"){
       const hfModel=normalizeHuggingFaceModel(model);
-      result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model:hfModel.includes(":")?hfModel:hfModel+":fastest",task:probe});
+      result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model:hfModel.includes(":")?hfModel:hfModel+":fastest",task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
     } else if(provider==="gemini"){
-      result=await callGemini(model,probe);
+      result=await callGemini(model,probe,PREFLIGHT_TIMEOUT_MS);
     } else if(provider==="cloudflare"){
-      result=await generateWithCloudflare(probe,model);
+      result=await generateWithCloudflare(probe,model,PREFLIGHT_TIMEOUT_MS);
     } else {
       throw new Error("Unsupported preflight provider: "+provider);
     }
@@ -704,13 +704,13 @@ async function generateWithApinex(task, employee, preferredModel, taskId=null) {
   });
 }
 
-async function generateWithCloudflare(task, preferredModel) {
+async function generateWithCloudflare(task, preferredModel, timeoutMs=null) {
   const model=preferredModel || process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct";
   return callOpenAICompatible({
     provider:"cloudflare",
     baseUrl:"https://api.cloudflare.com/client/v4/accounts/"+encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID)+"/ai/v1/chat/completions",
     apiKey:process.env.CLOUDFLARE_API_TOKEN,
-    model,task
+    model,task,timeoutMs
   });
 }
 
