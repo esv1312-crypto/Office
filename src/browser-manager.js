@@ -1,14 +1,46 @@
 const SENSITIVE_ACTIONS = new Set(["signup","login","create_key","connect_account","billing","purchase","delete","send","write"]);
 const SAFE_ACTIONS = new Set(["research","read","docs","pricing","status"]);
-
-function randomToken(){ return crypto.randomUUID().replaceAll("-",""); }
+const SENSITIVE_GOAL_PHRASES = [
+  "delete my account","delete account","remove account","create account","sign up","log in",
+  "change password","reset password","submit form","send message","publish post","upload file",
+  "purchase","buy now","checkout","place order","pay now","connect wallet","grant access",
+  "cancel subscription","transfer funds","withdraw funds","save changes"
+];
+export function normalizeBrowserTerminalStatus(value) {
+  const status=String(value || "").trim().toLowerCase();
+  if(["completed","complete","success","succeeded","finished"].includes(status)) return "completed";
+  if(["failed","error","cancelled","canceled"].includes(status)) return "failed";
+  return null;
+}
+function goalRequiresApproval(goal) {
+  const text = String(goal || "").toLowerCase();
+  return SENSITIVE_GOAL_PHRASES.some(phrase => text.includes(phrase));
+}
 
 export function createBrowserManager({emit}) {
   const requests=new Map();
+  const retentionMs=()=>{const value=Number(process.env.BROWSER_REQUEST_RETENTION_MS || 86400000);return Number.isFinite(value)?Math.max(60000,value):86400000;};
+  const maxRequests=()=>{const value=Number(process.env.BROWSER_MAX_REQUESTS || 500);return Number.isFinite(value)?Math.max(50,Math.floor(value)):500;};
+  function pruneRequests(reserveSlot=false){
+    const cutoff=Date.now()-retentionMs();
+    for(const [id,r] of requests){
+      if(["completed","failed","blocked"].includes(r.status)) r.webhookToken=null;
+      if(Date.parse(r.createdAt)<cutoff){r.webhookToken=null;requests.delete(id);}
+    }
+    const max=maxRequests();
+    const target=reserveSlot?max-1:max;
+    if(requests.size<=target) return;
+    const oldest=[...requests.entries()].sort((a,b)=>Date.parse(a[1].createdAt)-Date.parse(b[1].createdAt));
+    for(const [id,r] of oldest){
+      if(requests.size<=target) break;
+      if(["completed","failed","blocked","waiting_approval"].includes(r.status)){r.webhookToken=null;requests.delete(id);}
+    }
+  }
   const freeOnly=()=>String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
   const key=()=>process.env["TINY"+"FISH_API_KEY"];
   const enabled=()=>String(process.env.BROWSER_AUTOMATION_ENABLED || "false").toLowerCase()==="true";
   const publicUrl=()=>String(process.env.OFFICE_PUBLIC_URL || "https://ai-office-runtime-8pir.onrender.com").replace(/\/+$/,"");
+  const auditUrl=(raw)=>{ try { return new URL(String(raw||"")).origin; } catch (_) { return "[invalid-url]"; } };
 
   async function call(path,body){
     if(!key()) throw Object.assign(new Error("browser backend is not configured"),{code:"BROWSER_NOT_CONFIGURED"});
@@ -22,65 +54,86 @@ export function createBrowserManager({emit}) {
     return d;
   }
 
-  function pub(r){ return {...r,approvalToken:r.status==="waiting_approval"?r.approvalToken:undefined}; }
+  function pub(r){ const {webhookToken,...safe}=r; return {...safe}; }
 
   async function start(r){
-    if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
-    if(!key()){ r.status="blocked"; r.error="Browser backend is not configured"; emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
-    r.status="running"; r.startedAt=new Date().toISOString();
+    if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
+    if(!key()){ r.status="blocked"; r.error="Browser backend is not configured"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
+    r.status="running"; r.startedAt=new Date().toISOString(); r.webhookToken=crypto.randomUUID();
     try{
-      const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:publicUrl()+"/api/browser/webhook"});
-      r.runId=d?.run_id || d?.runId || null;
-      emit("browser.started",{requestId:r.id,runId:r.runId,url:r.url});
+      const callback=publicUrl()+"/api/browser/webhook?token="+encodeURIComponent(r.webhookToken);
+      const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:callback});
+      const responseRunId=d?.run_id || d?.runId || null;
+      if(r.runId && responseRunId && r.runId!==responseRunId) throw new Error("browser callback run ID did not match accepted run");
+      if(!r.runId) r.runId=responseRunId;
+      if(r.status==="running") emit("browser.started",{requestId:r.id,runId:r.runId,url:auditUrl(r.url)});
     }catch(e){
-      r.status="failed"; r.error=e?.message||String(e); r.completedAt=new Date().toISOString();
+      const token=r.webhookToken;
+      const rawError=e?.message||String(e);
+      r.error=token?String(rawError).split(token).join("[redacted]"):String(rawError);
+      r.webhookToken=null;
+      r.status="failed"; r.completedAt=new Date().toISOString();
       emit("browser.failed",{requestId:r.id,error:r.error});
     }
     return pub(r);
   }
 
   async function request({taskId=null,url="",goal="",actionClass="research"}){
+    pruneRequests(true);
+    if(requests.size>=maxRequests()) throw Object.assign(new Error("browser request capacity reached"),{code:"BROWSER_CAPACITY_REACHED"});
     if(!url || !goal) throw Object.assign(new Error("url and goal are required"),{code:"BROWSER_INVALID"});
     const action=String(actionClass||"research").toLowerCase();
     if(!SAFE_ACTIONS.has(action)&&!SENSITIVE_ACTIONS.has(action)) throw Object.assign(new Error("unsupported browser action"),{code:"BROWSER_POLICY_DENIED"});
     if(freeOnly() && /billing|purchase|upgrade|paid/i.test(goal+" "+action)) throw Object.assign(new Error("paid browser action blocked by FREE_ONLY policy"),{code:"BROWSER_POLICY_DENIED"});
-    const needs=SENSITIVE_ACTIONS.has(action);
-    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,approvalToken:needs?randomToken():null,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,result:null,error:null};
+    const needs=SENSITIVE_ACTIONS.has(action) || goalRequiresApproval(goal);
+    const r={id:crypto.randomUUID(),taskId,url,goal,actionClass:action,status:needs?"waiting_approval":"queued",requiresApproval:needs,createdAt:new Date().toISOString(),approvedAt:null,startedAt:null,completedAt:null,runId:null,webhookToken:null,result:null,error:null};
     requests.set(r.id,r);
-    emit("browser.requested",{requestId:r.id,taskId,url,goal,actionClass:action,requiresApproval:needs,status:r.status});
-    if(needs){ emit("approval.requested",{requestId:r.id,taskId,url,goal,actionClass:action,approvalRequired:true}); return pub(r); }
-    emit("browser.queued",{requestId:r.id,taskId,url,goal,actionClass:action});
-    return enabled()&&key()?start(r):pub(r);
-  }
-
-  async function approve(id,token){
-    const r=requests.get(id);
-    if(!r) throw Object.assign(new Error("browser request not found"),{code:"BROWSER_NOT_FOUND"});
-    if(r.status!=="waiting_approval") return pub(r);
-    if(!token || token!==r.approvalToken) throw Object.assign(new Error("valid human approval token is required"),{code:"BROWSER_APPROVAL_REQUIRED"});
-    r.approvedAt=new Date().toISOString(); emit("approval.granted",{requestId:id,taskId:r.taskId,actionClass:r.actionClass});
+    emit("browser.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,requiresApproval:needs,status:r.status});
+    if(needs){ emit("approval.requested",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action,approvalRequired:true}); return pub(r); }
+    emit("browser.queued",{requestId:r.id,taskId,url:auditUrl(url),goal:"[redacted]",goalLength:goal.length,actionClass:action});
+    // Never leave a request queued forever when execution is disabled or credentials are missing.
     return start(r);
   }
 
-  function webhook(payload={}){
+  async function approveAuthorized(id){
+    pruneRequests();
+    const r=requests.get(id);
+    if(!r) throw Object.assign(new Error("browser request not found"),{code:"BROWSER_NOT_FOUND"});
+    if(r.status!=="waiting_approval") return pub(r);
+    r.approvedAt=new Date().toISOString();
+    emit("approval.granted",{requestId:id,taskId:r.taskId,actionClass:r.actionClass,source:"authenticated_control_plane"});
+    return start(r);
+  }
+
+  function webhook(payload={}, suppliedToken=""){
+    pruneRequests();
+    const token=String(suppliedToken||"");
+    const r=[...requests.values()].find(x=>x.webhookToken && x.webhookToken===token);
+    if(!r) return {matched:false,authenticated:false};
     const runId=String(payload.run_id||payload.data?.run_id||"");
-    const r=[...requests.values()].find(x=>x.runId===runId);
-    if(!r) return {matched:false};
-    r.status=String(payload.status||payload.data?.status||"UNKNOWN").toLowerCase();
+    if(!runId || (r.runId && r.runId!==runId)) return {matched:false,authenticated:false};
+    const terminalStatus=normalizeBrowserTerminalStatus(payload.status||payload.data?.status);
+    // Do not consume the one-time token or mutate request state for unknown/non-terminal statuses.
+    if(!terminalStatus) return {matched:false,authenticated:false};
+    r.runId=runId;
+    r.webhookToken=null;
+    r.status=terminalStatus;
     r.completedAt=new Date().toISOString();
     r.result=payload.data?.result??payload.result??null;
     r.error=payload.data?.error?.message||payload.error?.message||null;
     emit("browser.completed",{requestId:r.id,runId,status:r.status,error:r.error});
-    return {matched:true,requestId:r.id,status:r.status};
+    return {matched:true,authenticated:true,requestId:r.id,status:r.status};
   }
 
-  function status(id){ const r=requests.get(id); return r?pub(r):null; }
+  function status(id){ pruneRequests(); const r=requests.get(id); return r?pub(r):null; }
 
   function summary(){
+    pruneRequests();
     const a=[...requests.values()];
     return {
       manager:"browser-manager",
-      enabled:true,
+      enabled:Boolean(enabled() && key()),
+      managerLoaded:true,
       backendConfigured:Boolean(key()),
       backend:key()?"tinyfish":"external-browser-bridge",
       automationEnabled:enabled(),
@@ -91,8 +144,8 @@ export function createBrowserManager({emit}) {
       active:a.filter(x=>x.status==="running").length,
       completed:a.filter(x=>x.status==="completed").length,
       failed:a.filter(x=>x.status==="failed"||x.status==="blocked").length,
-      nextAction:key()?(enabled()?"Browser execution is live":"Enable browser automation only after confirming spending policy"):"Configure browser backend credentials"
+      nextAction:!key()?"Configure browser backend credentials":!enabled()?"Enable browser automation only after confirming spending policy":"Browser execution is live"
     };
   }
-  return {request,approve,status,summary,webhook};
+  return {request,approveAuthorized,status,summary,webhook};
 }

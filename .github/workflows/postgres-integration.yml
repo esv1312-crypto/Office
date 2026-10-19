@@ -1,0 +1,51 @@
+name: AI-OFFICE PostgreSQL integration tests
+
+on:
+  push:
+    branches:
+      - main
+      - "audit/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-office-postgres-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: ai_office_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ai_office_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/ai_office_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Run unit and PostgreSQL integration tests
+        run: npm test
+      - name: Check runtime restart integration syntax
+        run: node --check scripts/runtime-restart-check.js
+      - name: Verify durable tasks across an actual runtime process restart
+        run: node --test scripts/runtime-restart-check.js

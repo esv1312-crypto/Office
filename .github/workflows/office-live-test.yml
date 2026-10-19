@@ -2,18 +2,16 @@ name: AI-OFFICE Pognali READ-ONLY AUDIT
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   launch:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[office pognali audit]')
     runs-on: ubuntu-latest
     steps:
       - name: Build read-only Pognali source dossier
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           mkdir -p dossier
@@ -37,6 +35,9 @@ jobs:
           find dossier -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort >> dossier/MANIFEST.txt
 
       - name: Send real read-only audit task to AI-OFFICE
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          OFFICE_AUDIT_TOKEN: ${{ secrets.OFFICE_AUDIT_TOKEN }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -88,8 +89,17 @@ Important: this is an audit, not a coding task. Finish with a concise management
 
 SOURCE DOSSIER:
 """ + "".join(dossier)
+          import os
+          token = os.environ.get("OFFICE_AUDIT_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("Missing required GitHub secret OFFICE_AUDIT_TOKEN")
           payload = json.dumps({"task": task, "employeeId":"chief"}).encode()
-          req = urllib.request.Request("https://ai-office-runtime-8pir.onrender.com/api/tasks", data=payload, headers={"Content-Type":"application/json"}, method="POST")
+          req = urllib.request.Request(
+              "https://ai-office-runtime-8pir.onrender.com/api/tasks",
+              data=payload,
+              headers={"Content-Type":"application/json", "x-ai-office-audit-token": token},
+              method="POST",
+          )
           with urllib.request.urlopen(req, timeout=120) as resp:
               print(resp.read().decode())
           PY

@@ -26,6 +26,13 @@ const PROVIDERS = [
     freeAccess:"free allocation may be available subject to current account limits",
     credentialEnv:["CLOUDFLARE_API_TOKEN","CLOUDFLARE_ACCOUNT_ID"],
     docs:"https://developers.cloudflare.com/workers-ai/platform/pricing/"
+  },
+  {
+    id:"apinex",
+    name:"APINEX",
+    freeAccess:"only model IDs explicitly prefixed free/ are eligible under AI_FREE_ONLY; daily quotas and plan terms must be checked in the account",
+    credentialEnv:["APINEX_API_KEY"],
+    docs:"https://apinex.bond/developers/models/chat"
   }
 ];
 
@@ -58,7 +65,7 @@ export function inspectFreeProviders() {
 }
 
 export function chooseNextProvider(failedProvider) {
-  const order=(process.env.AI_PROVIDER_ORDER || "gemini,openrouter,cloudflare")
+  const order=(process.env.AI_PROVIDER_ORDER || "gemini,openrouter,cloudflare,apinex")
     .split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
   return order.find(id => id !== failedProvider && PROVIDERS.some(p=>p.id===id) && configured(PROVIDERS.find(p=>p.id===id))) || null;
 }

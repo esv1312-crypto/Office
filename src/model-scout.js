@@ -9,18 +9,23 @@ const ROLE_KEYWORDS = {
 const state = {
   refreshedAt:null,
   refreshing:false,
-  providers:{openrouter:[],huggingface:[]},
-  catalog:{openrouter:new Map(),huggingface:new Map()},
+  providers:{openrouter:[],huggingface:[],apinex:[]},
+  catalog:{openrouter:new Map(),huggingface:new Map(),apinex:new Map()},
   rolePools:{coordinator:[],developer:[],analyst:[],verifier:[],executor:[]},
-  inactive:{openrouter:new Map(),huggingface:new Map()},
-  errors:[]
+  inactive:{openrouter:new Map(),huggingface:new Map(),apinex:new Map()},
+  errors:[],
+  qualification:new Map()
 };
 
-function isZeroPrice(pricing){
-  if (!pricing) return false;
+export function isZeroPrice(pricing){
+  if (!pricing || typeof pricing !== "object") return false;
   const input = pricing.input ?? pricing.prompt;
   const output = pricing.output ?? pricing.completion;
-  return Number(input) === 0 && Number(output) === 0;
+  if (input === undefined || input === null || output === undefined || output === null) return false;
+  const inputPrice = Number(input);
+  const outputPrice = Number(output);
+  return Number.isFinite(inputPrice) && Number.isFinite(outputPrice)
+    && inputPrice === 0 && outputPrice === 0;
 }
 function isFreeModelId(id=""){
   return String(id).endsWith(":free");
@@ -33,7 +38,7 @@ function isExpired(model){
   return Number.isFinite(ts) && ts <= Date.now();
 }
 
-function isUsableFreeModel(model){
+export function isUsableFreeModel(model){
   if (!model?.id || isExpired(model)) return false;
   return isZeroPrice(model?.pricing) || isFreeModelId(model.id);
 }
@@ -49,11 +54,20 @@ function roleScore(model, role){
   return score;
 }
 
-async function fetchJson(url, options={}){
-  const response = await fetch(url, { ...options, headers: { "Accept":"application/json", ...(options.headers||{}) }});
-  const data = await response.json().catch(()=>({}));
-  if (!response.ok) throw new Error((data?.error?.message || data?.error || ("HTTP "+response.status)));
-  return data;
+export async function fetchJson(url, options={}){
+  const {fetchImpl=fetch, timeoutMs:requestedTimeout, ...requestOptions}=options;
+  const configuredTimeout=Number(requestedTimeout ?? process.env.MODEL_CATALOG_TIMEOUT_MS ?? 10000);
+  const timeoutMs=Number.isFinite(configuredTimeout)?Math.max(1000,configuredTimeout):10000;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),timeoutMs);
+  try {
+    const response = await fetchImpl(url, { ...requestOptions, signal:controller.signal, headers: { "Accept":"application/json", ...(requestOptions.headers||{}) }});
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error((data?.error?.message || data?.error || ("HTTP "+response.status)));
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function discoverOpenRouter(){
@@ -110,6 +124,34 @@ async function discoverHuggingFace(){
   return out;
 }
 
+export function normalizeApinexModels(data){
+  const models=Array.isArray(data?.data) ? data.data : [];
+  return models
+    .filter(model => typeof model?.id === "string" && model.id.startsWith("free/") && !isExpired(model))
+    .map(model => ({
+      provider:"apinex",
+      id:model.id,
+      routeModel:model.id,
+      name:model.name || model.id,
+      context_length:Number(model.context_length || model.context_window || 0),
+      supports_tools:Array.isArray(model.supported_parameters) && model.supported_parameters.includes("tools"),
+      supports_structured_output:Array.isArray(model.supported_parameters) && (model.supported_parameters.includes("structured_outputs") || model.supported_parameters.includes("response_format")),
+      throughput:null,
+      score:0,
+      discoveredAt:new Date().toISOString(),
+      qualification:"discovered_unverified"
+    }));
+}
+
+async function discoverApinex(){
+  const token=String(process.env.APINEX_API_KEY || "").trim();
+  if(!token) return [];
+  const data=await fetchJson("https://api.apinex.bond/v1/models",{
+    headers:{Authorization:"Bearer "+token}
+  });
+  return normalizeApinexModels(data);
+}
+
 function dedupe(models){
   const map=new Map();
   for(const model of models){
@@ -123,7 +165,10 @@ function dedupe(models){
 function rankRoles(){
   const roles={};
   for(const role of Object.keys(ROLE_KEYWORDS)){
-    const all=dedupe([...state.providers.openrouter,...state.providers.huggingface])
+    // Catalog discovery is not runtime qualification. Keep unverified entries visible in the scout,
+    // but never expose them to production role pools until a provider-specific probe succeeds.
+    const all=dedupe(Object.values(state.providers).flat())
+      .filter(m=>m.qualification !== "discovered_unverified")
       .map(m=>({...m,score:roleScore(m,role)}))
       .sort((a,b)=>b.score-a.score || b.context_length-a.context_length || b.throughput-a.throughput);
     roles[role]=all.slice(0,12);
@@ -131,27 +176,42 @@ function rankRoles(){
   state.rolePools=roles;
 }
 
+export function resolveProviderDiscovery(previousModels, result){
+  if(result?.status==="fulfilled" && Array.isArray(result.value)){
+    return {ok:true,models:result.value,error:null};
+  }
+  return {
+    ok:false,
+    models:Array.isArray(previousModels)?previousModels:[],
+    error:result?.reason?.message || String(result?.reason || "provider discovery failed")
+  };
+}
+
 export async function refreshModelScout(){
   if(state.refreshing) return getModelScoutState();
   state.refreshing=true;
   state.errors=[];
   try {
-    const results=await Promise.allSettled([discoverOpenRouter(),discoverHuggingFace()]);
-    const discovered={
-      openrouter:results[0].status==="fulfilled" ? results[0].value : [],
-      huggingface:results[1].status==="fulfilled" ? results[1].value : []
-    };
-    for(const provider of Object.keys(discovered)){
-      const seen=new Set(discovered[provider].map(x=>x.routeModel || x.id));
-      for(const model of discovered[provider]) state.catalog[provider].set(model.routeModel || model.id,model);
+    const results=await Promise.allSettled([discoverOpenRouter(),discoverHuggingFace(),discoverApinex()]);
+    const providers=["openrouter","huggingface","apinex"];
+    for(let i=0;i<providers.length;i++){
+      const provider=providers[i];
+      const result=results[i];
+      // A failed catalog request is not evidence that every previously known model disappeared.
+      // Preserve the last successful provider snapshot and its routing pool on transient errors.
+      const outcome=resolveProviderDiscovery(state.providers[provider],result);
+      if(!outcome.ok){
+        state.errors.push(provider+": "+outcome.error);
+        continue;
+      }
+      const models=outcome.models;
+      const seen=new Set(models.map(x=>x.routeModel || x.id));
+      for(const model of models) state.catalog[provider].set(model.routeModel || model.id,model);
       for(const [key,model] of state.catalog[provider]){
         if(seen.has(key)) state.inactive[provider].delete(key);
         else state.inactive[provider].set(key,{...model,inactiveSince:model.inactiveSince || new Date().toISOString()});
       }
-      state.providers[provider]=discovered[provider];
-    }
-    for(const result of results){
-      if(result.status==="rejected") state.errors.push(result.reason?.message || String(result.reason));
+      state.providers[provider]=models;
     }
     rankRoles();
     state.refreshedAt=new Date().toISOString();
@@ -159,6 +219,35 @@ export async function refreshModelScout(){
   } finally {
     state.refreshing=false;
   }
+}
+
+const MAX_QUALIFICATION_RECORDS=100;
+const ALLOWED_QUALIFICATION_ERRORS=new Set(["auth","quota","model_unavailable","rate_limited","timeout","invalid_response","provider_error"]);
+
+export function recordModelQualification({provider,model,role,ok,latencyMs=null,errorCategory=null,transient=false,checkedAt=new Date().toISOString(),expiresAt=null}={}){
+  const safeProvider=String(provider||"").trim().toLowerCase().slice(0,40);
+  const safeModel=String(model||"").trim().slice(0,240);
+  const safeRole=String(role||"").trim().slice(0,40);
+  if(!safeProvider||!safeModel||!safeRole) return false;
+  const key=safeProvider+":"+safeModel+":"+safeRole;
+  const parsedTime=Date.parse(checkedAt);
+  const checkedAtIso=Number.isFinite(parsedTime)?new Date(parsedTime).toISOString():new Date().toISOString();
+  const expiry=Date.parse(expiresAt||"");
+  const entry={
+    provider:safeProvider,model:safeModel,role:safeRole,
+    status:ok===true?"passed":"failed",
+    checkedAt:checkedAtIso,
+    latencyMs:Number.isFinite(Number(latencyMs))&&Number(latencyMs)>=0?Math.round(Number(latencyMs)):null,
+    expiresAt:Number.isFinite(expiry)?new Date(expiry).toISOString():null,
+    transient:Boolean(transient),
+    errorCategory:ok===true?null:(ALLOWED_QUALIFICATION_ERRORS.has(errorCategory)?errorCategory:"provider_error")
+  };
+  state.qualification.delete(key);
+  state.qualification.set(key,entry);
+  while(state.qualification.size>MAX_QUALIFICATION_RECORDS){
+    state.qualification.delete(state.qualification.keys().next().value);
+  }
+  return true;
 }
 
 export function getModelScoutState(){
@@ -169,20 +258,24 @@ export function getModelScoutState(){
     counts:{
       openrouter:state.providers.openrouter.length,
       huggingface:state.providers.huggingface.length,
-      total:dedupe([...state.providers.openrouter,...state.providers.huggingface]).length,
+      apinex:state.providers.apinex.length,
+      total:dedupe(Object.values(state.providers).flat()).length,
       inactiveOpenrouter:state.inactive.openrouter.size,
       inactiveHuggingface:state.inactive.huggingface.size
     },
     rolePools:Object.fromEntries(Object.entries(state.rolePools).map(([role,pool])=>[role,pool])),
     inactive:{
       openrouter:[...state.inactive.openrouter.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince})),
-      huggingface:[...state.inactive.huggingface.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince}))
+      huggingface:[...state.inactive.huggingface.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince})),
+      apinex:[...state.inactive.apinex.values()].map(x=>({id:x.id,routeModel:x.routeModel||null,name:x.name,inactiveSince:x.inactiveSince}))
     },
     errors:[...state.errors],
+    qualification:[...state.qualification.values()].sort((a,b)=>b.checkedAt.localeCompare(a.checkedAt)),
+    qualificationSummary:{passed:[...state.qualification.values()].filter(x=>x.status==="passed").length,failed:[...state.qualification.values()].filter(x=>x.status==="failed").length,retained:state.qualification.size},
     policy:{
-      freeDefinition:"pricing input/output == 0 OR explicit :free model id",
+      freeDefinition:"explicit zero input/output pricing or a provider-documented free model identifier; APINEX is restricted to free/* IDs",
       expiredModelsExcluded:true,
-      liveCapacity:"not guaranteed by catalog; runtime failures trigger fallback and temporary suppression"
+      liveCapacity:"not guaranteed by catalog; discovered models are unverified until runtime probes pass"
     }
   };
 }
