@@ -232,3 +232,22 @@ test("remote backend calls require a token and always clear their timeout", asyn
   assert.match(gateway, /"x-ai-office-audit-token":auditToken/);
   assert.match(gateway, /finally\s*\{\s*if\(timeout\) clearTimeout\(timeout\);\s*\}/);
 });
+
+test("APINEX requires a free-model preflight with tools disabled before task execution", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const apinexStart = source.indexOf("async function generateWithApinex");
+  const preflightStart = source.indexOf("async function preflightModel");
+  const localGatewayStart = source.indexOf("async function generateViaLocalGateway");
+  const gatewayEnd = source.indexOf("\nasync function generateViaGateway", localGatewayStart);
+  const apinex = source.slice(apinexStart, preflightStart);
+  const preflight = source.slice(preflightStart, localGatewayStart);
+  const gateway = source.slice(localGatewayStart, gatewayEnd);
+
+  assert.match(apinex, /enableTools=true/);
+  assert.match(apinex, /taskId,enableTools/);
+  assert.match(preflight, /provider==="apinex"/);
+  assert.match(preflight, /preflight requires an explicitly free\/\* model ID/);
+  assert.match(preflight, /generateWithApinex\(probe,employee,model,null,false\)/);
+  assert.match(gateway, /const preflight=await preflightModel\(provider,model,employee\)/);
+  assert.match(gateway, /if\(!preflight\.ok\) throw/);
+});
