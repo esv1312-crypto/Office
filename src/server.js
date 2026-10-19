@@ -4,6 +4,7 @@ import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus } from "./database.js";
+import { enforceVerificationEvidence } from "./verification.js";
 
 const app = express();
 app.use(express.json({limit:"1mb"}));
@@ -1146,10 +1147,11 @@ async function verifyRootTask(record) {
       };
       record.evidence=record.verification.checks.map(x=>({check:x.name,evidence:x.evidence}));
       emit("verification.degraded",{taskId:record.id,employeeId:verifier.id,model:result.model,reason:"invalid verifier JSON"});
-      return true;
+      return false;
     }
     throw Object.assign(new Error("Verifier returned invalid verification result"),{code:"VERIFICATION_INVALID"});
   }
+  verification=enforceVerificationEvidence(verification,checklist);
   const failedChecks=verification.checks.filter(x=>x?.passed!==true);
   const passed=verification.status==="PASS" && failedChecks.length===0;
   record.verification={
