@@ -286,3 +286,33 @@ test("browser capacity rejects excess work without evicting active requests", as
     restoreEnv();
   }
 });
+
+
+test("browser webhook rejects unknown or non-terminal status without consuming callback token", async () => {
+  const originalFetchBeforeTest = globalThis.fetch;
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "true";
+    process.env.TINYFISH_API_KEY = "test-key";
+    let submittedBody = null;
+    globalThis.fetch = async (_url, options) => {
+      submittedBody = JSON.parse(options.body);
+      return { ok: true, status: 200, json: async () => ({ run_id: "run-status" }) };
+    };
+    const manager = createBrowserManager({ emit: () => {} });
+    const request = await manager.request({ url: "https://example.com", goal: "Read the public page", actionClass: "research" });
+    const token = new URL(submittedBody.webhook_url).searchParams.get("token");
+
+    const invalid = manager.webhook({ run_id: "run-status", status: "running", result: "not terminal" }, token);
+    assert.equal(invalid.authenticated, false);
+    assert.equal(invalid.matched, false);
+    assert.equal(manager.status(request.id).status, "running");
+
+    const valid = manager.webhook({ run_id: "run-status", status: "success", result: "done" }, token);
+    assert.equal(valid.authenticated, true);
+    assert.equal(valid.matched, true);
+    assert.equal(manager.status(request.id).status, "completed");
+  } finally {
+    globalThis.fetch = originalFetchBeforeTest;
+    restoreEnv();
+  }
+});
