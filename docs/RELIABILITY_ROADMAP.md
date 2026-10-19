@@ -37,11 +37,14 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Protected audit/control routes now accept audit credentials through headers rather than query strings; the one-time browser callback token remains supported because the browser provider receives a callback URL and the token is per-request.
 - [x] The manual `office-live-test.yml` workflow now requires `secrets.OFFICE_AUDIT_TOKEN` and sends it in `x-ai-office-audit-token`; a unit test guards this contract.
 - [ ] Finish the route-by-route authorization review, including every remaining manual workflow and external callback configuration.
+- [x] Validate the entire subtask batch before creating any children, so one malformed item cannot leave partial work running.
+- [x] Bound numeric runtime settings so invalid environment values cannot produce a NaN worker limit or near-zero recurring timer.
+- [x] Expose PostgreSQL enabled/ready state in `/health` and authenticated `/api/state` diagnostics.
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
 - [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
 - [ ] Persist pending browser requests or document the exact recovery behavior when the process restarts mid-browser workflow.
 - [x] Authenticate `.github/workflows/office-smoke.yml` and send the required `task` field to `/api/tasks`.
-- [ ] Authenticate `.github/workflows/office-live-test.yml`; it currently calls protected `/api/tasks` without the audit-token header and is expected to fail authorization if run.
+- [x] Authenticate `.github/workflows/office-live-test.yml` with `OFFICE_AUDIT_TOKEN` and send the required audit header to `/api/tasks`.
 
 ## P1 — model quality and resource scout
 
