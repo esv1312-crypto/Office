@@ -5,7 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch } from "./task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
@@ -65,12 +65,8 @@ let workerWatchdogTimer=null;
 async function runWorkerWatchdog(){
   const now=Date.now();
   for(const record of tasks.values()){
-    if(!["running","waiting"].includes(record.status)) continue;
-    if(!record.startedAt) continue;
-    const age=now-Date.parse(record.startedAt);
-    if(age < workerTimeoutMs) continue;
-    if(record.kind==="root") continue;
-    if(record.watchdogFailedAt) continue;
+    const age=getWatchdogTimeoutAge(record,now,workerTimeoutMs);
+    if(age===null) continue;
     const watchdogFailedAt=new Date(now).toISOString();
     await transitionTask(record,"failed",{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:watchdogFailedAt,watchdogFailedAt});
     emit("worker.watchdog_timeout",{taskId:record.id,parentTaskId:record.parentTaskId||null,employeeId:record.employeeId,ageMs:age,timeoutMs:workerTimeoutMs});
