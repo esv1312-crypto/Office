@@ -1711,7 +1711,7 @@ app.get("/api/resource-manager", (req,res)=>{
   policy:{freeOnly:freeOnly(),paidProvidersBlocked:freeOnly()},
   ...inspectFreeProviders(),
   gatewayOrder:[...new Set([...providerOrder(),"huggingface"])]
-}));
+});
 
 app.get("/api/model-scout", (_req,res)=>res.json({ok:true,...getModelScoutState()}));
 
@@ -1730,7 +1730,7 @@ app.get("/api/model-pools", (req,res)=>{
   rotation:"round_robin_per_role",
   pools:Object.fromEntries(employees().map(e=>[e.id,openRouterPool(e)])),
   scout:getModelScoutState()
-}));
+});
 
 app.get("/api/env-diagnostic", (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1752,7 +1752,7 @@ app.get("/api/env-diagnostic", (req,res)=>{
     gemini:aiConfigured("gemini"),
     cloudflare:aiConfigured("cloudflare")
   }
-}));
+});
 
 app.get("/api/gateway", (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
@@ -1768,7 +1768,7 @@ app.get("/api/gateway", (req,res)=>{
     apinex:{configured:aiConfigured("apinex"),freeOnlyEnforced:freeOnly(),models:getModelScoutState().rolePools.executor.filter(x=>x.provider==="apinex").map(x=>x.routeModel||x.id)},
     openai:{configured:aiConfigured("openai"),blockedByFreeOnly:freeOnly(),models:[process.env.OPENAI_MODEL || "gpt-6-luna"]}
   }
-}));
+});
 
 app.get("/api/smoke/fallback", async (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
