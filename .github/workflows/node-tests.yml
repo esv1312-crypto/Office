@@ -28,6 +28,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           for file in src/*.js test/*.js scripts/*.js; do
+            [ -f "$file" ] || continue
             node --check "$file"
           done
       - name: Run unit tests
