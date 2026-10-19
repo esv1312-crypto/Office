@@ -9,3 +9,16 @@ test("PostgreSQL event history is ordered and retained by event time", async () 
   assert.match(source, /INSERT INTO ai_office_events\(task_id,event_type,payload,created_at\)/);
   assert.match(source, /DELETE FROM ai_office_events WHERE id IN \(SELECT id FROM ai_office_events ORDER BY created_at DESC,id DESC OFFSET 500\)/);
 });
+
+test("database writes are serialized and drained on graceful shutdown", async () => {
+  const database = await readFile(new URL("../src/database.js", import.meta.url), "utf8");
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+
+  assert.match(database, /let writeTail = Promise\.resolve\(\)/);
+  assert.match(database, /function enqueueWrite\(work\)/);
+  assert.match(database, /export async function flushDatabaseWrites\(\)/);
+  assert.match(database, /export async function closeDatabase\(\)/);
+  assert.match(server, /process\.once\("SIGTERM"/);
+  assert.match(server, /process\.once\("SIGINT"/);
+  assert.match(server, /await closeDatabase\(\)/);
+});
