@@ -1,6 +1,6 @@
 # AI-ОФИС: reliability and product roadmap
 
-This roadmap tracks the current runtime hardening work. A checked item means a code change or test exists; it does not imply production deployment or successful live-provider operation.
+A checked item means the code change and its stated automated checks exist in the audit branch. It does **not** mean the code is deployed or that a live external-provider workflow has been proven.
 
 ## Product decision
 
@@ -8,42 +8,54 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 
 ## P0 — correctness and safe operation
 
-- [x] Browser requests reach a terminal blocked state when automation, credentials, or webhook authentication are unavailable.
-- [x] Sensitive browser approvals are not exposed to model-facing tool results.
-- [x] Browser completion callbacks require authentication.
-- [x] Add unit tests for browser readiness, approval gating, and unsupported actions.
-- [x] Add CI execution for dependency-free unit tests and JavaScript syntax checks.
-- [x] Make verification fail closed when required evidence fields are missing or a claim is classified as an assumption/unproven.
-- [x] Extract task-state transition rules and add lifecycle tests.
-- [x] Normalize interrupted planning/running tasks after restart, persist the corrected snapshots, and retain interruption events in newest-first order.
-- [x] Protect internal gateway, employee, tool, browser, model, and resource diagnostics with the existing auth guard.
-- [ ] Add deterministic tests for watchdog recovery, retries, and root-task completion.
+- [x] Browser requests reach a terminal blocked state when automation or credentials are unavailable.
+- [x] Browser callbacks use per-request random tokens, hidden from snapshots and consumed after a valid callback; token replay is rejected.
+- [x] Sensitive browser approvals cannot be bypassed merely by labeling a sensitive goal as research.
+- [x] Browser audit events redact URL query strings and task goals; callback tokens are redacted from provider errors.
+- [x] Tool logs omit raw tool arguments, and task acceptance events log task length rather than raw task text.
+- [x] Worker prompts mark repository contents, web pages, and tool results as untrusted data.
+- [x] GitHub writes require an explicit working branch; model-provided branch overrides and protected branches are rejected by default.
+- [x] Public health endpoints return minimal service status rather than provider/tool/browser configuration.
+- [x] The independent verifier receives the candidate final answer on both initial and retry checks.
+- [x] Verification requires one-to-one checklist coverage; duplicate, missing, or unmapped requirements fail closed.
+- [x] Empty provider responses are rejected; preflight requires the exact `PREFLIGHT_OK` sentinel.
+- [x] OpenAI SDK calls have a bounded timeout; catalog requests time out.
+- [x] Provider-wide authentication/quota failures stop repeated model attempts; rate-limit responses suppress the provider briefly.
+- [x] Root recovery installs the replacement result before re-verifying it.
+- [x] Worker recovery is single-flight to prevent duplicate replacement tasks.
+- [x] Parent tasks waiting on in-memory subtasks become explicitly interrupted after restart; configuration-blocked tasks remain waiting.
+- [x] Remote backend calls send the required audit header, skip unauthenticated calls, and always clear timeout timers.
+- [x] Dependency-free tests and JavaScript syntax checks pass in GitHub Actions on the current audit head.
+- [ ] Finish the route-by-route authorization review, including legacy query-token compatibility and every manual workflow.
+- [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
 - [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
-- [ ] Finish a route-by-route authorization review, including all webhook and query-token handling.
-- [ ] Confirm task snapshots survive restart and reconcile with in-memory state; document or persist pending browser requests.
+- [ ] Persist pending browser requests or document the exact recovery behavior when the process restarts mid-browser workflow.
+- [ ] Authenticate `.github/workflows/office-live-test.yml`; it currently calls protected `/api/tasks` without the audit-token header and is expected to fail authorization if run.
 
 ## P1 — model quality and resource scout
 
-- [x] Keep model discovery separate from model qualification: discovered does not mean tested.
-- [x] Tighten free-model classification so missing pricing fields are not treated as proof of free access.
-- [x] Add APINEX as an optional OpenAI-compatible provider, restricted to explicit `free/*` model IDs.
+- [x] Keep model discovery separate from qualification; discovered APINEX models remain excluded from the default role pools.
+- [x] Reject missing pricing fields as proof of free access.
+- [x] Restrict APINEX model IDs to explicit `free/*` IDs.
+- [x] Require a no-tools runtime preflight before an explicitly configured APINEX model is used.
+- [x] Add bounded catalog fetches so a stalled source cannot hold Model Scout refresh indefinitely.
 - [x] Add a PostgreSQL-backed registry for known catalog sources with availability, HTTP status, last-check time, and safe metadata.
-- [ ] Add explicit per-model probe results and prevent unqualified models from becoming preferred routes.
-- [ ] Add repeatable benchmarks for reasoning, code, structured output, tool calling, long context, and verifier behavior.
-- [ ] Track latency, empty responses, errors, rate limits, and last successful probe per model.
-- [ ] Expand catalog parsing into individual API records with authentication requirements, pricing evidence, terms, rate limits, privacy notes, and qualification tests.
-- [ ] Verify APINEX account quota and terms with the owner before adding an API key or using it in production.
-- [ ] Require explicit approval before adding a provider to production routing or changing billing/security configuration.
+- [ ] Persist per-model preflight outcomes in Model Scout state and make qualification stages visible through diagnostics.
+- [ ] Add repeatable role-specific benchmarks for reasoning, code, structured output, tool calling, long context, and verifier behavior.
+- [ ] Track latency, empty responses, errors, rate limits, and last successful probe per model in the scout registry.
+- [ ] Complete APINEX account quota, terms, privacy, and successful real-request verification before enabling it as a default route.
+- [ ] Require explicit operator approval before promoting a newly discovered provider into normal production routing.
 
 ## P1 — reliability and observability
 
-- [ ] Create a deterministic end-to-end suite that runs against a safe test task.
+- [ ] Create a deterministic end-to-end suite that runs against a safe test task and isolated/test database.
 - [ ] Add success-rate, time-to-completion, provider-fallback, and stuck-task metrics.
 - [ ] Test concurrent tasks and recovery from provider/browser outages.
+- [ ] Verify PostgreSQL restart recovery and event ordering against a real test database.
 
 ## P2 — developer experience
 
-- [ ] Document API contracts and task lifecycle.
+- [ ] Document API contracts and the complete task lifecycle.
 - [ ] Improve human-readable error messages and diagnostics.
 - [ ] Keep the internal architecture extensible without exposing its complexity to end users.
 
