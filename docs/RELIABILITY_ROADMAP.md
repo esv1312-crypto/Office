@@ -25,6 +25,9 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Worker recovery is single-flight to prevent duplicate replacement tasks.
 - [x] Parent tasks waiting on in-memory subtasks become explicitly interrupted after restart; configuration-blocked tasks remain waiting.
 - [x] Remote backend calls send the required audit header, skip unauthenticated calls, and always clear timeout timers.
+- [x] Event IDs remain monotonic across capped in-memory history and database restores.
+- [x] PostgreSQL event history is retained and loaded by event timestamp rather than insertion timing.
+- [x] Database writes are serialized and drained when the process shuts down gracefully.
 - [x] Dependency-free tests and JavaScript syntax checks pass in GitHub Actions on the current audit head.
 - [ ] Finish the route-by-route authorization review, including legacy query-token compatibility and every manual workflow.
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
