@@ -11,10 +11,10 @@ permissions:
 
 jobs:
   launch:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Build read-only Pognali source dossier
+        if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail
           mkdir -p dossier
@@ -38,6 +38,7 @@ jobs:
           find dossier -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort >> dossier/MANIFEST.txt
 
       - name: Send real read-only audit task to AI-OFFICE
+        if: github.event_name == 'workflow_dispatch'
         env:
           OFFICE_AUDIT_TOKEN: ${{ secrets.OFFICE_AUDIT_TOKEN }}
         run: |
