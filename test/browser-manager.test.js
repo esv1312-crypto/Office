@@ -4,12 +4,15 @@ import { createBrowserManager } from "../src/browser-manager.js";
 
 const originalEnabled = process.env.BROWSER_AUTOMATION_ENABLED;
 const originalKey = process.env.TINYFISH_API_KEY;
+const originalWebhookSecret = process.env.BROWSER_WEBHOOK_SECRET;
 
 function restoreEnv() {
   if (originalEnabled === undefined) delete process.env.BROWSER_AUTOMATION_ENABLED;
   else process.env.BROWSER_AUTOMATION_ENABLED = originalEnabled;
   if (originalKey === undefined) delete process.env.TINYFISH_API_KEY;
   else process.env.TINYFISH_API_KEY = originalKey;
+  if (originalWebhookSecret === undefined) delete process.env.BROWSER_WEBHOOK_SECRET;
+  else process.env.BROWSER_WEBHOOK_SECRET = originalWebhookSecret;
 }
 
 test("safe browser request is blocked, not left queued, when automation is disabled", async () => {
@@ -78,6 +81,22 @@ test("unsupported browser actions are rejected", async () => {
       manager.request({ url: "https://example.com", goal: "Do something", actionClass: "magic" }),
       error => error.code === "BROWSER_POLICY_DENIED"
     );
+  } finally {
+    restoreEnv();
+  }
+});
+
+test("browser request is blocked when webhook authentication is not configured", async () => {
+  try {
+    process.env.BROWSER_AUTOMATION_ENABLED = "true";
+    process.env.TINYFISH_API_KEY = "test-key";
+    delete process.env.BROWSER_WEBHOOK_SECRET;
+    const manager = createBrowserManager({ emit: () => {} });
+    const request = await manager.request({ url: "https://example.com", goal: "Read the public page", actionClass: "research" });
+
+    assert.equal(request.status, "blocked");
+    assert.match(request.error, /webhook authentication/i);
+    assert.equal(manager.summary().enabled, false);
   } finally {
     restoreEnv();
   }
