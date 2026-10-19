@@ -15,6 +15,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Add CI execution for dependency-free unit tests and JavaScript syntax checks.
 - [x] Make verification fail closed when required evidence fields are missing or a claim is classified as an assumption/unproven.
 - [x] Extract task-state transition rules and add lifecycle tests.
+- [x] Normalize interrupted planning/running tasks after restart, persist the corrected snapshots, and retain interruption events in newest-first order.
 - [x] Protect internal gateway, employee, tool, browser, model, and resource diagnostics with the existing auth guard.
 - [ ] Add deterministic tests for watchdog recovery, retries, and root-task completion.
 - [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
