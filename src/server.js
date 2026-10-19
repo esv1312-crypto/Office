@@ -1553,14 +1553,7 @@ app.get("/", (_req,res)=>res.json({
   employees:employees().length
 }));
 
-app.get("/health", (_req,res)=>res.json({
-  ok:true,service:"ai-office-runtime",provider:aiProvider(),providerOrder:providerOrder(),freeOnly:freeOnly(),
-  aiConfigured:providerOrder().some(aiConfigured) || aiConfigured("huggingface"),startedAt,
-  employees:employees().length,
-  tools:Object.keys(TOOL_REGISTRY).length,
-  githubToolsEnabled:process.env.GITHUB_TOOLS_ENABLED === "true",
-  browser:browser.summary()
-}));
+app.get("/health", (_req,res)=>res.json({ok:true,service:"ai-office-runtime",status:"online",startedAt}));
 
 app.get("/api/employees", (_req,res)=>res.json({
   ok:true,employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)}))
