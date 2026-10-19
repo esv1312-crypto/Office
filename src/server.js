@@ -1897,7 +1897,13 @@ app.get("/api/smoke/fallback", async (req,res)=>{
       {geminiModels:["definitely-nonexistent-ai-office-test-model"]}
     );
     const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
-    return res.json({ok:true,test:"provider_fallback",readOnly:true,result:{model:result.model,text:result.text},trace,expected:["gemini failure","gateway.fallback to huggingface","huggingface success"],observed:{geminiFailure:trace.some(e=>e.type==="ai.error"&&e.provider==="gemini"),providerFallback:trace.some(e=>e.type==="gateway.fallback"&&e.from==="gemini"&&e.to==="huggingface"),huggingfaceSuccess:trace.some(e=>e.type==="gateway.model_success"&&e.provider==="huggingface")}});
+    const observed={
+      geminiFailure:trace.some(e=>e.type==="ai.error"&&e.provider==="gemini"),
+      providerFallback:trace.some(e=>e.type==="gateway.fallback"&&e.from==="gemini"&&e.to==="huggingface"),
+      huggingfaceSuccess:trace.some(e=>e.type==="gateway.model_success"&&e.provider==="huggingface")
+    };
+    const ok=observed.geminiFailure&&observed.providerFallback&&observed.huggingfaceSuccess;
+    return res.status(ok?200:503).json({ok,test:"provider_fallback",readOnly:true,result:{model:result.model,text:result.text},trace,expected:["gemini failure","gateway.fallback to huggingface","huggingface success"],observed});
   } catch(error) {
     const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
     return res.status(503).json({ok:false,test:"provider_fallback",readOnly:true,error:error?.message||String(error),trace});
