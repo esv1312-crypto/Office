@@ -26,6 +26,13 @@ const PROVIDERS = [
     freeAccess:"free allocation may be available subject to current account limits",
     credentialEnv:["CLOUDFLARE_API_TOKEN","CLOUDFLARE_ACCOUNT_ID"],
     docs:"https://developers.cloudflare.com/workers-ai/platform/pricing/"
+  },
+  {
+    id:"apinex",
+    name:"APINEX",
+    freeAccess:"only model IDs explicitly prefixed free/ are eligible under AI_FREE_ONLY; daily quotas and plan terms must be checked in the account",
+    credentialEnv:["APINEX_API_KEY"],
+    docs:"https://apinex.bond/developers/models/chat"
   }
 ];
 
