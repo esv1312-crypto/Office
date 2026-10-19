@@ -16,8 +16,11 @@ test("public health responses contain only minimal service status", () => {
   const backendStart = source.indexOf('app.get("/api/backend/health"');
   const backendEnd = source.indexOf("\napp.", backendStart + 1);
   const backend = source.slice(backendStart, backendEnd);
-  assert.match(backend, /status:"online"/);
-  assert.doesNotMatch(backend, /providerOrder|configuredProviders|aiConfigured|freeOnly|browser/);
+  // The backend health route intentionally reports its mode rather than runtime status.
+  assert.match(backend, /ok:true/);
+  assert.match(backend, /service:"ai-office-runtime"/);
+  assert.match(backend, /mode:process\.env\.OFFICE_MODE\|\|"office"/);
+  assert.doesNotMatch(backend, /providerOrder|configuredProviders|aiConfigured|freeOnly|browser|apiKey|token/);
 });
 
 test("employee diagnostic route requires internal or audit authorization", () => {
