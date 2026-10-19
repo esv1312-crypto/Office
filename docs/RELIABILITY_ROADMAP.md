@@ -26,7 +26,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] OpenRouter calls use defined timeout/tool policy; APINEX honors the no-tools preflight and request timeout.
 - [x] OpenAI SDK calls have a bounded timeout; catalog requests time out.
 - [x] Provider-wide authentication/quota failures stop repeated model attempts; rate-limit responses suppress the provider briefly.
-- [x] The controlled provider-fallback smoke test uses request-scoped model overrides and does not mutate process-wide provider/model configuration.
+- [x] The controlled provider-fallback smoke test uses request-scoped model overrides, does not mutate process-wide provider/model configuration, and fails unless its expected provider-fallback trace is observed.
 - [x] Root recovery installs the replacement result before re-verifying it.
 - [x] Worker recovery is single-flight to prevent duplicate replacement tasks.
 - [x] Accepted, planning, and running tasks without a persisted resumable queue become explicitly interrupted after restart; configuration-blocked tasks remain waiting.
@@ -41,7 +41,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] CI syntax checks cover runtime, test, and script files; `npm test` runs syntax checks before unit tests.
 - [x] Protected audit/control routes now accept audit credentials through headers rather than query strings; the one-time browser callback token remains supported because the browser provider receives a callback URL and the token is per-request.
 - [x] The manual `office-live-test.yml` workflow now requires `secrets.OFFICE_AUDIT_TOKEN` and sends it in `x-ai-office-audit-token`; a unit test guards this contract.
-- [ ] Finish the route-by-route authorization review, including every remaining manual workflow and external callback configuration.
+- [x] Finish the route-by-route authorization review: control-plane routes use the shared guard, smoke/audit routes use their dedicated audit token, public health endpoints expose minimal status, and browser callbacks require one-time request tokens. Manual workflows use headers and are explicitly dispatched.
 - [x] Validate the entire subtask batch before creating any children, so one malformed item cannot leave partial work running.
 - [x] Bound numeric runtime settings so invalid environment values cannot produce a NaN worker limit or near-zero recurring timer.
 - [x] Expose PostgreSQL enabled/ready state in `/health` and authenticated `/api/state` diagnostics.
