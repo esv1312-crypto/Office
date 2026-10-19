@@ -181,22 +181,24 @@ export async function refreshModelScout(){
   state.errors=[];
   try {
     const results=await Promise.allSettled([discoverOpenRouter(),discoverHuggingFace(),discoverApinex()]);
-    const discovered={
-      openrouter:results[0].status==="fulfilled" ? results[0].value : [],
-      huggingface:results[1].status==="fulfilled" ? results[1].value : [],
-      apinex:results[2].status==="fulfilled" ? results[2].value : []
-    };
-    for(const provider of Object.keys(discovered)){
-      const seen=new Set(discovered[provider].map(x=>x.routeModel || x.id));
-      for(const model of discovered[provider]) state.catalog[provider].set(model.routeModel || model.id,model);
+    const providers=["openrouter","huggingface","apinex"];
+    for(let i=0;i<providers.length;i++){
+      const provider=providers[i];
+      const result=results[i];
+      // A failed catalog request is not evidence that every previously known model disappeared.
+      // Preserve the last successful provider snapshot and its routing pool on transient errors.
+      if(result.status==="rejected"){
+        state.errors.push(provider+": "+(result.reason?.message || String(result.reason)));
+        continue;
+      }
+      const models=result.value;
+      const seen=new Set(models.map(x=>x.routeModel || x.id));
+      for(const model of models) state.catalog[provider].set(model.routeModel || model.id,model);
       for(const [key,model] of state.catalog[provider]){
         if(seen.has(key)) state.inactive[provider].delete(key);
         else state.inactive[provider].set(key,{...model,inactiveSince:model.inactiveSince || new Date().toISOString()});
       }
-      state.providers[provider]=discovered[provider];
-    }
-    for(const result of results){
-      if(result.status==="rejected") state.errors.push(result.reason?.message || String(result.reason));
+      state.providers[provider]=models;
     }
     rankRoles();
     state.refreshedAt=new Date().toISOString();
