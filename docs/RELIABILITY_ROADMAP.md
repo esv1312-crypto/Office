@@ -48,7 +48,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Expose PostgreSQL enabled/ready state in `/health` and authenticated `/api/state` diagnostics.
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
 - [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
-- [ ] Persist pending browser requests or document the exact recovery behavior when the process restarts mid-browser workflow.
+- [x] Document browser-request restart behavior: in-memory requests and one-time callback tokens are lost; never replay potentially side-effecting browser actions automatically after restart.
 - [x] Authenticate `.github/workflows/office-smoke.yml` and send the required `task` field to `/api/tasks`.
 - [x] Authenticate `.github/workflows/office-live-test.yml` with `OFFICE_AUDIT_TOKEN` and send the required audit header to `/api/tasks`.
 
