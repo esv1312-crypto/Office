@@ -2090,7 +2090,7 @@ SOURCE DOSSIER:
   }
 });
 
-app.post("/api/tasks", (req,res)=>{
+app.post("/api/tasks", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
   const task=String(req.body?.task || "").trim();
   if(!task) return res.status(400).json({ok:false,error:"task is required"});
@@ -2105,7 +2105,13 @@ app.post("/api/tasks", (req,res)=>{
     kind:req.body?.kind || "root"
   });
   tasks.set(record.id,record);
-  void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
+  try {
+    await saveTaskSnapshot(taskSnapshot(record));
+  } catch(error) {
+    tasks.delete(record.id);
+    console.error("[DB] task acceptance persistence failed",error?.message||error);
+    return res.status(503).json({ok:false,error:"task could not be durably accepted; please retry"});
+  }
   emit("task.accepted",{taskId:record.id,parentTaskId:record.parentTaskId,kind:record.kind,taskLength:String(task||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model});
 
   if(!aiAvailable(record.provider)) {
