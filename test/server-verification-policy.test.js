@@ -325,15 +325,15 @@ test("manual live audit workflow authenticates the task API request", async () =
 test("audit secrets are header-only while browser callbacks retain one-time request tokens", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const authStart = source.indexOf("function requireInternalOrAudit");
-  const authEnd = source.indexOf("\\nconst workerQueue", authStart);
+  const authEnd = source.indexOf("\nconst workerQueue", authStart);
   const auth = source.slice(authStart, authEnd);
   const webhookStart = source.indexOf('app.post("/api/browser/webhook"');
-  const webhookEnd = source.indexOf("\\n});", webhookStart);
+  const webhookEnd = source.indexOf("\n});", webhookStart);
   const webhook = source.slice(webhookStart, webhookEnd);
   const browser = await readFile(new URL("../src/browser-manager.js", import.meta.url), "utf8");
-  assert.match(auth, /req\\.headers\\["x-ai-office-audit-token"\\]/);
-  assert.doesNotMatch(auth, /req\\.query/);
-  assert.match(webhook, /req\\.headers\\["x-ai-office-webhook-secret"\\] \\|\\| req\\.query\\?\\.token/);
+  assert.match(auth, /req\.headers\["x-ai-office-audit-token"\]/);
+  assert.doesNotMatch(auth, /req\.query/);
+  assert.match(webhook, /req\.headers\["x-ai-office-webhook-secret"\] \|\| req\.query\?\.token/);
   assert.match(browser, /webhookToken/);
   assert.match(browser, /webhook_url:callback/);
 });
