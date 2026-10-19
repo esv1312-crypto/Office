@@ -134,6 +134,19 @@ function openRouterApiKey() {
   return "";
 }
 
+function openRouterChatCompletionsUrl() {
+  const configured = String(process.env.OFFICE_TEST_OPENROUTER_URL || "").trim();
+  if (process.env.NODE_ENV === "test" && process.env.OFFICE_TEST_ALLOW_LOCAL_AI_ENDPOINT === "true" && configured) {
+    const url = new URL(configured);
+    const localHosts = new Set(["127.0.0.1", "::1", "localhost"]);
+    if (url.protocol !== "http:" || !localHosts.has(url.hostname)) {
+      throw new Error("Test OpenRouter endpoint must use plain HTTP on loopback only");
+    }
+    return url.toString();
+  }
+  return "https://openrouter.ai/api/v1/chat/completions";
+}
+
 function openRouterModel() {
   const configured = String(process.env.OPENROUTER_MODEL || "").trim();
   return /^(sk-or-|or-)/i.test(configured) || !configured ? "openrouter/free" : configured;
@@ -494,7 +507,7 @@ async function preflightModel(provider, model, employee) {
   try {
     let result;
     if(provider==="openrouter"){
-      result=await callOpenAICompatible({provider,baseUrl:"https://openrouter.ai/api/v1/chat/completions",apiKey:openRouterApiKey(),model,task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
+      result=await callOpenAICompatible({provider,baseUrl:openRouterChatCompletionsUrl(),apiKey:openRouterApiKey(),model,task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
     } else if(provider==="huggingface"){
       const hfModel=normalizeHuggingFaceModel(model);
       result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model:hfModel.includes(":")?hfModel:hfModel+":fastest",task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
@@ -624,7 +637,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
       emit("gateway.model_attempt",{employeeId:employee?.id || null,role,provider:"openrouter",model,rotationIndex:i});
       const result=await callOpenAICompatible({
         provider:"openrouter",
-        baseUrl:"https://openrouter.ai/api/v1/chat/completions",
+        baseUrl:openRouterChatCompletionsUrl(),
         apiKey:openRouterApiKey(),
         model,task,employeeId:employee?.id||"executor",taskId,enableTools,timeoutMs,
         headers:{
@@ -643,7 +656,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
         try {
           const retry=await callOpenAICompatible({
             provider:"openrouter",
-            baseUrl:"https://openrouter.ai/api/v1/chat/completions",
+            baseUrl:openRouterChatCompletionsUrl(),
             apiKey:openRouterApiKey(),
             model,task,employeeId:employee?.id||"executor",taskId,enableTools,timeoutMs,
             headers:{
