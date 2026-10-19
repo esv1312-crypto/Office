@@ -22,10 +22,9 @@ The GitHub write tool requires an explicitly configured `GITHUB_BRANCH` dedicate
 Browser execution is blocked unless all required settings are present:
 - `BROWSER_AUTOMATION_ENABLED=true`
 - `TINYFISH_API_KEY`
-- `BROWSER_WEBHOOK_SECRET`
 - `OFFICE_PUBLIC_URL` pointing to this runtime's public HTTPS URL
 
-The runtime includes the webhook secret in the callback URL because the external asynchronous browser API accepts a callback URL rather than a custom callback header. Treat this as a bearer secret: use a long random value, never expose it to models or users, and rotate it if logs or provider records may have disclosed it. Sensitive browser actions still require explicit approval through the authenticated control plane.
+The runtime creates a cryptographically random, one-time token for each browser request and includes it in the callback URL because the external asynchronous browser API accepts a callback URL rather than a custom callback header. The token is removed from public request snapshots and consumed after the first valid callback; replayed or unknown tokens are rejected. Sensitive browser actions still require explicit approval through the authenticated control plane.
 
 ## Model discovery
 
