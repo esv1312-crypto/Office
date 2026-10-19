@@ -2,7 +2,7 @@ import express from "express";
 import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
-import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
+import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask, recordModelQualification } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
@@ -537,6 +537,7 @@ async function preflightModel(provider, model, employee) {
       throw new Error(responseText ? "preflight returned unexpected response" : "preflight empty response");
     }
     const entry={ok:true,provider,model,role:employee?.role||null,latencyMs:Date.now()-started,expiresAt:Date.now()+PREFLIGHT_TTL_MS};
+    recordModelQualification({provider,model,role:employee?.role,ok:true,latencyMs:entry.latencyMs,checkedAt:new Date().toISOString(),expiresAt:new Date(entry.expiresAt).toISOString()});
     preflightCache.set(key,entry);
     emit("model.preflight_passed",{employeeId:employee?.id||null,role:employee?.role||null,provider,model,latencyMs:entry.latencyMs,ttlMs:PREFLIGHT_TTL_MS});
     return entry;
@@ -547,7 +548,17 @@ async function preflightModel(provider, model, employee) {
     if(error?.status===401 || error?.status===402) suppressProvider(provider,message,15*60*1000);
     else if(error?.status===429) suppressProvider(provider,message,60*1000);
     else suppressModel(model,message,ttl,provider);
-    const entry={ok:false,provider,model,role:employee?.role||null,error:message,transient,failedAt:new Date().toISOString(),expiresAt:Date.now()+Math.min(ttl,PREFLIGHT_TTL_MS)};
+    const failedAt=new Date().toISOString();
+    const expiresAt=Date.now()+Math.min(ttl,PREFLIGHT_TTL_MS);
+    const errorCategory=error?.status===401? "auth"
+      : error?.status===402 || /quota|credit|billing/i.test(message) ? "quota"
+      : error?.status===429 ? "rate_limited"
+      : error?.status===404 || /model.*(not found|does not exist)|invalid model/i.test(message) ? "model_unavailable"
+      : /timeout|timed out|abort/i.test(message) ? "timeout"
+      : /empty response|unexpected response|invalid response/i.test(message) ? "invalid_response"
+      : "provider_error";
+    recordModelQualification({provider,model,role:employee?.role,ok:false,latencyMs:Date.now()-started,errorCategory,transient,checkedAt:failedAt,expiresAt:new Date(expiresAt).toISOString()});
+    const entry={ok:false,provider,model,role:employee?.role||null,error:message,transient,failedAt,expiresAt};
     preflightCache.set(key,entry);
     emit("model.preflight_failed",{employeeId:employee?.id||null,role:employee?.role||null,provider,model,error:message,transient});
     return entry;
