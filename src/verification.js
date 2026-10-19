@@ -1,10 +1,66 @@
+import { existsSync, readFileSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
+
 const VALID_CLASSIFICATIONS = new Set(["FACT", "INFERENCE", "ASSUMPTION", "UNPROVEN"]);
+
+function normalizeReference(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function readLocalSource(source, repoRoot = process.cwd()) {
+  const pathText=String(source || "").replace(/\\/g,"/");
+  const allowed=/^(src|test|docs|\\.github)\\//i.test(pathText) || /^(README(?:\\.[^/]+)?|package\\.json|render\\.yaml)$/i.test(pathText);
+  if(!allowed) return { recognized:false, content:"" };
+  const root=resolve(repoRoot);
+  const target=resolve(root,pathText);
+  const rel=relative(root,target);
+  if(rel.startsWith("..") || isAbsolute(rel) || !existsSync(target)) return { recognized:true, content:"" };
+  try { return { recognized:true, content:readFileSync(target,"utf8") }; }
+  catch { return { recognized:true, content:"" }; }
+}
+
+function referenceIsGrounded(check, context = {}) {
+  const source=String(check?.source || "").trim();
+  const locator=String(check?.locator || "").trim();
+  const locatorKey=normalizeReference(locator);
+  if(!source || !locator || !locatorKey || /^n\/?a$/i.test(locator)) return false;
+
+  const local=readLocalSource(source,context.repoRoot);
+  if(local.recognized) {
+    return Boolean(local.content) && normalizeReference(local.content).includes(locatorKey);
+  }
+
+  const workerResults=Array.isArray(context.workerResults)?context.workerResults:[];
+  const eventEvidence=Array.isArray(context.eventEvidence)?context.eventEvidence:[];
+  const corpus=normalizeReference(JSON.stringify({
+    workerResults,
+    eventEvidence,
+    finalResult:String(context.finalResult || "")
+  }));
+  const sourceKey=normalizeReference(source);
+
+  if(/^https?:\/\//i.test(source)) {
+    return Boolean(sourceKey && corpus.includes(sourceKey) && corpus.includes(locatorKey));
+  }
+
+  if(/runtime|event|gateway|preflight|browser|worker|provider|postgres|database/i.test(source)) {
+    const eventMatch=eventEvidence.some(event=>{
+      const typeKey=normalizeReference(event?.type || "");
+      const serialized=normalizeReference(JSON.stringify(event));
+      return Boolean(typeKey && locatorKey.includes(typeKey)) || Boolean(locatorKey && serialized.includes(locatorKey));
+    });
+    const workerMatch=workerResults.some(worker=>normalizeReference(JSON.stringify(worker)).includes(locatorKey));
+    return eventMatch || workerMatch;
+  }
+
+  return false;
+}
 
 function normalizeRequirement(value) {
   return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-export function enforceVerificationEvidence(verification, checklist = []) {
+export function enforceVerificationEvidence(verification, checklist = [], evidenceContext = {}) {
   if (!verification || !["PASS", "FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
     return null;
   }
@@ -32,8 +88,10 @@ export function enforceVerificationEvidence(verification, checklist = []) {
 
     const classificationValid = VALID_CLASSIFICATIONS.has(classification);
     const evidenceComplete = Boolean(source && locator && evidence && classificationValid);
+    const referenceGrounded = evidenceComplete && referenceIsGrounded(check,evidenceContext);
     const safeToPass = check?.passed === true
       && evidenceComplete
+      && referenceGrounded
       && coverageValid
       && (classification === "FACT" || classification === "INFERENCE");
 
@@ -43,6 +101,7 @@ export function enforceVerificationEvidence(verification, checklist = []) {
     else if (!evidence) reason = "Missing evidence.";
     else if (!classificationValid) reason = "Missing or invalid evidence classification.";
     else if (classification === "ASSUMPTION" || classification === "UNPROVEN") reason = "Evidence is not established fact or supported inference.";
+    else if (!referenceGrounded) reason = "Source/locator does not match supplied code or runtime evidence.";
     else if (requiredItems.length > 0 && !requirement) reason = "Missing checklist requirement mapping.";
     else if (requiredItems.length > 0 && !matchedRequirement) reason = "Check does not map to a required checklist item.";
     else if (duplicateCoverage) reason = "Duplicate coverage for checklist item: " + matchedRequirement + ".";
@@ -52,6 +111,7 @@ export function enforceVerificationEvidence(verification, checklist = []) {
       name: String(check?.name || "Unnamed check " + (index + 1)),
       requirement: matchedRequirement || requirement || "UNASSIGNED",
       passed: safeToPass,
+      referenceGrounded,
       source: source || "UNPROVEN",
       locator: locator || "UNPROVEN",
       evidence: reason ? [evidence, reason].filter(Boolean).join(" ") : evidence,
