@@ -25,8 +25,8 @@ export function createBrowserManager({emit}) {
   function pub(r){ return {...r,approvalToken:r.status==="waiting_approval"?r.approvalToken:undefined}; }
 
   async function start(r){
-    if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
-    if(!key()){ r.status="blocked"; r.error="Browser backend is not configured"; emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
+    if(!enabled()){ r.status="blocked"; r.error="Browser automation disabled by policy"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
+    if(!key()){ r.status="blocked"; r.error="Browser backend is not configured"; r.completedAt=new Date().toISOString(); emit("browser.blocked",{requestId:r.id,reason:r.error}); return pub(r); }
     r.status="running"; r.startedAt=new Date().toISOString();
     try{
       const d=await call("/v1/automation/run-async",{url:r.url,goal:r.goal,webhook_url:publicUrl()+"/api/browser/webhook"});
@@ -50,7 +50,8 @@ export function createBrowserManager({emit}) {
     emit("browser.requested",{requestId:r.id,taskId,url,goal,actionClass:action,requiresApproval:needs,status:r.status});
     if(needs){ emit("approval.requested",{requestId:r.id,taskId,url,goal,actionClass:action,approvalRequired:true}); return pub(r); }
     emit("browser.queued",{requestId:r.id,taskId,url,goal,actionClass:action});
-    return enabled()&&key()?start(r):pub(r);
+    // Never leave a request queued forever when execution is disabled or credentials are missing.
+    return start(r);
   }
 
   async function approve(id,token){
@@ -80,7 +81,8 @@ export function createBrowserManager({emit}) {
     const a=[...requests.values()];
     return {
       manager:"browser-manager",
-      enabled:true,
+      enabled:Boolean(enabled() && key()),
+      managerLoaded:true,
       backendConfigured:Boolean(key()),
       backend:key()?"tinyfish":"external-browser-bridge",
       automationEnabled:enabled(),
