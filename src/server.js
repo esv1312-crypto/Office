@@ -1656,7 +1656,7 @@ app.get("/api/resource-manager", (req,res)=>{ if(!requireInternalOrAudit(req,res
 
 app.get("/api/model-scout", (req,res)=>{ if(!requireInternalOrAudit(req,res)) return; return res.json({ok:true,...getModelScoutState()}); });
 
-app.post("/api/model-scout/refresh", async (_req,res)=>{
+app.post("/api/model-scout/refresh", async (req,res)=>{
   if(!requireInternalOrAudit(req,res)) return;
   try { const state=await refreshModelScout(); res.json({ok:true,...state}); }
   catch(error){ res.status(500).json({ok:false,error:error?.message||String(error)}); }
