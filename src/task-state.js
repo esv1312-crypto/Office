@@ -35,6 +35,19 @@ export function normalizeTaskSnapshotAfterRestart(snapshot, now = new Date().toI
   }
 
   if (record.status === "waiting") {
+    // A parent waiting on in-flight subtasks cannot resume that in-memory work after restart.
+    if (record.waitingReason === "subtasks_running") {
+      record.status = "failed";
+      record.error = "SERVICE_RESTART_INTERRUPTED";
+      record.failedAt = now;
+      record.startedAt = null;
+      record.completedAt = null;
+      record.restartInterrupted = true;
+      record.waitingReason = null;
+      return { record, changed: true };
+    }
+
+    // Configuration-blocked tasks are intentionally left waiting for an operator to fix setup.
     record.startedAt = null;
     record.waitingReason = record.waitingReason || "service_restart";
     return { record, changed: true };
