@@ -1,6 +1,6 @@
 export const TASK_STATES = new Set(["accepted","planning","running","waiting","completed","failed","cancelled"]);
 
-export const ALLOWED_TRANSITIONS = Object.freeze({
+const ALLOWED_TRANSITIONS = Object.freeze({
   accepted: new Set(["planning","running","waiting","failed","cancelled"]),
   planning: new Set(["running","waiting","failed","cancelled"]),
   running: new Set(["waiting","completed","failed","cancelled"]),
