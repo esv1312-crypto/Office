@@ -28,7 +28,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Provider-wide authentication/quota failures stop repeated model attempts; rate-limit responses suppress the provider briefly.
 - [x] Root recovery installs the replacement result before re-verifying it.
 - [x] Worker recovery is single-flight to prevent duplicate replacement tasks.
-- [x] Parent tasks waiting on in-memory subtasks become explicitly interrupted after restart; configuration-blocked tasks remain waiting.
+- [x] Accepted, planning, and running tasks without a persisted resumable queue become explicitly interrupted after restart; configuration-blocked tasks remain waiting.
 - [x] Remote backend calls send the required audit header, skip unauthenticated calls, and always clear timeout timers.
 - [x] Event IDs remain monotonic across capped in-memory history and database restores.
 - [x] PostgreSQL event history is retained and loaded by event timestamp rather than insertion timing.
