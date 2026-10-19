@@ -79,3 +79,28 @@ test("critical task lifecycle transitions await snapshot persistence", async () 
   assert.ok(calls.length >= 17, "expected lifecycle transition call sites to be covered");
   assert.ok(calls.every(line => line.includes("await transitionTask(")), "every lifecycle transition must await persistence");
 });
+
+
+test("internal audit and smoke task endpoints persist acceptance before starting work", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const officeAuditStart = server.indexOf("async function startOfficeAudit()");
+  const officeAuditEnd = server.indexOf('app.get("/api/office-check"', officeAuditStart);
+  const officeAudit = server.slice(officeAuditStart, officeAuditEnd);
+  assert.match(officeAudit, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
+  assert.ok(officeAudit.indexOf("await saveTaskSnapshot") < officeAudit.indexOf('emit("office_check.started"'));
+  assert.ok(officeAudit.indexOf("await saveTaskSnapshot") < officeAudit.indexOf("void executeRootTask(record)"));
+
+  const evidenceStart = server.indexOf('app.get("/api/smoke/evidence"');
+  const evidenceEnd = server.indexOf("\\n\\nasync function runResourceScan", evidenceStart);
+  const evidenceRoute = server.slice(evidenceStart, evidenceEnd);
+  assert.match(evidenceRoute, /app\.get\("\/api\/smoke\/evidence", async/);
+  assert.match(evidenceRoute, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
+  assert.ok(evidenceRoute.indexOf("await saveTaskSnapshot") < evidenceRoute.indexOf("void executeRootTask(record)"));
+
+  const pognaliStart = server.indexOf('app.get("/api/pognali/audit"');
+  const pognaliEnd = server.indexOf('app.post("/api/tasks"', pognaliStart);
+  const pognaliRoute = server.slice(pognaliStart, pognaliEnd);
+  assert.match(pognaliRoute, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
+  assert.ok(pognaliRoute.indexOf("await saveTaskSnapshot") < pognaliRoute.indexOf('emit("task.accepted"'));
+  assert.ok(pognaliRoute.indexOf("await saveTaskSnapshot") < pognaliRoute.indexOf("void executeRootTask(record)"));
+});
