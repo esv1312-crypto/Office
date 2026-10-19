@@ -98,7 +98,13 @@ test("full root-task lifecycle completes with delegated workers and independent 
     CLOUDFLARE_API_TOKEN: "",
     CLOUDFLARE_ACCOUNT_ID: "",
     APINEX_API_KEY: "",
-    AI_EMPLOYEES_JSON: "",
+    AI_EMPLOYEES_JSON: JSON.stringify([
+      { id: "chief", name: "Test Chief", role: "coordinator", provider: "openrouter", model: "mock/chief", skills: ["planning", "delegation"] },
+      { id: "developer", name: "Test Developer", role: "developer", provider: "openrouter", model: "mock/developer", skills: ["coding"] },
+      { id: "analyst", name: "Test Analyst", role: "analyst", provider: "openrouter", model: "mock/analyst", skills: ["analysis"] },
+      { id: "verifier", name: "Test Verifier", role: "verifier", provider: "openrouter", model: "mock/verifier", skills: ["verification"] },
+      { id: "executor", name: "Test Executor", role: "executor", provider: "openrouter", model: "mock/executor", skills: ["execution"] }
+    ]),
     RUN_FINAL_AUDIT_ON_START: "false",
     MODEL_SCOUT_INTERVAL_MS: "86400000",
     RESOURCE_SCOUT_INTERVAL_MS: "86400000",
