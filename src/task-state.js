@@ -24,7 +24,7 @@ export function normalizeTaskSnapshotAfterRestart(snapshot, now = new Date().toI
   const record = { ...snapshot };
   delete record.children;
 
-  if (record.status === "planning" || record.status === "running") {
+  if (record.status === "accepted" || record.status === "planning" || record.status === "running") {
     record.status = "failed";
     record.error = "SERVICE_RESTART_INTERRUPTED";
     record.failedAt = now;
