@@ -19,6 +19,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Public health endpoints return minimal service status rather than provider/tool/browser configuration.
 - [x] The independent verifier receives the candidate final answer on both initial and retry checks.
 - [x] Verification requires one-to-one checklist coverage; duplicate, missing, or unmapped requirements fail closed.
+- [x] Removed the hard-coded task-phrase override so production planning does not replace a user task with a special smoke-test plan.
 - [x] Empty provider responses are rejected; preflight requires the exact `PREFLIGHT_OK` sentinel.
 - [x] OpenAI SDK calls have a bounded timeout; catalog requests time out.
 - [x] Provider-wide authentication/quota failures stop repeated model attempts; rate-limit responses suppress the provider briefly.
@@ -34,6 +35,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
 - [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
 - [ ] Persist pending browser requests or document the exact recovery behavior when the process restarts mid-browser workflow.
+- [x] Authenticate `.github/workflows/office-smoke.yml` and send the required `task` field to `/api/tasks`.
 - [ ] Authenticate `.github/workflows/office-live-test.yml`; it currently calls protected `/api/tasks` without the audit-token header and is expected to fail authorization if run.
 
 ## P1 — model quality and resource scout
