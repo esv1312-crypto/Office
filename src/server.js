@@ -1555,9 +1555,12 @@ app.get("/", (_req,res)=>res.json({
 
 app.get("/health", (_req,res)=>res.json({ok:true,service:"ai-office-runtime",status:"online",startedAt}));
 
-app.get("/api/employees", (_req,res)=>res.json({
-  ok:true,employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)}))
-}));
+app.get("/api/employees", (req,res)=>{
+  if(!requireInternalOrAudit(req,res)) return;
+  return res.json({
+    ok:true,employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)}))
+  });
+});
 
 app.get("/api/tools", (_req,res)=>res.json({
   ok:true,
