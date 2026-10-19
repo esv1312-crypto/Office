@@ -12,6 +12,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Browser callbacks use per-request random tokens, hidden from snapshots and consumed after a valid callback; token replay is rejected.
 - [x] Sensitive browser approvals cannot be bypassed merely by labeling a sensitive goal as research.
 - [x] Browser audit events redact URL query strings and task goals; callback tokens are redacted from provider errors.
+- [x] Browser request history is bounded; when all slots are active, new work is rejected instead of evicting active requests.
 - [x] Tool logs omit raw tool arguments, and task acceptance events log task length rather than raw task text.
 - [x] Worker prompts mark repository contents, web pages, and tool results as untrusted data.
 - [x] GitHub writes require an explicit working branch; model-provided branch overrides and protected branches are rejected by default.
@@ -28,7 +29,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Event IDs remain monotonic across capped in-memory history and database restores.
 - [x] PostgreSQL event history is retained and loaded by event timestamp rather than insertion timing.
 - [x] Database writes are serialized and drained when the process shuts down gracefully.
-- [x] Dependency-free tests and JavaScript syntax checks pass in GitHub Actions on the current audit head.
+- [x] CI syntax checks cover runtime, test, and script files; `npm test` runs syntax checks before unit tests.
 - [ ] Finish the route-by-route authorization review, including legacy query-token compatibility and every manual workflow.
 - [ ] Add deterministic integration tests for watchdog recovery, retries, and root-task completion.
 - [ ] Add explicit checks for contradictions between verifier claims and authoritative runtime state.
@@ -55,6 +56,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [ ] Add success-rate, time-to-completion, provider-fallback, and stuck-task metrics.
 - [ ] Test concurrent tasks and recovery from provider/browser outages.
 - [ ] Verify PostgreSQL restart recovery and event ordering against a real test database.
+- [ ] Await persistence for critical task-state transitions or add transaction boundaries to eliminate the remaining abrupt-termination write-loss window.
 
 ## P2 — developer experience
 
