@@ -5,6 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveEvent, databaseStatus, saveResourceSnapshot } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
+import { assertTaskTransitionAllowed } from "./task-state.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -76,22 +77,8 @@ function runWorkerWatchdog(){
   }
 }
 
-const TASK_STATES = new Set(["accepted","planning","running","waiting","completed","failed","cancelled"]);
-const ALLOWED_TRANSITIONS = {
-  accepted: new Set(["planning","running","waiting","failed","cancelled"]),
-  planning: new Set(["running","waiting","failed","cancelled"]),
-  running: new Set(["waiting","completed","failed","cancelled"]),
-  waiting: new Set(["running","completed","failed","cancelled"]),
-  completed: new Set([]),
-  failed: new Set(["planning","running","cancelled"]),
-  cancelled: new Set([])
-};
-
 function transitionTask(record, nextStatus, extra = {}) {
-  if (!TASK_STATES.has(nextStatus)) throw new Error("Invalid task state: " + nextStatus);
-  if (record.status !== nextStatus && !ALLOWED_TRANSITIONS[record.status]?.has(nextStatus)) {
-    throw new Error("Invalid task transition: " + record.status + " -> " + nextStatus);
-  }
+  assertTaskTransitionAllowed(record.status,nextStatus);
   const previousStatus = record.status;
   record.status = nextStatus;
   Object.assign(record, extra);
