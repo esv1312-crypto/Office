@@ -496,6 +496,9 @@ async function preflightModel(provider, model, employee) {
       result=await callGemini(model,probe,PREFLIGHT_TIMEOUT_MS);
     } else if(provider==="cloudflare"){
       result=await generateWithCloudflare(probe,model,PREFLIGHT_TIMEOUT_MS);
+    } else if(provider==="apinex"){
+      if(!String(model||"").startsWith("free/")) throw new Error("APINEX preflight requires an explicitly free/* model ID");
+      result=await generateWithApinex(probe,employee,model,null,false);
     } else {
       throw new Error("Unsupported preflight provider: "+provider);
     }
@@ -614,7 +617,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
         provider:"openrouter",
         baseUrl:"https://openrouter.ai/api/v1/chat/completions",
         apiKey:openRouterApiKey(),
-        model,task,employeeId:employee?.id||"executor",taskId,enableTools:true,
+        model,task,employeeId:employee?.id||"executor",taskId,enableTools,
         headers:{
           "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
           "X-Title":"AI-OFFICE"
@@ -698,7 +701,7 @@ async function generateWithHuggingFace(task, employee, preferredModel) {
   throw lastError || new Error("All Hugging Face free models failed");
 }
 
-async function generateWithApinex(task, employee, preferredModel, taskId=null) {
+async function generateWithApinex(task, employee, preferredModel, taskId=null, enableTools=true) {
   const model=String(preferredModel || process.env.APINEX_MODEL || "").trim();
   if(!model) {
     throw Object.assign(new Error("No APINEX model has been discovered or explicitly configured; refusing to guess a model ID"),{code:"APINEX_MODEL_UNVERIFIED"});
@@ -773,7 +776,11 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model);
       else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId);
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
-      else if(provider==="apinex") result=await generateWithApinex(task,employee,model,taskId);
+      else if(provider==="apinex") {
+        const preflight=await preflightModel(provider,model,employee);
+        if(!preflight.ok) throw Object.assign(new Error("APINEX model failed preflight"),{code:"PREFLIGHT_FAILED"});
+        result=await generateWithApinex(task,employee,model,taskId,true);
+      }
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
       else throw new Error("Unsupported AI provider: "+provider);
       if(!String(result?.text || "").trim()) throw Object.assign(new Error(provider+" returned an empty response"),{code:"EMPTY_RESPONSE"});
