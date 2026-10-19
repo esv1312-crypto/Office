@@ -5,7 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge, isVerificationCompletionEligible } from "./task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
@@ -78,20 +78,12 @@ async function runWorkerWatchdog(){
 }
 
 async function transitionTask(record, nextStatus, extra = {}) {
-  assertTaskTransitionAllowed(record.status,nextStatus);
-  const previousStatus = record.status;
-  const previousRecord = { ...record };
-  record.status = nextStatus;
-  Object.assign(record, extra);
-  try {
-    await saveTaskSnapshot(taskSnapshot(record));
-  } catch (error) {
-    for (const key of Object.keys(record)) {
-      if (!Object.prototype.hasOwnProperty.call(previousRecord,key)) delete record[key];
-    }
-    Object.assign(record,previousRecord);
-    throw error;
-  }
+  const { previousStatus } = await applyPersistedTaskTransition(
+    record,
+    nextStatus,
+    extra,
+    current => saveTaskSnapshot(taskSnapshot(current))
+  );
   emit("task.state_changed", {taskId:record.id,parentTaskId:record.parentTaskId || null,previousStatus,status:nextStatus});
   return record;
 }
