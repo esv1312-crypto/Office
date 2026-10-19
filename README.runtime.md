@@ -13,6 +13,10 @@ Control-plane endpoints that expose task state, tool availability, provider conf
 
 Public health endpoints should remain minimal and must not expose secret values.
 
+## GitHub write safety
+
+The GitHub write tool requires an explicitly configured `GITHUB_BRANCH` dedicated to work. Model-provided branch overrides are rejected. Protected branches (`main`, `master`, `production`) are blocked unless an operator explicitly enables protected-branch writes.
+
 ## Browser automation
 
 Browser execution is blocked unless all required settings are present:
