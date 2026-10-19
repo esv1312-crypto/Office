@@ -9,10 +9,10 @@ const ROLE_KEYWORDS = {
 const state = {
   refreshedAt:null,
   refreshing:false,
-  providers:{openrouter:[],huggingface:[]},
-  catalog:{openrouter:new Map(),huggingface:new Map()},
+  providers:{openrouter:[],huggingface:[],apinex:[]},
+  catalog:{openrouter:new Map(),huggingface:new Map(),apinex:new Map()},
   rolePools:{coordinator:[],developer:[],analyst:[],verifier:[],executor:[]},
-  inactive:{openrouter:new Map(),huggingface:new Map()},
+  inactive:{openrouter:new Map(),huggingface:new Map(),apinex:new Map()},
   errors:[]
 };
 
@@ -114,6 +114,34 @@ async function discoverHuggingFace(){
   return out;
 }
 
+export function normalizeApinexModels(data){
+  const models=Array.isArray(data?.data) ? data.data : [];
+  return models
+    .filter(model => typeof model?.id === "string" && model.id.startsWith("free/") && !isExpired(model))
+    .map(model => ({
+      provider:"apinex",
+      id:model.id,
+      routeModel:model.id,
+      name:model.name || model.id,
+      context_length:Number(model.context_length || model.context_window || 0),
+      supports_tools:Array.isArray(model.supported_parameters) && model.supported_parameters.includes("tools"),
+      supports_structured_output:Array.isArray(model.supported_parameters) && (model.supported_parameters.includes("structured_outputs") || model.supported_parameters.includes("response_format")),
+      throughput:null,
+      score:0,
+      discoveredAt:new Date().toISOString(),
+      qualification:"discovered_unverified"
+    }));
+}
+
+async function discoverApinex(){
+  const token=String(process.env.APINEX_API_KEY || "").trim();
+  if(!token) return [];
+  const data=await fetchJson("https://api.apinex.bond/v1/models",{
+    headers:{Authorization:"Bearer "+token}
+  });
+  return normalizeApinexModels(data);
+}
+
 function dedupe(models){
   const map=new Map();
   for(const model of models){
@@ -127,7 +155,7 @@ function dedupe(models){
 function rankRoles(){
   const roles={};
   for(const role of Object.keys(ROLE_KEYWORDS)){
-    const all=dedupe([...state.providers.openrouter,...state.providers.huggingface])
+    const all=dedupe(Object.values(state.providers).flat())
       .map(m=>({...m,score:roleScore(m,role)}))
       .sort((a,b)=>b.score-a.score || b.context_length-a.context_length || b.throughput-a.throughput);
     roles[role]=all.slice(0,12);
@@ -140,10 +168,11 @@ export async function refreshModelScout(){
   state.refreshing=true;
   state.errors=[];
   try {
-    const results=await Promise.allSettled([discoverOpenRouter(),discoverHuggingFace()]);
+    const results=await Promise.allSettled([discoverOpenRouter(),discoverHuggingFace(),discoverApinex()]);
     const discovered={
       openrouter:results[0].status==="fulfilled" ? results[0].value : [],
-      huggingface:results[1].status==="fulfilled" ? results[1].value : []
+      huggingface:results[1].status==="fulfilled" ? results[1].value : [],
+      apinex:results[2].status==="fulfilled" ? results[2].value : []
     };
     for(const provider of Object.keys(discovered)){
       const seen=new Set(discovered[provider].map(x=>x.routeModel || x.id));
@@ -173,7 +202,8 @@ export function getModelScoutState(){
     counts:{
       openrouter:state.providers.openrouter.length,
       huggingface:state.providers.huggingface.length,
-      total:dedupe([...state.providers.openrouter,...state.providers.huggingface]).length,
+      apinex:state.providers.apinex.length,
+      total:dedupe(Object.values(state.providers).flat()).length,
       inactiveOpenrouter:state.inactive.openrouter.size,
       inactiveHuggingface:state.inactive.huggingface.size
     },
@@ -184,9 +214,9 @@ export function getModelScoutState(){
     },
     errors:[...state.errors],
     policy:{
-      freeDefinition:"pricing input/output == 0 OR explicit :free model id",
+      freeDefinition:"explicit zero input/output pricing or a provider-documented free model identifier; APINEX is restricted to free/* IDs",
       expiredModelsExcluded:true,
-      liveCapacity:"not guaranteed by catalog; runtime failures trigger fallback and temporary suppression"
+      liveCapacity:"not guaranteed by catalog; discovered models are unverified until runtime probes pass"
     }
   };
 }
