@@ -163,11 +163,17 @@ test("full root-task lifecycle completes with delegated workers and independent 
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
+    const stateResponse = await request("/api/state", { headers: { "x-ai-office-audit-token": token } });
+    const runtimeState = stateResponse.ok ? await stateResponse.json() : null;
+    const relevantEvents = (runtimeState?.events || []).filter(event => /preflight|model_scout|gateway\.route/.test(event.type || ""));
     assert.equal(finalTask?.status, "completed", `root task did not complete; state=${JSON.stringify({
       status: finalTask?.status,
       error: finalTask?.error,
+      model: finalTask?.model,
+      plannerModel: finalTask?.plannerModel,
       verification: finalTask?.verification,
-      workerResults: finalTask?.workerResults
+      workerResults: finalTask?.workerResults,
+      relevantEvents
     })}\n${output}`);
     assert.equal(finalTask.verification?.status, "PASS");
     assert.equal(finalTask.verification.checks.length, 2);
