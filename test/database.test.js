@@ -143,3 +143,14 @@ test("provider fallback smoke test does not mutate process-wide model configurat
   assert.match(server, /async function generateWithGemini\(task, preferredModel, configuredOverride = null\)/);
   assert.match(server, /generateWithGemini\(task,model,overrides\.geminiModels \|\| null\)/);
 });
+
+
+test("watchdog persists its failure marker atomically with the failed transition", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf("async function runWorkerWatchdog()");
+  const end = server.indexOf("\nasync function transitionTask", start);
+  const watchdog = server.slice(start, end);
+  assert.match(watchdog, /await transitionTask\(record,"failed",\{error:"WORKER_WATCHDOG_TIMEOUT",failedAt:watchdogFailedAt,watchdogFailedAt\}\)/);
+  assert.doesNotMatch(watchdog, /record\.watchdogFailedAt\s*=/);
+  assert.match(watchdog, /recoverFailedWorker\(parent,record\)\.catch\(/);
+});
