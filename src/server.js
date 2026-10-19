@@ -1308,6 +1308,16 @@ async function recoverRootTask(record) {
       continue;
     }
 
+    const recoveredResult=String(fixTask.result || "").trim();
+    if (!recoveredResult) {
+      record.recoveryHistory.push({attempt:record.recoveryAttempts,status:"failed",taskId:fixTask.id,error:"empty recovery result"});
+      emit("recovery.failed",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts,reason:"empty recovery result"});
+      continue;
+    }
+
+    // The verifier and the user must see the recovered answer, not the stale pre-recovery result.
+    record.result=recoveredResult;
+    record.model=fixTask.model || record.model;
     record.recoveryHistory.push({attempt:record.recoveryAttempts,status:"completed",taskId:fixTask.id});
     emit("recovery.success",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts});
 
