@@ -156,3 +156,20 @@ test("watchdog persists its failure marker atomically with the failed transition
   assert.doesNotMatch(watchdog, /record\.watchdogFailedAt\s*=/);
   assert.match(watchdog, /recoverFailedWorker\(parent,record\)\.catch\(/);
 });
+
+
+test("root task cannot transition to completed unless the persisted verifier record passes every check", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const rootStart = server.indexOf("async function executeRootTask(record)");
+  const rootEnd = server.indexOf("\nasync function", rootStart + 10);
+  assert.ok(rootStart >= 0 && rootEnd > rootStart, "root execution function must be found");
+  const root = server.slice(rootStart, rootEnd);
+  const initialVerification = root.indexOf("let verificationPassed=await verifyRootTask(record)");
+  const completionGate = root.indexOf("if(!isVerificationCompletionEligible(record.verification))");
+  const completedTransition = root.indexOf('await transitionTask(record,"completed"');
+  assert.ok(initialVerification >= 0, "root execution must call the independent verifier");
+  assert.ok(completionGate > initialVerification, "completion gate must follow verification");
+  assert.ok(completedTransition > completionGate, "completion gate must precede completed transition");
+  assert.match(root, /if\(!verificationPassed\)[\s\S]*?await recoverRootTask\(record\)/);
+  assert.match(server, /export function isVerificationCompletionEligible\(verification\)/);
+});
