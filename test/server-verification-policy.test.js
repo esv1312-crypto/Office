@@ -70,3 +70,17 @@ test("independent verification receives the candidate final answer on initial an
   assert.match(verification, /finalResult:\s*String\(record\.result\s*\|\|\s*["']["']\)\.slice\(0,20000\)/);
   assert.match(verification, /Candidate final answer:\s*["']\s*\+\s*String\(record\.result/);
 });
+
+test("verifier prompts require exact one-to-one checklist mapping on both attempts", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const promptStart = source.indexOf("function buildVerificationPrompt");
+  const verifyStart = source.indexOf("async function verifyRootTask");
+  const planStart = source.indexOf("\nfunction buildPlanningPrompt", verifyStart);
+  const prompt = source.slice(promptStart, verifyStart);
+  const verification = source.slice(verifyStart, planStart);
+
+  assert.match(prompt, /"requirement":"exact checklist item string"/);
+  assert.match(prompt, /map to exactly one checklist item/);
+  assert.match(verification, /"requirement":"exact checklist item string"/);
+  assert.match(verification, /map to exactly one checklist item/);
+});
