@@ -5,7 +5,7 @@ export function createBrowserManager({emit}) {
   const requests=new Map();
   const freeOnly=()=>String(process.env.AI_FREE_ONLY ?? "true").toLowerCase() !== "false";
   const key=()=>process.env["TINY"+"FISH_API_KEY"];
-  const webhookToken=()=>String(process.env.BROWSER_WEBHOOK_TOKEN || "").trim();
+  const webhookToken=()=>String(process.env.BROWSER_WEBHOOK_SECRET || "").trim();
   const enabled=()=>String(process.env.BROWSER_AUTOMATION_ENABLED || "false").toLowerCase()==="true";
   const publicUrl=()=>String(process.env.OFFICE_PUBLIC_URL || "https://ai-office-runtime-8pir.onrender.com").replace(/\/+$/,"");
 
@@ -94,7 +94,7 @@ export function createBrowserManager({emit}) {
       active:a.filter(x=>x.status==="running").length,
       completed:a.filter(x=>x.status==="completed").length,
       failed:a.filter(x=>x.status==="failed"||x.status==="blocked").length,
-      nextAction:!key()?"Configure browser backend credentials":!webhookToken()?"Configure BROWSER_WEBHOOK_TOKEN":!enabled()?"Enable browser automation only after confirming spending policy":"Browser execution is live"
+      nextAction:!key()?"Configure browser backend credentials":!webhookToken()?"Configure BROWSER_WEBHOOK_SECRET":!enabled()?"Enable browser automation only after confirming spending policy":"Browser execution is live"
     };
   }
   return {request,approveAuthorized,status,summary,webhook};
