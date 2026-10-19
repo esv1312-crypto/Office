@@ -1875,6 +1875,12 @@ app.get("/api/smoke/recovery", async (req,res)=>{
   const root=createTaskRecord({task:"INTERNAL READ-ONLY RECOVERY TEST. Produce a short evidence-rich confirmation that the recovery worker can replace a failed worker and return a usable result.",employeeId:"chief",kind:"root"});
   root.status="failed"; root.error="INTERNAL_RECOVERY_SMOKE_FAILURE"; root.verification={status:"FAIL",checks:[{name:"forced smoke failure",passed:false,evidence:"runtime forced failure",classification:"FACT",source:"runtime event",locator:"smoke/recovery"}],summary:"forced recovery smoke failure"};
   tasks.set(root.id,root);
+  try {
+    await saveTaskSnapshot(taskSnapshot(root));
+  } catch (error) {
+    tasks.delete(root.id);
+    return res.status(503).json({ok:false,readOnly:true,test:"root_recovery",error:"recovery test task could not be durably accepted"});
+  }
   emit("smoke.recovery_forced_failure",{taskId:root.id,readOnly:true});
   try{
     await recoverRootTask(root);
@@ -1884,7 +1890,7 @@ app.get("/api/smoke/recovery", async (req,res)=>{
   }
 });
 
-app.get("/api/smoke/evidence", (req,res)=>{
+app.get("/api/smoke/evidence", async (req,res)=>{
   const expected=String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
   const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
@@ -1909,6 +1915,12 @@ app.get("/api/smoke/evidence", (req,res)=>{
   ].join("\n");
   const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"smoke"});
   tasks.set(record.id,record);
+  try {
+    await saveTaskSnapshot(taskSnapshot(record));
+  } catch (error) {
+    tasks.delete(record.id);
+    return res.status(503).json({ok:false,error:"smoke task could not be durably accepted"});
+  }
   emit("smoke.started",{taskId:record.id,type:"evidence_pipeline"});
   void executeRootTask(record);
   res.status(202).json({ok:true,taskId:record.id,readOnly:true,test:"evidence_pipeline"});
@@ -1985,6 +1997,12 @@ async function startOfficeAudit() {
     ].join("\n");
     const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
     tasks.set(record.id,record);
+    try {
+      await saveTaskSnapshot(taskSnapshot(record));
+    } catch (error) {
+      tasks.delete(record.id);
+      throw error;
+    }
     emit("office_check.started",{taskId:record.id,readOnly:true,filesAudited:files});
     if(!aiAvailable(record.provider)) await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
     else void executeRootTask(record);
@@ -2084,7 +2102,12 @@ SOURCE DOSSIER:
 `+dossier.join("");
     const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
     tasks.set(record.id,record);
-    void saveTaskSnapshot(taskSnapshot(record)).catch(error=>console.error("[DB] task save failed",error?.message||error));
+    try {
+      await saveTaskSnapshot(taskSnapshot(record));
+    } catch (error) {
+      tasks.delete(record.id);
+      throw new Error("pognali audit task could not be durably accepted");
+    }
     emit("task.accepted",{taskId:record.id,parentTaskId:null,kind:"root",taskLength:String(taskText||"").length,employeeId:record.employeeId,role:record.role,provider:record.provider,model:record.model,source:"pognali_read_only_audit"});
     if(!aiAvailable(record.provider)){
       await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
