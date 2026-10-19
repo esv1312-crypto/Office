@@ -50,3 +50,20 @@ test("runtime health and authenticated state expose persistence readiness", asyn
   assert.match(server, /status:"online",startedAt,persistence:databaseStatus\(\)/);
   assert.match(server, /workerQueue:\{active:workerQueue\.active,pending:workerQueue\.pending\.length,limit:workerQueue\.limit\},persistence:databaseStatus\(\)/);
 });
+
+
+test("subtask batches are persisted atomically before workers start", async () => {
+  const database = await readFile(new URL("../src/database.js", import.meta.url), "utf8");
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(database, /export async function saveTaskSnapshots\(snapshots = \[\]\)/);
+  assert.match(database, /await client\.query\("BEGIN"\)/);
+  assert.match(database, /await client\.query\("COMMIT"\)/);
+  assert.match(database, /await client\.query\("ROLLBACK"\)/);
+  const start = server.indexOf('app.post("/api/tasks/:id/subtasks"');
+  const end = server.indexOf('\napp.get("/api/tasks/:id"', start);
+  const route = server.slice(start, end);
+  assert.match(route, /await saveTaskSnapshots\(records\.map\(taskSnapshot\)\)/);
+  assert.ok(route.indexOf("await saveTaskSnapshots") < route.indexOf('emit("task.accepted"'));
+  assert.ok(route.indexOf("await saveTaskSnapshots") < route.indexOf("void executeWorkerTask(record)"));
+  assert.match(route, /status\(503\).*subtasks could not be durably accepted/);
+});
