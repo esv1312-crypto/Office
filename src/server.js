@@ -5,7 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
-import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge } from "./task-state.js";
+import { assertTaskTransitionAllowed, normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, getWatchdogTimeoutAge, isVerificationCompletionEligible } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
@@ -1630,6 +1630,9 @@ async function executeRootTask(record) {
       }
     }
 
+    if(!isVerificationCompletionEligible(record.verification)) {
+      throw Object.assign(new Error("Root completion blocked: independent verification did not explicitly pass every check"),{code:"VERIFICATION_COMPLETION_BLOCKED"});
+    }
     await transitionTask(record,"completed",{
       completedAt:new Date().toISOString(),
       evidence:record.evidence,
