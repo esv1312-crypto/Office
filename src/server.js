@@ -378,7 +378,7 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       {role:"system",content:enableTools ? buildToolAwareSystemPrompt(getEmployee(employeeId||"executor")) : "You are an employee inside AI-OFFICE. Follow the assigned role and skills. Analyze the task, produce a concise execution plan and verification checklist. Do not claim external actions were completed unless this runtime actually performed them."},
       {role:"user",content:task}
     ];
-    const maxToolRounds=Math.max(1,Math.min(8,Number(process.env.AI_TOOL_MAX_ROUNDS||6)));
+    const maxToolRounds=boundedIntegerSetting(process.env.AI_TOOL_MAX_ROUNDS,6,1,8);
     for(let round=0; round<maxToolRounds; round++){
       const body={
         model,
@@ -474,8 +474,8 @@ const openRouterRotation = new Map();
 const modelSuppressions = new Map();
 const providerSuppressions = new Map();
 const preflightCache = new Map();
-const PREFLIGHT_TTL_MS = Math.max(60000, Number(process.env.MODEL_PREFLIGHT_TTL_MS || 600000));
-const PREFLIGHT_TIMEOUT_MS = Math.max(5000, Number(process.env.MODEL_PREFLIGHT_TIMEOUT_MS || 12000));
+const PREFLIGHT_TTL_MS = boundedIntegerSetting(process.env.MODEL_PREFLIGHT_TTL_MS,600000,60000,86400000);
+const PREFLIGHT_TIMEOUT_MS = boundedIntegerSetting(process.env.MODEL_PREFLIGHT_TIMEOUT_MS,12000,5000,300000);
 
 function preflightKey(provider, model, role) {
   if (paidTestEnabled()) return String(provider)+":"+String(model)+":paid-test";
@@ -824,8 +824,7 @@ async function generateViaGateway(task, employee, approvedCandidate = null, task
       let timeout=null;
       try {
         const controller=new AbortController();
-        const configuredTimeout=Number(process.env.BACKEND_REQUEST_TIMEOUT_MS || 120000);
-        const timeoutMs=Number.isFinite(configuredTimeout)?Math.max(1000,configuredTimeout):120000;
+        const timeoutMs=boundedIntegerSetting(process.env.BACKEND_REQUEST_TIMEOUT_MS,120000,1000,3600000);
         timeout=setTimeout(()=>controller.abort(),timeoutMs);
         const backendHeaders={"Content-Type":"application/json","Connection":"close","x-ai-office-audit-token":auditToken};
         const response=await fetch(base+"/api/backend/generate",{method:"POST",headers:backendHeaders,signal:controller.signal,body:JSON.stringify({task,employeeId:employee?.id||"executor"})});
@@ -1113,7 +1112,7 @@ function recoverFailedWorker(parent, failedRecord) {
 }
 
 async function performWorkerRecovery(parent, failedRecord) {
-  const max=Number(process.env.MAX_WORKER_REPLACEMENTS || 2);
+  const max=boundedIntegerSetting(process.env.MAX_WORKER_REPLACEMENTS,2,0,20);
   parent.workerRecoveryAttempts=Number(parent.workerRecoveryAttempts || 0);
   parent.workerRecoveryHistory=Array.isArray(parent.workerRecoveryHistory) ? parent.workerRecoveryHistory : [];
   if (parent.workerRecoveryAttempts >= max) return false;
@@ -1345,8 +1344,7 @@ function chooseRecoveryEmployee(failureClass) {
 }
 
 async function recoverRootTask(record) {
-  const maxAttempts = Number(process.env.MAX_RECOVERY_ATTEMPTS || MAX_RECOVERY_ATTEMPTS);
-  record.maxRecoveryAttempts = Number.isFinite(maxAttempts) && maxAttempts > 0 ? Math.floor(maxAttempts) : MAX_RECOVERY_ATTEMPTS;
+  record.maxRecoveryAttempts = boundedIntegerSetting(process.env.MAX_RECOVERY_ATTEMPTS,MAX_RECOVERY_ATTEMPTS,1,20);
   record.recoveryAttempts = Number(record.recoveryAttempts || 0);
   record.recoveryHistory = Array.isArray(record.recoveryHistory) ? record.recoveryHistory : [];
   record.recoveryTaskIds = Array.isArray(record.recoveryTaskIds) ? record.recoveryTaskIds : [];
