@@ -11,6 +11,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [x] Browser requests reach a terminal blocked state when automation or credentials are unavailable.
 - [x] Browser callbacks use per-request random tokens, hidden from snapshots and consumed after a valid callback; token replay is rejected.
 - [x] Browser callbacks reject unknown/non-terminal status values without consuming the one-time token; only recognized terminal outcomes can finalize a request.
+- [x] Audit-branch pushes do not automatically submit smoke/audit tasks to production; those workflows require manual dispatch. GitHub still reports the legacy Pognali audit workflow's push run as failed with no jobs exposed, so that workflow's CI metadata needs separate cleanup.
 - [x] Sensitive browser approvals cannot be bypassed merely by labeling a sensitive goal as research.
 - [x] Browser audit events redact URL query strings and task goals; callback tokens are redacted from provider errors.
 - [x] Browser request history is bounded; when all slots are active, new work is rejected instead of evicting active requests.
