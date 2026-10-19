@@ -79,6 +79,7 @@ Do not build the user-facing interface yet. First make the existing runtime reli
 - [ ] Add success-rate, time-to-completion, provider-fallback, and stuck-task metrics.
 - [ ] Test concurrent tasks and recovery from provider/browser outages.
 - [ ] Verify PostgreSQL restart recovery and event ordering against a real test database.
+  - The new isolated PostgreSQL 18 CI workflow now verifies durable task snapshots, atomic rollback of a partially failing batch, and event-time ordering. Restart recovery and the full runtime task lifecycle are still unverified.
 - [x] Await persistence for critical task-state transitions; revert in-memory state if the snapshot write fails.
 - [x] Persist internal office-audit, evidence-smoke, recovery-smoke, and Pognali-audit task acceptance before starting workers or returning acceptance.
 
