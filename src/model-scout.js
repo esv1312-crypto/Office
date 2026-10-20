@@ -79,11 +79,13 @@ async function discoverOpenRouter(){
   return models
     .filter(isUsableFreeModel)
     .filter(m => {
+      const routeName=String(m?.id||"")+" "+String(m?.name||"");
+      // Exclude known non-chat endpoints even if their catalog metadata also lists text.
+      if (/(lyria|image|video|audio|tts|whisper|embed(?:ding)?|rerank|content.?safety|moderation)/i.test(routeName)) return false;
       const modalities=m?.architecture?.output_modalities;
       if(Array.isArray(modalities)) return modalities.includes("text");
-      // Some catalog records omit modality metadata. Exclude known non-chat routes rather
-      // than silently treating every missing modality declaration as text generation.
-      return !/(lyria|image|video|audio|tts|whisper|embed(?:ding)?|rerank|content.?safety|moderation)/i.test(String(m?.id||"")+" "+String(m?.name||""));
+      // If metadata is missing, retain only routes not identified as non-chat above.
+      return true;
     })
     .map(m => ({
       provider:"openrouter",
