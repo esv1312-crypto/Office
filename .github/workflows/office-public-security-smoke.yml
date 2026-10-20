@@ -1,3 +1,4 @@
+# Runs against the deployed runtime using only unauthenticated, non-mutating probes.
 name: AI-OFFICE production public security smoke
 
 on:
