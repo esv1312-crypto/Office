@@ -552,7 +552,7 @@ async function preflightModel(provider, model, employee) {
       throw new Error("Unsupported preflight provider: "+provider);
     }
     const responseText=String(result?.text||"").trim();
-    if(!/\\bPREFLIGHT_OK\\b/i.test(responseText)) {
+    if(!/\bPREFLIGHT_OK\b/i.test(responseText)) {
       throw new Error(responseText ? "preflight returned unexpected response" : "preflight empty response");
     }
     const entry={ok:true,provider,model,role:employee?.role||null,latencyMs:Date.now()-started,expiresAt:Date.now()+PREFLIGHT_TTL_MS};
