@@ -81,6 +81,7 @@ async function discoverOpenRouter(){
     .filter(m => (m?.architecture?.output_modalities || ["text"]).includes("text"))
     .map(m => ({
       provider:"openrouter",
+      qualification:"discovered_unverified",
       id:m.id,
       name:m.name || m.id,
       context_length:Number(m.context_length||0),
@@ -108,6 +109,7 @@ async function discoverHuggingFace(){
       if(!free || isExpired(m) || isExpired(p)) continue;
       out.push({
         provider:"huggingface",
+        qualification:"discovered_unverified",
         id:m.id,
         routeModel:m.id+":"+p.provider,
         providerId:p.provider,
@@ -162,14 +164,21 @@ function dedupe(models){
   return [...map.values()];
 }
 
+export function isModelQualifiedForRole(model, role, qualifications=state.qualification, nowMs=Date.now()){
+  const provider=String(model?.provider||"").trim().toLowerCase();
+  const id=String(model?.routeModel||model?.id||"").trim();
+  const entry=qualifications.get(provider+":"+id+":"+String(role||"").trim());
+  return Boolean(entry && entry.status==="passed" && (!entry.expiresAt || Date.parse(entry.expiresAt)>nowMs));
+}
+
 function rankRoles(){
   const roles={};
   for(const role of Object.keys(ROLE_KEYWORDS)){
-    // Catalog discovery is not runtime qualification. Keep unverified entries visible in the scout,
-    // but never expose them to production role pools until a provider-specific probe succeeds.
+    // Discovery is not proof of reachability. Production role pools contain only
+    // models that passed a live provider-specific preflight for this role.
     const all=dedupe(Object.values(state.providers).flat())
-      .filter(m=>m.qualification !== "discovered_unverified")
-      .map(m=>({...m,score:roleScore(m,role)}))
+      .filter(m=>isModelQualifiedForRole(m,role))
+      .map(m=>({...m,qualification:"passed",score:roleScore(m,role)}))
       .sort((a,b)=>b.score-a.score || b.context_length-a.context_length || b.throughput-a.throughput);
     roles[role]=all.slice(0,12);
   }
@@ -247,6 +256,8 @@ export function recordModelQualification({provider,model,role,ok,latencyMs=null,
   while(state.qualification.size>MAX_QUALIFICATION_RECORDS){
     state.qualification.delete(state.qualification.keys().next().value);
   }
+  // Immediately promote a successful probe (or remove a failed/expired one) from role pools.
+  rankRoles();
   return true;
 }
 
@@ -280,7 +291,19 @@ export function getModelScoutState(){
   };
 }
 
+export function getCandidatePool(employee, provider = null){
+  const role=String(employee?.role || "executor");
+  return dedupe(Object.values(state.providers).flat())
+    .filter(model=>!provider || model.provider===provider)
+    .map(model=>({...model,score:roleScore(model,role)}))
+    .sort((a,b)=>b.score-a.score || b.context_length-a.context_length || b.throughput-a.throughput)
+    .map(model=>model.routeModel || model.id)
+    .filter(Boolean);
+}
+
 export function getDynamicPool(employee, provider = null){
+  // Refresh expiry filtering on every read so stale preflight approvals are never routed.
+  rankRoles();
   const role=String(employee?.role || "executor");
   const pool=state.rolePools[role] || [];
   return pool
