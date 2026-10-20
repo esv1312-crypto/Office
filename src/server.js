@@ -108,11 +108,11 @@ async function transitionTask(record, nextStatus, extra = {}) {
 }
 
 const DEFAULT_EMPLOYEES = [
-  {id:"chief",name:"Руководитель",role:"coordinator",provider:"openrouter",model:"nvidia/nemotron-3-ultra-550b-a55b:free",skills:["planning","delegation","coordination"]},
-  {id:"developer",name:"Программист",role:"developer",provider:"openrouter",model:"poolside/laguna-s-2.1:free",skills:["coding","github","debugging"]},
-  {id:"analyst",name:"Аналитик",role:"analyst",provider:"openrouter",model:"nvidia/nemotron-3-super-120b-a12b:free",skills:["analysis","research","requirements"]},
-  {id:"verifier",name:"Проверяющий",role:"verifier",provider:"openrouter",model:"google/gemma-4-31b-it:free",skills:["testing","verification","evidence"]},
-  {id:"executor",name:"Исполнитель",role:"executor",provider:"openrouter",model:"nvidia/nemotron-3.5-lightning:free",skills:["execution","operations","recovery"]}
+  {id:"chief",name:"Руководитель",role:"coordinator",provider:"openrouter",model:"minimax/minimax-m3.1-flash:free",skills:["planning","delegation","coordination"]},
+  {id:"developer",name:"Программист",role:"developer",provider:"openrouter",model:"minimax/minimax-m3.1-flash:free",skills:["coding","github","debugging"]},
+  {id:"analyst",name:"Аналитик",role:"analyst",provider:"openrouter",model:"minimax/minimax-m3.1-flash:free",skills:["analysis","research","requirements"]},
+  {id:"verifier",name:"Проверяющий",role:"verifier",provider:"openrouter",model:"minimax/minimax-m3.1-flash:free",skills:["testing","verification","evidence"]},
+  {id:"executor",name:"Исполнитель",role:"executor",provider:"openrouter",model:"minimax/minimax-m3.1-flash:free",skills:["execution","operations","recovery"]}
 ];
 
 function emit(type, data = {}) {
