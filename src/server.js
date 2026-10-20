@@ -1167,7 +1167,7 @@ function buildWorkerPrompt(record,employee){
 async function executeWorkerTask(record) {
   await acquireWorkerSlot(record.id);
   try {
-    await transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1});
+    await transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1,waitingReason:null});
     const employee=getEmployee(record.employeeId);
     record.employeeId=employee.id; record.employee=employee.name; record.role=employee.role;
     const ready=await ensureEmployeeReady(employee,record.task);
@@ -1623,7 +1623,7 @@ function buildPlanningPrompt(task) {
 
 async function executeRootTask(record) {
   try {
-    await transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
+    await transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1,waitingReason:null});
     const chief=getEmployee("chief");
     const planResult=await generateViaGateway(buildPlanningPrompt(record.task),chief,null,record.id);
     record.plannerModel=planResult.model || null;
