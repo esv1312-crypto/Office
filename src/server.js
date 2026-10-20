@@ -520,8 +520,8 @@ async function preflightModel(provider, model, employee) {
     if(provider==="openrouter"){
       result=await callOpenAICompatible({provider,baseUrl:openRouterChatCompletionsUrl(),apiKey:openRouterApiKey(),model,task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
     } else if(provider==="huggingface"){
-      const hfModel=normalizeHuggingFaceModel(model);
-      result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model:hfModel.includes(":")?hfModel:hfModel+":fastest",task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
+      const hfModel=huggingFaceRequestModel(model);
+      result=await callOpenAICompatible({provider,baseUrl:"https://router.huggingface.co/v1/chat/completions",apiKey:String(process.env.HUGGINGFACE_API_KEY||"").trim(),model:hfModel,task:probe,timeoutMs:PREFLIGHT_TIMEOUT_MS});
     } else if(provider==="gemini"){
       result=await callGemini(model,probe,PREFLIGHT_TIMEOUT_MS);
     } else if(provider==="cloudflare"){
@@ -729,8 +729,16 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
 function normalizeHuggingFaceModel(model) {
   const value=String(model || "").trim();
   if(!value) return value;
-  const routeSuffix=/(together|groq|sambanova|cerebras|nebius|fireworks|novita|hf-inference)$/i;
   return value.replace(/:(together|groq|sambanova|cerebras|nebius|fireworks|novita|hf-inference)$/i,"");
+}
+
+function huggingFaceRequestModel(model) {
+  const value=String(model || "").trim();
+  if(!value) return value;
+  // Model Scout route IDs may include a specific Hugging Face inference provider.
+  // Preserve that suffix instead of stripping it and incorrectly forcing :fastest.
+  if(/:(together|groq|sambanova|cerebras|nebius|fireworks|novita|hf-inference|fastest|cheapest|auto)$/i.test(value)) return value;
+  return normalizeHuggingFaceModel(value)+":fastest";
 }
 
 async function generateWithHuggingFace(task, employee, preferredModel, allowModelFallback=true) {
@@ -738,7 +746,7 @@ async function generateWithHuggingFace(task, employee, preferredModel, allowMode
   if(!token) throw Object.assign(new Error("Hugging Face API key is not configured"),{code:"HF_NOT_CONFIGURED"});
   const dynamic=getDynamicPool(employee,"huggingface").filter(model => model.includes("/"));
   const configured=(process.env.HUGGINGFACE_MODELS || "").split(",").map(x=>x.trim()).filter(Boolean);
-  const safePreferred = preferredModel && !String(preferredModel).includes(":free") && String(preferredModel).includes("/") ? normalizeHuggingFaceModel(preferredModel) : null;
+  const safePreferred = preferredModel && !String(preferredModel).includes(":free") && String(preferredModel).includes("/") ? String(preferredModel).trim() : null;
   const pool=allowModelFallback ? [safePreferred,...dynamic,...configured].filter(Boolean) : [safePreferred].filter(Boolean);
   const models=[...new Set(pool)];
   if(!models.length) throw new Error("No free Hugging Face model is available from Model Scout");
@@ -750,7 +758,7 @@ async function generateWithHuggingFace(task, employee, preferredModel, allowMode
         provider:"huggingface",
         baseUrl:"https://router.huggingface.co/v1/chat/completions",
         apiKey:token,
-        model: normalizeHuggingFaceModel(model).includes(":") ? normalizeHuggingFaceModel(model) : normalizeHuggingFaceModel(model)+":fastest",
+        model: huggingFaceRequestModel(model),
         task
       });
       emit("gateway.model_success",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",model:result.model});
