@@ -1202,7 +1202,19 @@ async function executeWorkerTask(record) {
     record.provider=ready.provider; record.model=ready.model;
     emit("task.started",{taskId:record.id,employeeId:employee.id,role:employee.role,provider:record.provider,model:record.model,preflight:"PASS"});
     const result=await generateViaGateway(buildWorkerPrompt(record,employee),employee,ready,record.id);
-    record.model=result.model; record.evidenceSummary=extractEvidenceIndex(result.text);
+    const evidenceSummary=extractEvidenceIndex(result.text);
+    if (evidenceSummary.length===0) {
+      emit("worker.evidence_index_missing",{
+        taskId:record.id,
+        parentTaskId:record.parentTaskId || null,
+        employeeId:employee.id,
+        provider:ready.provider,
+        model:result.model || ready.model,
+        reason:"required EVIDENCE INDEX is missing or empty"
+      });
+      throw Object.assign(new Error("Worker result missing required EVIDENCE INDEX"),{code:"WORKER_EVIDENCE_INDEX_MISSING"});
+    }
+    record.model=result.model; record.evidenceSummary=evidenceSummary;
     if (record.status === "failed") {
       emit("task.late_result_ignored",{taskId:record.id,employeeId:employee.id,reason:"worker was already failed by watchdog"});
       return result.text;
