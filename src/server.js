@@ -1442,7 +1442,8 @@ function chooseRecoveryEmployee(failureClass) {
   return "developer";
 }
 
-async function recoverRootTask(record, options = {}) {
+async function recoverRootTask(record) {
+  const options=arguments[1]||{};
   record.maxRecoveryAttempts = boundedIntegerSetting(process.env.MAX_RECOVERY_ATTEMPTS,MAX_RECOVERY_ATTEMPTS,1,20);
   record.recoveryAttempts = Number(record.recoveryAttempts || 0);
   record.recoveryHistory = Array.isArray(record.recoveryHistory) ? record.recoveryHistory : [];
