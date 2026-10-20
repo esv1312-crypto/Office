@@ -1442,7 +1442,7 @@ function chooseRecoveryEmployee(failureClass) {
   return "developer";
 }
 
-async function recoverRootTask(record) {
+async function recoverRootTask(record, options = {}) {
   record.maxRecoveryAttempts = boundedIntegerSetting(process.env.MAX_RECOVERY_ATTEMPTS,MAX_RECOVERY_ATTEMPTS,1,20);
   record.recoveryAttempts = Number(record.recoveryAttempts || 0);
   record.recoveryHistory = Array.isArray(record.recoveryHistory) ? record.recoveryHistory : [];
@@ -1496,7 +1496,7 @@ async function recoverRootTask(record) {
       failureClass:failureClass.type
     });
 
-    if (!aiConfigured(fixTask.provider)) {
+    if (!options.executeRecoveryTask && !aiConfigured(fixTask.provider)) {
       await transitionTask(fixTask,"waiting",{waitingReason:"ai_not_configured"});
       record.recoveryHistory.push({attempt:record.recoveryAttempts,status:"blocked",reason:"AI not configured",taskId:fixTask.id});
       emit("recovery.failed",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts,reason:"AI not configured"});
@@ -1504,7 +1504,8 @@ async function recoverRootTask(record) {
     }
 
     emit("recovery.started",{taskId:record.id,recoveryTaskId:fixTask.id,attempt:record.recoveryAttempts});
-    await executeWorkerTask(fixTask);
+    if (typeof options.executeRecoveryTask === "function") await options.executeRecoveryTask(fixTask);
+    else await executeWorkerTask(fixTask);
     record.workerResults = [...(record.workerResults || []), {
       taskId:fixTask.id,
       employeeId:fixTask.employeeId,
@@ -1542,7 +1543,9 @@ async function recoverRootTask(record) {
     await transitionTask(record,"running",{recoveryRequired:false,recoveryAttempt:record.recoveryAttempts});
     emit("retest.requested",{taskId:record.id,attempt:record.recoveryAttempts});
 
-    const passed = await verifyRootTask(record);
+    const passed = typeof options.verifyRecoveredTask === "function"
+      ? await options.verifyRecoveredTask(record,fixTask)
+      : await verifyRootTask(record);
     if (passed) {
       emit("retest.passed",{taskId:record.id,attempt:record.recoveryAttempts});
       return true;
@@ -2013,8 +2016,37 @@ app.get("/api/smoke/recovery", async (req,res)=>{
   }
   emit("smoke.recovery_forced_failure",{taskId:root.id,readOnly:true});
   try{
-    await recoverRootTask(root);
-    return res.json({ok:root.status==="completed",readOnly:true,test:"root_recovery",taskId:root.id,status:root.status,recoveryAttempts:root.recoveryAttempts,recoveryHistory:root.recoveryHistory,recoveryTaskIds:root.recoveryTaskIds});
+    // This endpoint validates the durable recovery state machine deterministically.
+    // The separate provider-fallback smoke test exercises live model inference.
+    const recovered=await recoverRootTask(root,{
+      executeRecoveryTask:async fixTask=>{
+        await transitionTask(fixTask,"running",{startedAt:new Date().toISOString(),provider:"smoke",model:"smoke/deterministic"});
+        fixTask.provider="smoke";
+        fixTask.model="smoke/deterministic";
+        fixTask.result="RECOVERY_OK: replacement worker completed with runtime evidence.";
+        fixTask.evidenceSummary=["Deterministic recovery smoke worker completed.","The replacement result is non-empty."];
+        await transitionTask(fixTask,"completed",{completedAt:new Date().toISOString(),result:fixTask.result,provider:fixTask.provider,model:fixTask.model,evidenceSummary:fixTask.evidenceSummary});
+      },
+      verifyRecoveredTask:async(record,fixTask)=>{
+        const hasRecoveryRequest=events.some(e=>e.type==="recovery.requested"&&e.taskId===record.id);
+        const hasRecoveryStart=events.some(e=>e.type==="recovery.started"&&e.taskId===record.id);
+        const hasWorkerCompletion=events.some(e=>e.type==="task.completed"&&e.taskId===fixTask.id)&&Boolean(String(fixTask.result||"").trim());
+        const hasRetest=events.some(e=>e.type==="retest.requested"&&e.taskId===record.id);
+        const checks=[
+          {name:record.verificationChecklist[0],requirement:record.verificationChecklist[0],passed:hasRecoveryRequest&&hasRecoveryStart,evidence:"Runtime events confirm recovery.requested and recovery.started.",classification:"FACT",source:"runtime event",locator:"recovery.requested/recovery.started"},
+          {name:record.verificationChecklist[1],requirement:record.verificationChecklist[1],passed:hasWorkerCompletion,evidence:"The replacement task completed and returned a non-empty result.",classification:"FACT",source:"runtime event",locator:"task.completed"},
+          {name:record.verificationChecklist[2],requirement:record.verificationChecklist[2],passed:hasRetest,evidence:"Runtime events confirm retest.requested after recovery success.",classification:"FACT",source:"runtime event",locator:"retest.requested"}
+        ];
+        const passed=checks.every(check=>check.passed);
+        record.verification={status:passed?"PASS":"FAIL",checks,summary:passed?"Deterministic recovery orchestration checks passed.":"One or more recovery orchestration checks failed.",verifierId:"smoke-checker",model:"smoke/deterministic",verifiedAt:new Date().toISOString()};
+        record.evidence=checks.map(check=>({type:"verification",...check}));
+        await saveTaskSnapshot(taskSnapshot(record));
+        emit(passed?"verification.passed":"verification.failed",{taskId:record.id,employeeId:"smoke-checker",reason:record.verification.summary});
+        return passed;
+      }
+    });
+    if(recovered) await transitionTask(root,"completed",{completedAt:new Date().toISOString(),result:root.result,verification:root.verification});
+    return res.status(recovered&&root.status==="completed"?200:503).json({ok:recovered&&root.status==="completed",readOnly:true,test:"root_recovery",mode:"deterministic_recovery_state_machine",taskId:root.id,status:root.status,recoveryAttempts:root.recoveryAttempts,recoveryHistory:root.recoveryHistory,recoveryTaskIds:root.recoveryTaskIds,verification:root.verification});
   }catch(error){
     return res.status(503).json({ok:false,readOnly:true,test:"root_recovery",taskId:root.id,status:root.status,error:error?.message||String(error),recoveryAttempts:root.recoveryAttempts,recoveryHistory:root.recoveryHistory,recoveryTaskIds:root.recoveryTaskIds});
   }
