@@ -170,6 +170,19 @@ test("preflight interleaves alternate providers when the preferred provider is s
   assert.match(ready, /Interleave providers so one provider's catalog cannot consume the entire/);
 });
 
+test("read-only smoke and office audit suppress model tool schemas at runtime", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const gatewayStart = server.indexOf("async function generateViaLocalGateway");
+  const gatewayEnd = server.indexOf("\nasync function generateViaGateway", gatewayStart);
+  const gateway = server.slice(gatewayStart, gatewayEnd);
+  assert.match(gateway, /rootTaskFor\(rootRecord\)/);
+  assert.match(gateway, /allowTools=\!\(rootTask\?\.kind==="smoke" \|\| rootTask\?\.readOnlyAudit===true\)/);
+  assert.match(gateway, /allowTools && toolSchemasForEmployee\(employee\)\.length>0/);
+  const auditStart = server.indexOf("async function startOfficeAudit()");
+  const auditEnd = server.indexOf('app.get("/api/office-check"', auditStart);
+  assert.match(server.slice(auditStart, auditEnd), /record\.readOnlyAudit=true/);
+});
+
 test("master office audit inspects supplied evidence without launching tools", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = server.indexOf("async function startOfficeAudit()");
