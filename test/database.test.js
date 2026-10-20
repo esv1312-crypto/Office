@@ -130,6 +130,8 @@ test("planned subtasks and recovery workers are persisted before execution", asy
   const rootRecoveryEnd = server.indexOf("async function executeRootTask(record)", rootRecoveryStart);
   const rootRecovery = server.slice(rootRecoveryStart, rootRecoveryEnd);
   assert.match(rootRecovery, /await transitionTask\(fixTask,"waiting",\{waitingReason:"ai_not_configured"\}\)/);
+  assert.match(rootRecovery, /if none is supplied, use only the task and available runtime evidence/);
+  assert.match(rootRecovery, /Do not call browser or external tools unless the original task explicitly requires external research/);
 });
 
 
