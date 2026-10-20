@@ -10,8 +10,8 @@ test("OpenRouter model gateway cools down timed-out and failing free models", as
   assert.notEqual(end, -1);
   const gateway = source.slice(start, end);
 
-  assert.match(gateway, /finalError\\?\\.status===408/);
-  assert.match(gateway, /Number\\(finalError\\?\\.status\\)>=500/);
+  assert.ok(gateway.includes("finalError?.status===408"));
+  assert.ok(gateway.includes("Number(finalError?.status)>=500"));
   assert.match(gateway, /timeout\\|timed out\\|abort/);
   assert.match(gateway, /cooldownMs=.*60\*1000/);
   assert.match(gateway, /empty response.*60\*1000/);
