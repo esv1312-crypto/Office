@@ -163,3 +163,5 @@ jobs:
               raise SystemExit("FAIL: four-employee task did not pass: " + "; ".join(failed))
           print("PASS: four employees completed the task with a normalized NO-GO decision and evidence. Assigned-versus-actual model routing is reported separately.", flush=True)
           PY
+
+# Re-run live acceptance after primary-model-first routing deployment ff014a72106f19eeae709dce76d895fc85a17b4.
