@@ -230,7 +230,7 @@ test("full root-task lifecycle completes with delegated workers and independent 
     })}\n${output}`);
     assert.ok(missingEvidenceEvents.length >= 1, "runtime did not record the missing evidence index");
     assert.ok(missingEvidenceRoot.workerResults.some(worker =>
-      worker.status === "failed" && /WORKER_EVIDENCE_INDEX_MISSING/.test(worker.error || "")
+      worker.status === "failed" && String(worker.error || "").includes("missing required EVIDENCE INDEX")
     ), "worker missing evidence was incorrectly marked completed");
     assert.ok(missingEvidenceRoot.workerResults.some(worker =>
       worker.status === "completed" && worker.replacesTaskId
