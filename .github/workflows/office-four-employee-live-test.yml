@@ -123,9 +123,13 @@ jobs:
               records[employee_id]["error"] = "task did not reach a terminal state before timeout"
 
           failed = []
+          dash_translation = str.maketrans({
+              "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+              "\u2014": "-", "\u2212": "-", "\ufe63": "-", "\uff0d": "-",
+          })
           for employee_id in required:
               r = records[employee_id]
-              result = str(r.get("result") or "").upper()
+              result = str(r.get("result") or "").upper().translate(dash_translation)
               if r.get("status") != "completed":
                   failed.append(employee_id + ": " + str(r.get("error") or r.get("status")))
               elif "NO-GO" not in result:
@@ -133,17 +137,29 @@ jobs:
               elif not r.get("evidence_index"):
                   failed.append(employee_id + ": missing evidence index in task snapshot")
 
+          model_switches = [
+              {
+                  "employee_id": employee_id,
+                  "assigned_provider": records[employee_id].get("assigned_provider"),
+                  "assigned_model": records[employee_id].get("assigned_model"),
+                  "actual_provider": records[employee_id].get("actual_provider"),
+                  "actual_model": records[employee_id].get("actual_model"),
+                  "model_changed": bool(records[employee_id].get("actual_model")) and records[employee_id].get("actual_model") != records[employee_id].get("assigned_model"),
+              }
+              for employee_id in required
+          ]
           report = {
               "check": "four_employee_live_task",
               "production_url": base,
               "employees": records,
               "initial_models": assigned_models,
               "distinct_initial_models": len(set(assigned_models)),
+              "model_switches": model_switches,
               "all_four_completed": not unfinished and all(records[eid].get("status") == "completed" for eid in required),
               "failures": failed
           }
           print(json.dumps(report, ensure_ascii=False)[:24000], flush=True)
           if failed:
               raise SystemExit("FAIL: four-employee task did not pass: " + "; ".join(failed))
-          print("PASS: four distinct models were assigned and all four employees completed the same task with evidence.", flush=True)
+          print("PASS: four employees completed the task with a normalized NO-GO decision and evidence. Assigned-versus-actual model routing is reported separately.", flush=True)
           PY
