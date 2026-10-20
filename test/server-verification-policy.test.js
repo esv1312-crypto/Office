@@ -329,7 +329,8 @@ test("independent verification retries a bounded set of qualified candidates and
   assert.notEqual(verifyStart, -1, "verifyRootTask must exist");
   assert.notEqual(verifyEnd, -1, "verifyRootTask boundary must exist");
   const verify = source.slice(verifyStart, verifyEnd);
-  assert.match(verify, /for\(let attempt=0;attempt<4;attempt\+\+\)/);
+  assert.match(verify, /maxVerifierModelAttempts=8/);
+  assert.match(verify, /attempt<maxVerifierModelAttempts/);
   assert.match(verify, /attemptedVerifierModels\.add\(String\(verifierCandidate\.model\|\|""\)\)/);
   assert.match(verify, /excludeModels:retryExcludedModels/);
   assert.match(verify, /verification\.model_retry_unavailable/);
