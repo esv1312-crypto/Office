@@ -7,6 +7,17 @@ function normalizeReference(value) {
   return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+function locatorCandidates(value) {
+  const raw=String(value ?? "").trim();
+  const candidates=[raw];
+  const described=raw
+    .replace(/^(?:line|row|entry)\s+(?:beginning|starting\s+with|containing|that\s+says)\s+/i,"")
+    .replace(/^[`\']+|[`\']+$/g,"")
+    .trim();
+  if(described && described !== raw) candidates.push(described);
+  return candidates.map(normalizeReference).filter(Boolean);
+}
+
 function readLocalSource(source, repoRoot = process.cwd()) {
   const pathText=String(source || "").replace(/\\/g,"/");
   const allowed=/^(src|test|docs|\.github)\//i.test(pathText) || /^(README(?:\.[^/]+)?|package\.json|render\.yaml)$/i.test(pathText);
@@ -27,7 +38,8 @@ function referenceIsGrounded(check, context = {}) {
 
   const local=readLocalSource(source,context.repoRoot);
   if(local.recognized) {
-    return Boolean(local.content) && normalizeReference(local.content).includes(locatorKey);
+    const contentKey=normalizeReference(local.content);
+    return Boolean(contentKey) && locatorCandidates(locator).some(candidate=>contentKey.includes(candidate));
   }
 
   const workerResults=Array.isArray(context.workerResults)?context.workerResults:[];
