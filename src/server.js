@@ -1952,7 +1952,7 @@ app.get("/api/smoke/fallback", async (req,res)=>{
   const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/fallback?run=1 creates one internal controlled provider-fallback test"});
-  const before=events.length;
+  const beforeEventId=Number(events[0]?.id||0);
   const employee=getEmployee("analyst");
   try {
     const result=await generateViaLocalGateway(
@@ -1964,7 +1964,7 @@ app.get("/api/smoke/fallback", async (req,res)=>{
       false,
       {geminiModels:["definitely-nonexistent-ai-office-test-model"]}
     );
-    const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
+    const trace=events.filter(e=>Number(e.id)>beforeEventId).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
     const observed={
       geminiFailure:trace.some(e=>e.type==="ai.error"&&e.provider==="gemini"),
       providerFallback:trace.some(e=>e.type==="gateway.fallback"&&e.from==="gemini"&&e.to==="openrouter"),
@@ -1973,7 +1973,7 @@ app.get("/api/smoke/fallback", async (req,res)=>{
     const ok=observed.geminiFailure&&observed.providerFallback&&observed.openrouterSuccess;
     return res.status(ok?200:503).json({ok,test:"provider_fallback",readOnly:true,result:{model:result.model,text:result.text},trace,expected:["gemini failure","gateway.fallback to openrouter","openrouter success"],observed});
   } catch(error) {
-    const trace=events.slice(before).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
+    const trace=events.filter(e=>Number(e.id)>beforeEventId).filter(e=>["gateway.route","ai.attempt","ai.error","ai.quota_exhausted","gateway.provider_failed","gateway.fallback","gateway.model_attempt","gateway.model_success","gateway.success"].includes(e.type));
     return res.status(503).json({ok:false,test:"provider_fallback",readOnly:true,error:error?.message||String(error),trace});
   }
 });
