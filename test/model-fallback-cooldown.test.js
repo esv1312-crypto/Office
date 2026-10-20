@@ -41,18 +41,17 @@ test("Gemini quota exhaustion receives a long provider cooldown instead of a 60-
 });
 
 
-test("successful OpenRouter retry clears failure suppression and restores qualification", async () => {
+test("OpenRouter empty completions immediately fall through to another candidate", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = source.indexOf("async function generateWithOpenRouter");
   const end = source.indexOf("\\nfunction normalizeHuggingFaceModel", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
   const gateway = source.slice(start, end);
-  const retrySuccess = gateway.indexOf("A successful retry is positive runtime evidence");
-  const qualificationRestore = gateway.indexOf('recordModelQualification({provider:"openrouter",model,role,ok:true', retrySuccess);
-  const suppressionClear = gateway.indexOf('modelSuppressions.delete("openrouter:"+model)', retrySuccess);
-  const returnRetry = gateway.indexOf("return retry;", retrySuccess);
-  assert.ok(retrySuccess >= 0 && qualificationRestore > retrySuccess && suppressionClear > qualificationRestore && returnRetry > suppressionClear);
-  assert.match(gateway, /const fallbackLimit=boundedIntegerSetting\(process\.env\.OPENROUTER_MAX_MODEL_FALLBACKS,8,2,20\)/);
-  assert.match(gateway, /const readiness=await preflightModel\("openrouter",model,employee\)/);
+  assert.match(gateway, /empty completion is evidence that this route is not usable/);
+  assert.doesNotMatch(gateway, /const retry=await callOpenAICompatible/);
+  assert.match(gateway, /const fallbackLimit=boundedIntegerSetting\\(process\\.env\\.OPENROUTER_MAX_MODEL_FALLBACKS,12,8,20\\)/);
+  assert.match(gateway, /const readiness=await preflightModel\\("openrouter",model,employee\\)/);
 });
 
 
