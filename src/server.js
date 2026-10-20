@@ -567,11 +567,35 @@ async function preflightModel(provider, model, employee) {
 
 async function ensureEmployeeReady(employee, task, options={}) {
   const brain=resolveBrain(employee,task);
-  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[String(employee?.role||"executor")] || [];
+  const role=String(employee?.role||"executor");
+  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[role] || [];
+  const geminiModels=aiConfigured("gemini")
+    ? String(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean).map(model=>({provider:"gemini",model}))
+    : [];
+  const providerPools={
+    openrouter:[
+      ...getDynamicPool(employee,"openrouter").map(model=>({provider:"openrouter",model})),
+      ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
+    ],
+    huggingface:getDynamicPool(employee,"huggingface").map(model=>({provider:"huggingface",model})),
+    gemini:geminiModels
+  };
+  // Interleave providers so one provider's catalog cannot consume the entire
+  // preflight budget. This is especially important when a provider is suppressed.
+  const orderedProviders=[...new Set([...providerOrder(),"huggingface","gemini"])]
+    .filter(provider=>providerPools[provider]?.length && aiConfigured(provider));
+  const crossProviderCandidates=[];
+  const maxPoolLength=Math.max(0,...orderedProviders.map(provider=>providerPools[provider].length));
+  for(let index=0;index<maxPoolLength;index++) {
+    for(const provider of orderedProviders) {
+      const candidate=providerPools[provider][index];
+      if(candidate) crossProviderCandidates.push(candidate);
+    }
+  }
   const candidates=[
     {provider:brain.provider,model:brain.model},
-    ...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id})),
-    ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
+    ...crossProviderCandidates,
+    ...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
   ];
   const excludedModels=new Set(options.excludeModels || []);
   const allUnique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
@@ -597,7 +621,6 @@ async function ensureEmployeeReady(employee, task, options={}) {
   emit("model.preflight_exhausted",{employeeId:employee?.id||null,role:employee?.role||null,probes,candidates:diagnostics});
   throw Object.assign(new Error("No preflight-approved model is available for "+employee.role+"; candidates="+JSON.stringify(diagnostics)),{code:"PREFLIGHT_EXHAUSTED"});
 }
-
 function isProviderSuppressed(provider) {
   const key=String(provider).toLowerCase();
   const until=Number(providerSuppressions.get(key)||0);
@@ -2076,7 +2099,7 @@ app.get("/api/smoke/evidence", async (req,res)=>{
     "- Developer must independently verify the same three facts.",
     "- The runtime independent verifier must reject any material finding without a source path and locator.",
     "- Final result must separate FACT, INFERENCE, ASSUMPTION and UNPROVEN.",
-    "This is an internal read-only smoke test; do not perform external actions."
+    "The complete dossier is already in this prompt. Do not call any tools, browser, GitHub, or external services; the file paths are source labels, not URLs. This is an internal read-only smoke test; do not perform external actions."
   ].join("\n");
   const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"smoke"});
   tasks.set(record.id,record);
@@ -2107,7 +2130,7 @@ async function startOfficeAudit() {
     dossier.push("\n===== RUNTIME BROWSER SNAPSHOT =====\n"+JSON.stringify(browser.summary()));
     const taskText=[
       "MASTER ENGINEERING AUDIT — AI-OFFICE.",
-      "READ-ONLY. Do not modify code, infrastructure, GitHub, databases, deployments, external websites, or user data during the audit.",
+      "READ-ONLY. Do not modify code, infrastructure, GitHub, databases, deployments, external websites, or user data during the audit. Do not call tools, browser.request, GitHub, or external services: all source contents and the runtime browser snapshot are already supplied below. Inspect the supplied dossier only; the browser audit is a code/policy review, not a request to launch a browser workflow.",
       "Audit the CURRENT integrated runtime and source dossier as one system. Do not give generic advice. Every material conclusion must be FACT, INFERENCE, ASSUMPTION, or UNPROVEN and cite exact source path plus precise locator (function, endpoint, constant, event, workflow, or line range) or runtime event.",
       "Do not invent evidence. A worker claim is not proof. If a runtime behavior cannot be observed from supplied evidence, mark it UNPROVEN.",
       "",
