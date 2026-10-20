@@ -824,10 +824,10 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       : resolveBrain(employee, task);
   const providers=strictCandidate && approvedCandidate
     ? [String(approvedCandidate.provider).toLowerCase()].filter(p=>aiConfigured(p))
-    : paidTestEnabled()
-      ? ["openrouter"].filter(p=>aiConfigured(p))
-      : Array.isArray(forcedProvider)
-        ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
+    : Array.isArray(forcedProvider)
+      ? [...new Set(forcedProvider.map(p=>String(p).toLowerCase()))].filter(p=>aiConfigured(p))
+      : paidTestEnabled()
+        ? ["openrouter"].filter(p=>aiConfigured(p))
         : forcedProvider
           ? [...new Set([String(forcedProvider).toLowerCase(), ...gatewayProviders(brain.provider)])].filter(p=>aiConfigured(p))
           : gatewayProviders(brain.provider);
