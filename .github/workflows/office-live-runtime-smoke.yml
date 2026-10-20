@@ -2,6 +2,10 @@ name: AI-OFFICE authorized live runtime audit
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/office-live-runtime-smoke.yml"
 
 permissions:
   contents: read
