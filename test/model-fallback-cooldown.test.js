@@ -2,19 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("OpenRouter model gateway cools down timed-out and failing free models", async () => {
+test("OpenRouter model gateway delegates model cooldown decisions to the shared retry policy", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = source.indexOf("async function generateWithOpenRouter");
-  const end = source.indexOf("\nfunction normalizeHuggingFaceModel", start);
+  const end = source.indexOf("\\nfunction normalizeHuggingFaceModel", start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const gateway = source.slice(start, end);
 
-  assert.ok(gateway.includes("finalError?.status===408"));
-  assert.ok(gateway.includes("Number(finalError?.status)>=500"));
-  assert.match(gateway, /timeout\\|timed out\\|abort/);
-  assert.ok(gateway.includes("const cooldownMs=") && gateway.includes("60*1000"));
-  assert.ok(gateway.includes("empty response|provider returned error") && gateway.includes("60*1000"));
+  assert.ok(source.includes("modelCooldownMs"));
+  assert.match(gateway, /modelCooldownMs\\(finalError\\?\\.status,failureMessage\\)/);
+  assert.match(gateway, /suppressModel\\(model,failureMessage,cooldownMs,"openrouter"\\)/);
 });
 
 test("Hugging Face model gateway cools down stale and temporarily failing models", async () => {
