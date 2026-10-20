@@ -5,6 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask, recordModelQualification } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
+import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
@@ -608,30 +609,21 @@ async function ensureEmployeeReady(employee, task, options={}) {
     apinex:apinexModels,
     cloudflare:cloudflareModels
   };
-  // Interleave every configured provider so one provider's catalog cannot consume
-  // the entire preflight budget. Every candidate is probed through its real API.
-  const orderedProviders=[...new Set([...providerOrder(),"huggingface","gemini","apinex","cloudflare"])]
-    .filter(provider=>providerPools[provider]?.length && aiConfigured(provider));
-  const crossProviderCandidates=[];
-  const maxPoolLength=Math.max(0,...orderedProviders.map(provider=>providerPools[provider].length));
-  for(let index=0;index<maxPoolLength;index++) {
-    for(const provider of orderedProviders) {
-      const candidate=providerPools[provider][index];
-      if(candidate) crossProviderCandidates.push(candidate);
-    }
-  }
-  const candidates=[
-    {provider:brain.provider,model:brain.model},
-    ...crossProviderCandidates,
-    ...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
-  ];
+  // Give every configured provider a first-round chance before spending probes on backups.
+  const candidates=buildProviderCandidateOrder({
+    providerPools,
+    providerOrder:[...new Set([...providerOrder(),"huggingface","gemini","apinex","cloudflare"])].filter(aiConfigured),
+    preferred:{provider:brain.provider,model:brain.model},
+    fallbackCandidates:(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
+  });
   const excludedModels=new Set(options.excludeModels || []);
-  const allUnique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
+  const allUnique=candidates;
   const unique=allUnique.filter(x=>!excludedModels.has(x.model));
   let probes=0;
+  const maxProbes=boundedIntegerSetting(process.env.MODEL_PREFLIGHT_MAX_PROBES,8,4,20);
   for(const candidate of unique){
     if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
-    if(probes>=4) break;
+    if(probes>=maxProbes) break;
     probes++;
     const check=await preflightModel(candidate.provider,candidate.model,employee);
     if(check.ok) {
