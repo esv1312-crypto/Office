@@ -1315,13 +1315,27 @@ async function verifyRootTask(record) {
   }
   emit("verification.model_selected",{taskId:record.id,employeeId:verifier.id,provider:verifierCandidate.provider,model:verifierCandidate.model,excludedModelCount:excludedModels.size});
   const eventEvidence=events.filter(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z")).slice(0,120);
-  let result=await generateViaGateway(buildVerificationPrompt({
+  const verificationPrompt=buildVerificationPrompt({
     task:record.task,
     checklist,
     workerResults:record.workerResults,
     eventEvidence,
     finalResult:String(record.result || "").slice(0,20000)
-  }),verifier,verifierCandidate,record.id,{strictCandidate:true});
+  });
+  let result;
+  try {
+    result=await generateViaGateway(verificationPrompt,verifier,verifierCandidate,record.id,{strictCandidate:true});
+  } catch(firstError) {
+    // A preflight-approved free model can still return an empty response or fail
+    // at inference time. Keep independent verification strict, but try one other
+    // preflight-approved model instead of failing the whole root task immediately.
+    emit("verification.model_attempt_failed",{taskId:record.id,employeeId:verifier.id,provider:verifierCandidate.provider,model:verifierCandidate.model,error:firstError?.message||String(firstError)});
+    const retryExcludedModels=new Set([...excludedModels,verifierCandidate.model]);
+    const retryCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels:retryExcludedModels});
+    emit("verification.model_retry_selected",{taskId:record.id,employeeId:verifier.id,provider:retryCandidate.provider,model:retryCandidate.model});
+    verifierCandidate=retryCandidate;
+    result=await generateViaGateway(verificationPrompt,verifier,verifierCandidate,record.id,{strictCandidate:true});
+  }
   let verification=parseVerificationJson(result.text);
   if(!verification || !["PASS","FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
     emit("verification.retry",{taskId:record.id,employeeId:verifier.id,reason:"invalid verifier JSON"});
