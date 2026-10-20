@@ -1,0 +1,72 @@
+name: AI-OFFICE production public security smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/office-public-security-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  public-security-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify live public endpoints and reject unauthenticated task access
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          base = "https://ai-office-runtime-8pir.onrender.com"
+
+          def request(label, path, method="GET", body=None):
+              data = None if body is None else json.dumps(body).encode()
+              headers = {"Accept": "application/json"}
+              if data is not None:
+                  headers["Content-Type"] = "application/json"
+              req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=45) as resp:
+                      status, raw = resp.status, resp.read().decode("utf-8", "replace")
+              except urllib.error.HTTPError as exc:
+                  status, raw = exc.code, exc.read().decode("utf-8", "replace")
+              try:
+                  parsed = json.loads(raw)
+              except Exception:
+                  parsed = {"raw": raw[:500]}
+              print(json.dumps({"check": label, "status": status, "body": parsed}, ensure_ascii=False)[:2500])
+              return status, parsed
+
+          for path in ("/health", "/api/backend/health"):
+              status, data = request("public_health:" + path, path)
+              if status != 200 or data.get("ok") is not True:
+                  raise SystemExit("FAIL: public health endpoint did not return minimal healthy response: " + path)
+              forbidden = {"provider", "configuredProviders", "aiConfigured", "employees", "tasks", "events", "apiKey", "token"}
+              if forbidden.intersection(data):
+                  raise SystemExit("FAIL: public health endpoint leaked internal diagnostic fields: " + path)
+
+          checks = [
+              ("create_task_without_auth", "/api/tasks", "POST", {"task": "SECURITY TEST MUST NOT CREATE A TASK", "employeeId": "chief"}),
+              ("read_task_without_auth", "/api/tasks/security-smoke-nonexistent", "GET", None),
+              ("diagnostic_without_auth", "/api/env-diagnostic", "GET", None),
+              ("fallback_query_token_rejected", "/api/smoke/fallback?token=not-a-real-secret&run=0", "GET", None),
+              ("recovery_query_token_rejected", "/api/smoke/recovery?token=not-a-real-secret&run=0", "GET", None),
+              ("office_check_query_token_rejected", "/api/office-check?token=not-a-real-secret&run=0", "GET", None),
+          ]
+          for label, path, method, body in checks:
+              status, data = request(label, path, method, body)
+              if status != 401:
+                  raise SystemExit(f"FAIL: {label} expected HTTP 401, got {status}")
+              if not isinstance(data, dict) or data.get("ok") is not False:
+                  raise SystemExit(f"FAIL: {label} did not return the expected minimal auth rejection")
+
+          print("PASS: production public health is minimal; unauthenticated task/diagnostic access and query-string credentials are rejected.")
+          PY
