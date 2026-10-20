@@ -6,7 +6,7 @@ import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTa
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
-import { shouldStopOpenRouterFallback } from "./provider-retry-policy.js";
+import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
