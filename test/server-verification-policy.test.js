@@ -258,7 +258,7 @@ test("provider calls define timeout and tool policy, and APINEX honors preflight
   assert.match(apinex, /taskId,enableTools,timeoutMs/);
   assert.doesNotMatch(apinex, /enableTools:true/);
 });
-test("independent verifier excludes planner, synthesis, and worker models", async () => {
+test("independent verifier excludes planner, synthesis, and completed worker models", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const readyStart = source.indexOf("async function ensureEmployeeReady");
   const readyEnd = source.indexOf("\nfunction isProviderSuppressed", readyStart);
@@ -268,7 +268,7 @@ test("independent verifier excludes planner, synthesis, and worker models", asyn
   const verify = source.slice(verifyStart, verifyEnd);
   assert.match(ready, /options\.excludeModels/);
   assert.match(ready, /!excludedModels\.has\(x\.model\)/);
-  assert.match(verify, /new Set\(\[record\.model,record\.plannerModel,\.\.\.relatedTasks\.map\(task=>task\.model\)\]/);
+  assert.match(verify, /new Set\(\[record\.model,record\.plannerModel,\.\.\.completedRelatedTasks\.map\(task=>task\.model\)\]\)/);
   assert.match(verify, /ensureEmployeeReady\(verifier,record\.task,\{excludeModels:excludedModels\}\)/);
   assert.match(ready, /staticRoleFallbacks\.map\(model=>\(\{provider:"openrouter",model\}\)\)/);
   assert.match(verify, /\{strictCandidate:true\}/);
