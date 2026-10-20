@@ -158,5 +158,5 @@ test("catalog discovery is explicitly unverified for OpenRouter and Hugging Face
 test("OpenRouter free catalog excludes known non-chat models when modality metadata is absent", async () => {
   const source = await readFile(new URL("../src/model-scout.js", import.meta.url), "utf8");
   assert.match(source, /const modalities=m\?\.architecture\?\.output_modalities/);
-  assert.match(source, /return !\/\(lyria\|image\|video\|audio\|tts\|whisper\|embed/);
+  assert.match(source, /if \(\/\(lyria\|image\|video\|audio\|tts\|whisper\|embed/);
 });
