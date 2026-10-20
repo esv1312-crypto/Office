@@ -163,6 +163,17 @@ test("watchdog runtime delegates atomic timeout transitions and recovery to the 
   assert.match(watchdog, /onRecoveryError/);
 });
 
+test("independent verification retries another preflight-approved model after inference failure", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf("async function verifyRootTask(record)");
+  const end = server.indexOf("\nfunction classifyFailure", start);
+  const verifier = server.slice(start, end);
+  assert.match(verifier, /verification\.model_attempt_failed/);
+  assert.match(verifier, /new Set\(\[\.\.\.excludedModels,verifierCandidate\.model\]\)/);
+  assert.match(verifier, /ensureEmployeeReady\(verifier,record\.task,\{excludeModels:retryExcludedModels\}\)/);
+  assert.match(verifier, /verification\.model_retry_selected/);
+});
+
 test("root task cannot transition to completed unless the persisted verifier record passes every check", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const rootStart = server.indexOf("async function executeRootTask(record)");
