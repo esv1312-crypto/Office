@@ -26,3 +26,17 @@ test("other providers retain provider-wide quota/rate suppression", () => {
   assert.equal(shouldSuppressProviderForStatus("huggingface", 401), true);
   assert.equal(shouldSuppressProviderForStatus("openrouter", 503), false);
 });
+
+
+test("ordinary gateway routing skips providers already under cooldown", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function generateViaLocalGateway");
+  const end = source.indexOf("\nasync function generateViaGateway", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const gateway = source.slice(start, end);
+  assert.match(gateway, /!Array\.isArray\(forcedProvider\)\s*&&\s*isProviderSuppressed\(provider\)/);
+  assert.match(gateway, /gateway\.provider_skipped/);
+  assert.match(gateway, /ALL_PROVIDERS_SUPPRESSED/);
+});
