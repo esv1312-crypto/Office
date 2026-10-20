@@ -368,3 +368,20 @@ test("public health endpoints do not expose model pools or browser configuration
   const backendHealth = source.slice(backendHealthStart, backendHealthEnd);
   assert.doesNotMatch(backendHealth, /providerOrder|configuredProviders|githubToolsEnabled|browser/);
 });
+
+
+test("independent verification retries a bounded set of qualified candidates and fails closed", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const verifyStart = source.indexOf("async function verifyRootTask");
+  const verifyEnd = source.indexOf("\\nasync function executeRootTask", verifyStart);
+  assert.notEqual(verifyStart, -1, "verifyRootTask must exist");
+  assert.notEqual(verifyEnd, -1, "verifyRootTask boundary must exist");
+  const verify = source.slice(verifyStart, verifyEnd);
+
+  assert.match(verify, /for\(let attempt=0;attempt<4;attempt\+\+\)/);
+  assert.match(verify, /attemptedVerifierModels\.add\(String\(verifierCandidate\.model\|\|""\)\)/);
+  assert.match(verify, /excludeModels:retryExcludedModels/);
+  assert.match(verify, /verification\.model_retry_unavailable/);
+  assert.match(verify, /all qualified verifier candidates failed/);
+  assert.match(verify, /if\(!result\)\s*\{[\s\S]*?record\.verification=\{status:"FAIL"/);
+});
