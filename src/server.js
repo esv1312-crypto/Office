@@ -2027,6 +2027,7 @@ app.get("/api/smoke/recovery", async (req,res)=>{
         fixTask.result="RECOVERY_OK: replacement worker completed with runtime evidence.";
         fixTask.evidenceSummary=["Deterministic recovery smoke worker completed.","The replacement result is non-empty."];
         await transitionTask(fixTask,"completed",{completedAt:new Date().toISOString(),result:fixTask.result,provider:fixTask.provider,model:fixTask.model,evidenceSummary:fixTask.evidenceSummary});
+        emit("task.completed",{taskId:fixTask.id,employeeId:fixTask.employeeId,provider:fixTask.provider,model:fixTask.model,evidenceCount:fixTask.evidenceSummary.length});
       },
       verifyRecoveredTask:async(record,fixTask)=>{
         const hasRecoveryRequest=events.some(e=>e.type==="recovery.requested"&&e.taskId===record.id);
