@@ -11,7 +11,7 @@ test("deterministic planner recovery honors explicit exact-role delegation const
   const recovery = source.slice(start, end);
 
   assert.match(recovery, /delegate exactly/);
-  assert.match(recovery, /explicitCount\\s*>=\\s*1\\s*&&\\s*explicitCount\\s*<=\\s*4/);
+  assert.match(recovery, /explicitCount\s*>=\s*1\s*&&\s*explicitCount\s*<=\s*4/);
   assert.match(recovery, /recoveryWorkers\.filter/);
   assert.match(recovery, /constrainedWorkers\.length===explicitCount/);
   assert.match(recovery, /subtasks:useConstraint \? constrainedWorkers : recoveryWorkers/);
