@@ -28,11 +28,13 @@ jobs:
 
           base = "https://ai-office-runtime-8pir.onrender.com"
 
-          def request(label, path, method="GET", body=None):
+          def request(label, path, method="GET", body=None, extra_headers=None):
               data = None if body is None else json.dumps(body).encode()
               headers = {"Accept": "application/json"}
               if data is not None:
                   headers["Content-Type"] = "application/json"
+              if extra_headers:
+                  headers.update(extra_headers)
               req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
               try:
                   with urllib.request.urlopen(req, timeout=45) as resp:
@@ -56,18 +58,20 @@ jobs:
 
           checks = [
               ("create_task_without_auth", "/api/tasks", "POST", {"task": "SECURITY TEST MUST NOT CREATE A TASK", "employeeId": "chief"}),
-              ("read_task_without_auth", "/api/tasks/security-smoke-nonexistent", "GET", None),
-              ("diagnostic_without_auth", "/api/env-diagnostic", "GET", None),
-              ("fallback_query_token_rejected", "/api/smoke/fallback?token=not-a-real-secret&run=0", "GET", None),
-              ("recovery_query_token_rejected", "/api/smoke/recovery?token=not-a-real-secret&run=0", "GET", None),
-              ("office_check_query_token_rejected", "/api/office-check?token=not-a-real-secret&run=0", "GET", None),
+              ("read_task_without_auth", "/api/tasks/security-smoke-nonexistent", "GET", None, None),
+              ("create_subtask_without_auth", "/api/tasks/security-smoke-nonexistent/subtasks", "POST", {"task": "must not be created"}, None),
+              ("diagnostic_without_auth", "/api/env-diagnostic", "GET", None, None),
+              ("diagnostic_invalid_header_rejected", "/api/env-diagnostic", "GET", None, {"x-ai-office-audit-token": "not-a-real-secret"}),
+              ("fallback_query_token_rejected", "/api/smoke/fallback?token=not-a-real-secret&run=0", "GET", None, None),
+              ("recovery_query_token_rejected", "/api/smoke/recovery?token=not-a-real-secret&run=0", "GET", None, None),
+              ("office_check_query_token_rejected", "/api/office-check?token=not-a-real-secret&run=0", "GET", None, None),
           ]
-          for label, path, method, body in checks:
-              status, data = request(label, path, method, body)
+          for label, path, method, body, extra_headers in checks:
+              status, data = request(label, path, method, body, extra_headers)
               if status != 401:
                   raise SystemExit(f"FAIL: {label} expected HTTP 401, got {status}")
               if not isinstance(data, dict) or data.get("ok") is not False:
                   raise SystemExit(f"FAIL: {label} did not return the expected minimal auth rejection")
 
-          print("PASS: production public health is minimal; unauthenticated task/diagnostic access and query-string credentials are rejected.")
+          print("PASS: production public health is minimal; unauthenticated task creation/read/subtask access, invalid audit headers, and query-string credentials are rejected.")
           PY
