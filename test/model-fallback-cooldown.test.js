@@ -30,3 +30,12 @@ test("Hugging Face model gateway cools down stale and temporarily failing models
   assert.match(gateway, /15\*60\*1000:5\*60\*1000/);
   assert.match(gateway, /gateway\.model_fallback/);
 });
+
+
+test("Gemini quota exhaustion receives a long provider cooldown instead of a 60-second retry loop", async () => {
+  const { providerCooldownMs } = await import("../src/provider-retry-policy.js");
+  assert.equal(providerCooldownMs("gemini", 429, "Quota exceeded for free tier"), 12 * 60 * 60 * 1000);
+  assert.equal(providerCooldownMs("gemini", 400, "RESOURCE_EXHAUSTED: quota exceeded"), 12 * 60 * 60 * 1000);
+  assert.equal(providerCooldownMs("openrouter", 429, "rate limit"), 60 * 1000);
+  assert.equal(providerCooldownMs("gemini", 500, "temporary server error"), 15 * 60 * 1000);
+});
