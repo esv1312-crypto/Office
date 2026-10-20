@@ -11,6 +11,7 @@ test("normal task lifecycle transitions are allowed", () => {
   assert.equal(assertTaskTransitionAllowed("planning", "running"), true);
   assert.equal(assertTaskTransitionAllowed("running", "waiting"), true);
   assert.equal(assertTaskTransitionAllowed("waiting", "running"), true);
+  assert.equal(assertTaskTransitionAllowed("waiting", "planning"), true);
   assert.equal(assertTaskTransitionAllowed("running", "completed"), true);
 });
 
