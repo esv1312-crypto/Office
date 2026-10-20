@@ -49,7 +49,7 @@ function mockCompletion(body) {
       missingEvidenceSentOnce = true;
       content = "FACT: The assigned worker completed its bounded analysis, but deliberately omitted the required evidence index.";
     } else {
-      content = "FACT: The assigned worker completed its bounded analysis.\\nEVIDENCE INDEX:\\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
+      content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
     }
   } else if (user.includes("AI-OFFICE PREFLIGHT.")) {
     content = "PREFLIGHT_OK";
@@ -227,7 +227,7 @@ test("full root-task lifecycle completes with delegated workers and independent 
       error: missingEvidenceRoot?.error,
       workerResults: missingEvidenceRoot?.workerResults,
       missingEvidenceEvents
-    })}\\n${output}`);
+    })}\n${output}`);
     assert.ok(missingEvidenceEvents.length >= 1, "runtime did not record the missing evidence index");
     assert.ok(missingEvidenceRoot.workerResults.some(worker =>
       worker.status === "failed" && /WORKER_EVIDENCE_INDEX_MISSING/.test(worker.error || "")
