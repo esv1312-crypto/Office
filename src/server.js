@@ -739,11 +739,11 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
       return result;
     } catch(error) {
       lastError=error;
-      const failureMessage=String(error?.message || "");
-      const errorCategory=error?.status===402 || /quota|credit|billing/i.test(failureMessage) ? "quota"
+      const qualificationFailureMessage=String(error?.message || "");
+      const errorCategory=error?.status===402 || /quota|credit|billing/i.test(qualificationFailureMessage) ? "quota"
         : error?.status===429 ? "rate_limited"
-        : /timeout|timed out|abort/i.test(failureMessage) ? "timeout"
-        : /empty response/i.test(failureMessage) ? "invalid_response"
+        : /timeout|timed out|abort/i.test(qualificationFailureMessage) ? "timeout"
+        : /empty response/i.test(qualificationFailureMessage) ? "invalid_response"
         : "provider_error";
       recordModelQualification({provider:"openrouter",model,role,ok:false,errorCategory,transient:Boolean(error?.transient),checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+5*60*1000).toISOString()});
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
