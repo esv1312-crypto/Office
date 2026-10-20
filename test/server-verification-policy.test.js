@@ -402,3 +402,18 @@ test("verifier preflight includes configured Cloudflare and explicitly free APIN
   assert.match(ready, /provider:"cloudflare",model:String\(process\.env\.CLOUDFLARE_MODEL\|\|"@cf\/meta\/llama-3\.1-8b-instruct"\)/);
   assert.match(ready, /"apinex","cloudflare"/);
 });
+
+
+test("independent verifier prompt compacts runtime evidence and bounds worker/final payloads", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function verifyRootTask");
+  const end = source.indexOf("\\nfunction buildVerificationPrompt", start);
+  assert.ok(start >= 0);
+  // buildVerificationPrompt is declared before verifyRootTask; inspect the verification function through executeRootTask.
+  const next = source.indexOf("\\nasync function executeRootTask", start);
+  const verification = source.slice(start, next);
+  assert.match(verification, /\.slice\(-60\)/);
+  assert.match(verification, /error:String\(e\.error\|\|""\)\.slice\(0,180\)/);
+  assert.match(verification, /result:String\(worker\.result\|\|""\)\.slice\(0,2200\)/);
+  assert.match(verification, /finalResult:String\(record\.result\s*\|\|\s*""\)\.slice\(0,8000\)/);
+});
