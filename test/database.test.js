@@ -230,7 +230,7 @@ test("independent verification retries another preflight-approved model after in
   const end = server.indexOf("\nfunction classifyFailure", start);
   const verifier = server.slice(start, end);
   assert.match(verifier, /verification\.model_attempt_failed/);
-  assert.match(verifier, /new Set\(\[\.\.\.excludedModels,verifierCandidate\.model\]\)/);
+  assert.match(verifier, /new Set\(\[\.\.\.excludedModels,\.\.\.attemptedVerifierModels\]\)/);
   assert.match(verifier, /ensureEmployeeReady\(verifier,record\.task,\{excludeModels:retryExcludedModels\}\)/);
   assert.match(verifier, /verification\.model_retry_selected/);
 });
