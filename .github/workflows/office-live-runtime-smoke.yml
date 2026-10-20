@@ -70,13 +70,25 @@ jobs:
           def wait_task(label, task_id, max_seconds=600):
               deadline = time.time() + max_seconds
               last = {}
+              consecutive_poll_errors = 0
               while time.time() < deadline:
                   try:
                       status, data = get("/api/tasks/" + task_id, timeout=30)
+                      consecutive_poll_errors = 0
                   except Exception as exc:
-                      failures.append(f"{label}: poll error: {exc}")
-                      outcomes.append({"check": label, "ok": False})
-                      return False
+                      consecutive_poll_errors += 1
+                      print(json.dumps({
+                          "check": label,
+                          "event": "transient_poll_error",
+                          "consecutive_errors": consecutive_poll_errors,
+                          "error": str(exc)
+                      }, ensure_ascii=False), flush=True)
+                      if consecutive_poll_errors >= 5:
+                          failures.append(f"{label}: {consecutive_poll_errors} consecutive poll errors; last error: {exc}")
+                          outcomes.append({"check": label, "ok": False})
+                          return False
+                      time.sleep(5)
+                      continue
                   if status == 200 and isinstance(data, dict):
                       last = data.get("task", data)
                       state = str(last.get("status", "")).lower()
