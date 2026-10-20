@@ -164,7 +164,7 @@ test("preflight interleaves alternate providers when the preferred provider is s
   const start = server.indexOf("async function ensureEmployeeReady");
   const end = server.indexOf("\nfunction isProviderSuppressed", start);
   const ready = server.slice(start, end);
-  assert.match(ready, /getDynamicPool\(employee,"huggingface"\)/);
+  assert.match(ready, /getCandidatePool\(employee,"huggingface"\)/);
   assert.match(ready, /aiConfigured\("gemini"\)/);
   assert.match(ready, /buildProviderCandidateOrder/);
   assert.match(ready, /MODEL_PREFLIGHT_MAX_PROBES/);
