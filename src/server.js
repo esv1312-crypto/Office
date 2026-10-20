@@ -1383,13 +1383,36 @@ async function verifyRootTask(record) {
     return false;
   }
   emit("verification.model_selected",{taskId:record.id,employeeId:verifier.id,provider:verifierCandidate.provider,model:verifierCandidate.model,excludedModelCount:excludedModels.size});
-  const eventEvidence=events.filter(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z")).slice(0,120);
+  // Keep the independent verifier's prompt bounded. Raw event objects can contain
+  // enormous candidate/error diagnostics that push free models past their context limits.
+  const eventEvidence=events
+    .filter(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z"))
+    .filter(e => /task\\.(accepted|completed|failed|state_changed)|gateway\\.(fallback|model_fallback|model_success|model_failed)|verification\\.(requested|model_selected|model_attempt_failed|passed|failed)|model\\.preflight_(passed|failed|selected)/.test(String(e.type||"")))
+    .slice(-60)
+    .map(e=>({
+      ts:e.ts||null,type:e.type||null,taskId:e.taskId||null,parentTaskId:e.parentTaskId||null,
+      employeeId:e.employeeId||null,provider:e.provider||null,model:e.model||null,status:e.status||null,
+      error:String(e.error||"").slice(0,180),reason:String(e.reason||"").slice(0,140),
+      evidenceCount:Number.isFinite(Number(e.evidenceCount))?Number(e.evidenceCount):null,
+      attempt:Number.isFinite(Number(e.attempt))?Number(e.attempt):null
+    }));
+  const workerTaskById=new Map(relatedTasks.map(task=>[task.id,task]));
+  const compactWorkerResults=(record.workerResults||[]).map(worker=>{
+    const source=workerTaskById.get(worker.taskId);
+    return {
+      taskId:worker.taskId||null,employeeId:worker.employeeId||null,status:worker.status||null,
+      replacesTaskId:worker.replacesTaskId||null,
+      result:String(worker.result||"").slice(0,2200),
+      error:String(worker.error||"").slice(0,240),
+      evidenceSummary:Array.isArray(source?.evidenceSummary)?source.evidenceSummary.slice(0,8):[]
+    };
+  });
   const verificationPrompt=buildVerificationPrompt({
-    task:record.task,
+    task:String(record.task||"").slice(0,3000),
     checklist,
-    workerResults:record.workerResults,
+    workerResults:compactWorkerResults,
     eventEvidence,
-    finalResult:String(record.result || "").slice(0,20000)
+    finalResult:String(record.result || "").slice(0,8000)
   });
   let result=null;
   let lastVerifierError=null;
