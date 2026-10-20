@@ -2,7 +2,7 @@ import express from "express";
 import OpenAI from "openai";
 import { inspectFreeProviders } from "./free-ai-resource-manager.js";
 import { createBrowserManager } from "./browser-manager.js";
-import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTask, recordModelQualification } from "./model-scout.js";
+import { refreshModelScout, getModelScoutState, getDynamicPool, getCandidatePool, selectModelForTask, recordModelQualification } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
@@ -234,9 +234,9 @@ function resolveBrain(employee, task = "") {
     : employee?.id==="chief" ? "planning delegation coordination"
     : task;
   const selected = selectModelForTask(roleTask || task, employee);
-  const model = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id)
+  const model = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id, selected.selected.provider)
     ? selected.selected
-    : (selected.candidates || []).find(x => !isModelSuppressed(x.routeModel || x.id)) || null;
+    : (selected.candidates || []).find(x => !isModelSuppressed(x.routeModel || x.id, x.provider)) || null;
   return {
     provider: String(model?.provider || employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase(),
     model: model?.routeModel || model?.id || employee?.model || null,
@@ -594,7 +594,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
     : [];
   const apinexModels=aiConfigured("apinex")
     ? [
-        ...getDynamicPool(employee,"apinex").filter(model=>String(model).startsWith("free/")).map(model=>({provider:"apinex",model})),
+        ...getCandidatePool(employee,"apinex").filter(model=>String(model).startsWith("free/")).map(model=>({provider:"apinex",model})),
         ...(String(process.env.APINEX_MODEL||"").trim().startsWith("free/") ? [{provider:"apinex",model:String(process.env.APINEX_MODEL).trim()}] : [])
       ]
     : [];
@@ -603,10 +603,10 @@ async function ensureEmployeeReady(employee, task, options={}) {
     : [];
   const providerPools={
     openrouter:[
-      ...getDynamicPool(employee,"openrouter").map(model=>({provider:"openrouter",model})),
+      ...getCandidatePool(employee,"openrouter").map(model=>({provider:"openrouter",model})),
       ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
     ],
-    huggingface:getDynamicPool(employee,"huggingface").map(model=>({provider:"huggingface",model})),
+    huggingface:getCandidatePool(employee,"huggingface").map(model=>({provider:"huggingface",model})),
     gemini:geminiModels,
     apinex:apinexModels,
     cloudflare:cloudflareModels
