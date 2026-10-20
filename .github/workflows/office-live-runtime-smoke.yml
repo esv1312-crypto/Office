@@ -1,21 +1,17 @@
 name: AI-OFFICE authorized live runtime audit
 
+# Run only on demand, after Render has finished deploying main.
+# A push-triggered live audit races Render auto-deploy and can mark active tasks
+# SERVICE_RESTART_INTERRUPTED, producing a false/contaminated audit result.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/office-live-runtime-smoke.yml"
-      - "src/server.js"
-      - "src/provider-response.js"
-      - "src/model-scout.js"
-      - "src/provider-retry-policy.js"
-      - "src/verification.js"
-      - "src/task-state.js"
-      - "src/worker-watchdog.js"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ai-office-live-runtime-audit-production
+  cancel-in-progress: false
 
 jobs:
   live-runtime-smoke:
