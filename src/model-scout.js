@@ -40,7 +40,13 @@ function isExpired(model){
 
 export function isUsableFreeModel(model){
   if (!model?.id || isExpired(model)) return false;
-  return isZeroPrice(model?.pricing) || isFreeModelId(model.id);
+  const pricing=model?.pricing;
+  const hasExplicitPricing=pricing && typeof pricing==="object"
+    && ["input","prompt","output","completion"].some(key=>pricing[key]!==undefined && pricing[key]!==null);
+  // A stale :free slug is not proof that OpenRouter still serves it for free.
+  // If the catalog publishes pricing, trust that current pricing over the suffix.
+  if(hasExplicitPricing) return isZeroPrice(pricing);
+  return isFreeModelId(model.id);
 }
 
 function roleScore(model, role){

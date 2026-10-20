@@ -25,6 +25,12 @@ test("zero pricing requires both input and output prices", () => {
   assert.equal(isUsableFreeModel({ id: "vendor/model", pricing: { input: 0 } }), false);
 });
 
+test("explicit nonzero catalog pricing overrides a stale :free model suffix", () => {
+  assert.equal(isUsableFreeModel({ id: "vendor/model:free", pricing: { input: "0.000001", output: "0.000002" } }), false);
+  assert.equal(isUsableFreeModel({ id: "vendor/model:free", pricing: { input: 0, output: 0 } }), true);
+  assert.equal(isUsableFreeModel({ id: "vendor/model:free" }), true);
+});
+
 import { normalizeApinexModels } from "../src/model-scout.js";
 
 test("APINEX discovery includes only explicitly free model IDs", () => {
