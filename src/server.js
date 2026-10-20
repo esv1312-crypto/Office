@@ -589,17 +589,28 @@ async function ensureEmployeeReady(employee, task, options={}) {
   const geminiModels=aiConfigured("gemini")
     ? String(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean).map(model=>({provider:"gemini",model}))
     : [];
+  const apinexModels=aiConfigured("apinex")
+    ? [
+        ...getDynamicPool(employee,"apinex").filter(model=>String(model).startsWith("free/")).map(model=>({provider:"apinex",model})),
+        ...(String(process.env.APINEX_MODEL||"").trim().startsWith("free/") ? [{provider:"apinex",model:String(process.env.APINEX_MODEL).trim()}] : [])
+      ]
+    : [];
+  const cloudflareModels=aiConfigured("cloudflare")
+    ? [{provider:"cloudflare",model:String(process.env.CLOUDFLARE_MODEL||"@cf/meta/llama-3.1-8b-instruct").trim()}]
+    : [];
   const providerPools={
     openrouter:[
       ...getDynamicPool(employee,"openrouter").map(model=>({provider:"openrouter",model})),
       ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
     ],
     huggingface:getDynamicPool(employee,"huggingface").map(model=>({provider:"huggingface",model})),
-    gemini:geminiModels
+    gemini:geminiModels,
+    apinex:apinexModels,
+    cloudflare:cloudflareModels
   };
-  // Interleave providers so one provider's catalog cannot consume the entire
-  // preflight budget. This is especially important when a provider is suppressed.
-  const orderedProviders=[...new Set([...providerOrder(),"huggingface","gemini"])]
+  // Interleave every configured provider so one provider's catalog cannot consume
+  // the entire preflight budget. Every candidate is probed through its real API.
+  const orderedProviders=[...new Set([...providerOrder(),"huggingface","gemini","apinex","cloudflare"])]
     .filter(provider=>providerPools[provider]?.length && aiConfigured(provider));
   const crossProviderCandidates=[];
   const maxPoolLength=Math.max(0,...orderedProviders.map(provider=>providerPools[provider].length));
