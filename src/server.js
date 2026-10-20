@@ -1725,7 +1725,7 @@ function buildPlanningPrompt(task) {
     'Schema: {"summary":"string","subtasks":[{"employeeId":"developer|analyst|verifier|executor","task":"string"}],"verificationChecklist":["string"]}',
     "Use 1-4 subtasks. Choose workers by skills. Do not choose chief as a worker.",
     "Task: " + task
-  ].join("\\n");
+  ].join("\n");
 }
 
 async function executeRootTask(record) {
