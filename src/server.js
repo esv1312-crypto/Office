@@ -765,7 +765,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
       return result;
     } catch(error) {
       lastError=error;
-      emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
+      emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),status:Number.isFinite(Number(error?.status))?Number(error.status):null,code:error?.code||null,finishReason:error?.finishReason||null,transient:Boolean(error?.transient)});
       // An empty completion is evidence that this route is not usable for this request.
       // Do not spend another full timeout retrying the same model; suppress it and
       // immediately advance to the next independently preflighted candidate.
