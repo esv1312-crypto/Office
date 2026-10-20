@@ -2325,7 +2325,7 @@ app.get("/api/state", (req,res)=>{
   return res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
   employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
-  tasks:[...tasks.values()].map(taskSnapshot),workerQueue:{active:workerQueue.active,pending:workerQueue.pending.length,limit:workerQueue.limit},persistence:databaseStatus(),events:events.slice(0,100)
+  tasks:[...tasks.values()].map(taskSnapshot),workerQueue:{active:workerQueue.active,pending:workerQueue.pending.length,limit:workerQueue.limit},persistence:databaseStatus(),events:events.slice(0,500)
   });
 });
 
