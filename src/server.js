@@ -1362,19 +1362,38 @@ async function verifyRootTask(record) {
     eventEvidence,
     finalResult:String(record.result || "").slice(0,20000)
   });
-  let result;
-  try {
-    result=await generateViaGateway(verificationPrompt,verifier,verifierCandidate,record.id,{strictCandidate:true});
-  } catch(firstError) {
-    // A preflight-approved free model can still return an empty response or fail
-    // at inference time. Keep independent verification strict, but try one other
-    // preflight-approved model instead of failing the whole root task immediately.
-    emit("verification.model_attempt_failed",{taskId:record.id,employeeId:verifier.id,provider:verifierCandidate.provider,model:verifierCandidate.model,error:firstError?.message||String(firstError)});
-    const retryExcludedModels=new Set([...excludedModels,verifierCandidate.model]);
-    const retryCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels:retryExcludedModels});
-    emit("verification.model_retry_selected",{taskId:record.id,employeeId:verifier.id,provider:retryCandidate.provider,model:retryCandidate.model});
-    verifierCandidate=retryCandidate;
-    result=await generateViaGateway(verificationPrompt,verifier,verifierCandidate,record.id,{strictCandidate:true});
+  let result=null;
+  let lastVerifierError=null;
+  const attemptedVerifierModels=new Set();
+  // A successful preflight proves only that a model answered a tiny probe.
+  // Real verification can still fail (empty output, throttling, or quota); try
+  // a bounded set of distinct, preflight-approved candidates before failing closed.
+  for(let attempt=0;attempt<4;attempt++){
+    try{
+      result=await generateViaGateway(verificationPrompt,verifier,verifierCandidate,record.id,{strictCandidate:true});
+      break;
+    }catch(error){
+      lastVerifierError=error;
+      attemptedVerifierModels.add(String(verifierCandidate.model||""));
+      emit("verification.model_attempt_failed",{taskId:record.id,employeeId:verifier.id,provider:verifierCandidate.provider,model:verifierCandidate.model,attempt:attempt+1,error:error?.message||String(error)});
+      if(attempt>=3) break;
+      try{
+        const retryExcludedModels=new Set([...excludedModels,...attemptedVerifierModels]);
+        const retryCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels:retryExcludedModels});
+        verifierCandidate=retryCandidate;
+        emit("verification.model_retry_selected",{taskId:record.id,employeeId:verifier.id,provider:retryCandidate.provider,model:retryCandidate.model,attempt:attempt+2});
+      }catch(nextError){
+        lastVerifierError=nextError;
+        emit("verification.model_retry_unavailable",{taskId:record.id,employeeId:verifier.id,attempt:attempt+2,error:nextError?.message||String(nextError)});
+        break;
+      }
+    }
+  }
+  if(!result){
+    record.verification={status:"FAIL",checks:[{name:"Independent verifier execution",passed:false,evidence:"No preflight-approved independent verifier completed the real verification request.",classification:"UNPROVEN",source:"Model Gateway runtime events",locator:"verification.model_attempt_failed / verification.model_retry_unavailable"}],summary:"Independent verification failed closed after bounded attempts across distinct qualified candidates: "+String(lastVerifierError?.message||"no verifier result"),verifierId:verifier.id,model:verifierCandidate?.model||null,verifiedAt:new Date().toISOString()};
+    record.evidence=record.verification.checks.map(x=>({check:x.name,evidence:x.evidence}));
+    emit("verification.failed",{taskId:record.id,employeeId:verifier.id,reason:"all qualified verifier candidates failed",error:lastVerifierError?.message||"no verifier result",attemptedModels:[...attemptedVerifierModels]});
+    return false;
   }
   let verification=parseVerificationJson(result.text);
   if(!verification || !["PASS","FAIL"].includes(verification.status) || !Array.isArray(verification.checks)) {
