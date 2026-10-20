@@ -81,3 +81,5 @@ test("default worker assignments use distinct free models with recent production
   assert.equal(new Set(workerModels).size, 4);
   assert.ok(workerModels.every(model => model.endsWith(":free")));
 });
+
+// Keep worker default-model assignment regressions alongside fallback policy coverage.
