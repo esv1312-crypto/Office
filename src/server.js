@@ -887,7 +887,22 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
           : gatewayProviders(brain.provider);
   if(!providers.length) throw Object.assign(new Error("No configured AI provider is available in FREE_ONLY="+freeOnly()),{code:"AI_NOT_CONFIGURED"});
   let lastError;
+  const skippedSuppressedProviders=[];
   for(const provider of providers) {
+    // A provider-wide cooldown (notably exhausted Gemini/Hugging Face quotas)
+    // must be honored by ordinary task routing, not only by preflight selection.
+    // The explicit provider-array path is reserved for controlled fallback tests.
+    if(!Array.isArray(forcedProvider) && isProviderSuppressed(provider)) {
+      skippedSuppressedProviders.push(provider);
+      const until=Number(providerSuppressions.get(provider)||0);
+      emit("gateway.provider_skipped",{
+        taskId,employeeId:employee?.id||null,provider,reason:"provider_suppressed",
+        suppressedUntil:until ? new Date(until).toISOString() : null
+      });
+      const nextProvider=providers[providers.indexOf(provider)+1];
+      if(nextProvider) emit("gateway.fallback",{from:provider,to:nextProvider,reason:"provider suppressed",backend:"local"});
+      continue;
+    }
     const sameAsApproved = approvedCandidate && String(approvedCandidate.provider).toLowerCase()===provider;
     const model=provider==="gemini"
       ? (sameAsApproved ? String(approvedCandidate.model) : null)
@@ -927,6 +942,11 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       emit("gateway.provider_failed",{employeeId:employee.id,provider,error:error?.message||String(error),transient:Boolean(error?.transient),freeOnly:freeOnly(),backend:"local"});
       if(providers[providers.indexOf(provider)+1]) emit("gateway.fallback",{from:provider,to:providers[providers.indexOf(provider)+1],reason:error?.message||String(error),backend:"local"});
     }
+  }
+  if(skippedSuppressedProviders.length) {
+    const detail="Skipped providers under cooldown: "+skippedSuppressedProviders.join(", ");
+    if(lastError) lastError.message=String(lastError.message||lastError)+"; "+detail;
+    else throw Object.assign(new Error("All configured AI providers are suppressed. "+detail),{code:"ALL_PROVIDERS_SUPPRESSED"});
   }
   throw lastError || new Error("All configured AI providers failed");
 }
