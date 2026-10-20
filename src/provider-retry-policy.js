@@ -14,3 +14,15 @@ export function shouldSuppressProviderForStatus(provider, status) {
   // A 401 indicates the shared provider credential is rejected.
   return code === 401 || code === 402 || code === 429;
 }
+
+export function providerCooldownMs(provider, status, message = "") {
+  const name=String(provider || "").trim().toLowerCase();
+  const code=Number(status);
+  const text=String(message || "");
+  // Gemini free-tier quota errors can include a reset many hours away.
+  // A 60-second cooldown just replays the same doomed request on every task.
+  if(name === "gemini" && (code === 429 || /quota exceeded|rate.?limit|resource.?exhausted/i.test(text))) {
+    return 12 * 60 * 60 * 1000;
+  }
+  return code === 429 ? 60 * 1000 : 15 * 60 * 1000;
+}
