@@ -189,8 +189,8 @@ test("preflight skips suppressed candidates dynamically and stops on provider-wi
   assert.match(helper, /for\(const candidate of unique\)/);
   assert.match(helper, /if\(isProviderSuppressed\(candidate\.provider\) \|\| isProviderModelSuppressed\(candidate\.provider,candidate\.model\)\) continue/);
   assert.match(helper, /if\(probes>=4\) break/);
-  assert.match(preflight, /if\(error\?\.status===401 \|\| error\?\.status===402\) suppressProvider/);
-  assert.match(preflight, /else if\(error\?\.status===429\) suppressProvider/);
+  assert.match(preflight, /if\(shouldSuppressProviderForStatus\(provider,error\?\.status\)\)/);
+  assert.match(preflight, /else suppressModel\(model,message,ttl,provider\)/);
 });
 
 test("gateway rejects empty provider results and bounds OpenAI SDK calls", async () => {
@@ -216,8 +216,8 @@ test("OpenRouter retries alternate models after route-level quota errors", async
 
   assert.match(openRouter, /if\(shouldStopOpenRouterFallback\(error\?\.status\)\) break/);
   assert.match(huggingFace, /if\(error\?\.status===401 \|\| error\?\.status===402 \|\| error\?\.status===429\) break/);
-  assert.match(localGateway, /suppressProvider\(provider,error\?\.message\|\|String\(error\),15\*60\*1000\)/);
-  assert.match(localGateway, /else if\(error\?\.status===429\) suppressProvider\(provider,error\?\.message\|\|String\(error\),60\*1000\)/);
+  assert.match(localGateway, /if\(shouldSuppressProviderForStatus\(provider,error\?\.status\)\)/);
+  assert.match(localGateway, /suppressProvider\(provider,error\?\.message\|\|String\(error\),cooldown\)/);
 });
 
 test("remote backend calls require a token and always clear their timeout", async () => {
