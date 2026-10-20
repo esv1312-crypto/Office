@@ -44,13 +44,11 @@ function mockCompletion(body) {
     });
   } else if (user.includes("Synthesize the worker results")) {
     content = "Both delegated workers returned results. The independent verifier checked the required completion evidence.";
-  } else if (user.includes("EVIDENCE-FIRST RULES")) {
-    if (user.includes("FORCE_MISSING_EVIDENCE_TEST") && !missingEvidenceSentOnce) {
-      missingEvidenceSentOnce = true;
-      content = "FACT: The assigned worker completed its bounded analysis, but deliberately omitted the required evidence index.";
-    } else {
-      content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
-    }
+  } else if (user.includes("FORCE_MISSING_EVIDENCE_TEST") && !missingEvidenceSentOnce) {
+    missingEvidenceSentOnce = true;
+    content = "FACT: The assigned worker completed its bounded analysis, but deliberately omitted the mandatory index.";
+  } else if (user.includes("EVIDENCE-FIRST RULES") || user.includes("EVIDENCE INDEX")) {
+    content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
   } else if (user.includes("AI-OFFICE PREFLIGHT.")) {
     content = "PREFLIGHT_OK";
   } else {
