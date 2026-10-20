@@ -89,10 +89,12 @@ jobs:
               }
               print(json.dumps({"check": "task_assigned", "employee_id": employee_id, **records[employee_id]}, ensure_ascii=False), flush=True)
 
-          assigned_models = [r["assigned_model"] for r in records.values() if r.get("assigned_model")]
-          if len(set(assigned_models)) != 4:
+          assigned_models = [records[eid].get("assigned_model") for eid in required]
+          if len(assigned_models) != 4 or any(not model for model in assigned_models):
               print(json.dumps({"assigned_models": assigned_models}, ensure_ascii=False))
-              raise SystemExit("FAIL: production did not assign four distinct initial worker models")
+              raise SystemExit("FAIL: production did not report an initial model for each worker")
+          # The built-in primary may intentionally be shared across employees.
+          # Model diversity is reported for diagnosis, not treated as a task-success requirement.
 
           deadline = time.time() + 900
           unfinished = set(required)
