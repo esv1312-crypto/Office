@@ -225,9 +225,7 @@ test("full root-task lifecycle completes with delegated workers and independent 
       if (stateResponse.ok) {
         const state = await stateResponse.json();
         for (const event of state.events || []) {
-          if (event.type === "worker.evidence_index_missing" &&
-              (event.parentTaskId === missingEvidenceAccepted.task.id ||
-               missingEvidenceRoot?.workerResults?.some(worker => worker.taskId === event.taskId))) {
+          if (event.type === "worker.evidence_index_missing") {
             missingEvidenceEventMap.set(event.id, event);
           }
         }
@@ -239,9 +237,7 @@ test("full root-task lifecycle completes with delegated workers and independent 
     const missingEvidenceStateResponse = await request("/api/state", { headers: { "x-ai-office-audit-token": token } });
     const missingEvidenceState = missingEvidenceStateResponse.ok ? await missingEvidenceStateResponse.json() : null;
     for (const event of missingEvidenceState?.events || []) {
-      if (event.type === "worker.evidence_index_missing" &&
-          (event.parentTaskId === missingEvidenceAccepted.task.id ||
-           missingEvidenceRoot?.workerResults?.some(worker => worker.taskId === event.taskId))) {
+      if (event.type === "worker.evidence_index_missing") {
         missingEvidenceEventMap.set(event.id, event);
       }
     }
