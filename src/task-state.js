@@ -4,7 +4,7 @@ const ALLOWED_TRANSITIONS = Object.freeze({
   accepted: new Set(["planning","running","waiting","failed","cancelled"]),
   planning: new Set(["running","waiting","failed","cancelled"]),
   running: new Set(["waiting","completed","failed","cancelled"]),
-  waiting: new Set(["running","completed","failed","cancelled"]),
+  waiting: new Set(["planning","running","completed","failed","cancelled"]),
   completed: new Set([]),
   failed: new Set(["planning","running","cancelled"]),
   cancelled: new Set([])
