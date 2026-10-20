@@ -16,6 +16,17 @@ test("extracts evidence written on lines after the EVIDENCE INDEX header", () =>
   assert.deepEqual(result, ["- finding | FACT | src/a.js | fn() | source confirms it"]);
 });
 
+test("accepts Markdown heading and bold inline index formats", () => {
+  assert.deepEqual(
+    extractEvidenceIndex("Report\\n### EVIDENCE INDEX\\nclaim | FACT | src/a.js | fn() | source confirms it"),
+    ["claim | FACT | src/a.js | fn() | source confirms it"]
+  );
+  assert.deepEqual(
+    extractEvidenceIndex("Report\\n**EVIDENCE INDEX:** claim | FACT | src/a.js | fn() | source confirms it"),
+    ["claim | FACT | src/a.js | fn() | source confirms it"]
+  );
+});
+
 test("returns empty when the EVIDENCE INDEX is absent, empty, or mentioned only in prose", () => {
   assert.deepEqual(extractEvidenceIndex("Report without evidence"), []);
   assert.deepEqual(extractEvidenceIndex("FACT: the worker omitted the required evidence index."), []);
