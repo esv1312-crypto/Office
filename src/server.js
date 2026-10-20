@@ -1420,10 +1420,10 @@ async function verifyRootTask(record) {
   let result=null;
   let lastVerifierError=null;
   const attemptedVerifierModels=new Set();
-  // A successful preflight proves only that a model answered a tiny probe.
-  // Real verification can still fail (empty output, throttling, or quota); try
-  // a bounded set of distinct, preflight-approved candidates before failing closed.
-  for(let attempt=0;attempt<4;attempt++){
+  // Free routes can pass a short probe but fail on a structured audit prompt.
+  // Try up to eight distinct, preflight-approved candidates before failing closed.
+  const maxVerifierModelAttempts=8;
+  for(let attempt=0;attempt<maxVerifierModelAttempts;attempt++){
     try{
       result=await generateViaGateway(verificationPrompt,verifier,verifierCandidate,record.id,{strictCandidate:true});
       break;
@@ -1431,7 +1431,7 @@ async function verifyRootTask(record) {
       lastVerifierError=error;
       attemptedVerifierModels.add(String(verifierCandidate.model||""));
       emit("verification.model_attempt_failed",{taskId:record.id,employeeId:verifier.id,provider:verifierCandidate.provider,model:verifierCandidate.model,attempt:attempt+1,error:error?.message||String(error)});
-      if(attempt>=3) break;
+      if(attempt+1>=maxVerifierModelAttempts) break;
       try{
         const retryExcludedModels=new Set([...excludedModels,...attemptedVerifierModels]);
         const retryCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels:retryExcludedModels});
