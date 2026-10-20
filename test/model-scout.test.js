@@ -160,3 +160,14 @@ test("OpenRouter free catalog excludes known non-chat models when modality metad
   assert.match(source, /const modalities=m\?\.architecture\?\.output_modalities/);
   assert.match(source, /if \(\/\(lyria\|image\|video\|audio\|tts\|whisper\|embed/);
 });
+
+
+test("a real successful OpenRouter task qualifies its model for the employee role", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const success = source.indexOf('emit("gateway.model_success",{employeeId:employee?.id || null,role,provider:"openrouter",model});');
+  const qualification = source.indexOf('recordModelQualification({provider:"openrouter",model,role,ok:true', success);
+  const returned = source.indexOf("return result;", success);
+  assert.ok(success >= 0, "OpenRouter real-task success event must exist");
+  assert.ok(qualification > success, "successful real task must qualify the exact model and role");
+  assert.ok(returned > qualification, "qualification must be recorded before returning the successful result");
+});
