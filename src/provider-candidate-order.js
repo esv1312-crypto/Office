@@ -30,3 +30,17 @@ export function buildProviderCandidateOrder({providerPools={}, providerOrder=[],
     return true;
   });
 }
+
+
+// Keep the configured/selected primary model first on every task. Rotate only
+// the backup order so fallback diversity never silently replaces the primary.
+export function orderPrimaryModelFirst(models = [], preferredModel = null, cursor = 0) {
+  const unique = [...new Set(models.filter(model => typeof model === "string" && model.trim()).map(model => model.trim()))];
+  if (!unique.length) return [];
+  const primary = preferredModel && unique.includes(preferredModel) ? preferredModel : unique[0];
+  const backups = unique.filter(model => model !== primary);
+  if (backups.length < 2) return [primary, ...backups];
+  const offset = ((Math.trunc(Number(cursor) || 0) % backups.length) + backups.length) % backups.length;
+  const rotatedBackups = backups.map((_, index) => backups[(offset + index) % backups.length]);
+  return [primary, ...rotatedBackups];
+}

@@ -1,0 +1,165 @@
+name: AI-OFFICE four-employee live task test
+
+on:
+  push:
+    branches:
+      - fix/evidence-index-markdown-formats
+    paths:
+      - .github/workflows/office-four-employee-live-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-office-four-employee-live-test
+  cancel-in-progress: false
+
+jobs:
+  four-employee-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OFFICE_BASE_URL: https://ai-office-runtime-8pir.onrender.com
+      OFFICE_AUDIT_TOKEN: ${{ secrets.OFFICE_AUDIT_TOKEN }}
+    steps:
+      - name: Run one independent real task per employee and verify results
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+
+          base = os.environ["OFFICE_BASE_URL"].rstrip("/")
+          token = os.environ.get("OFFICE_AUDIT_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("FAIL: OFFICE_AUDIT_TOKEN secret is missing; value was not printed")
+          headers = {
+              "x-ai-office-audit-token": token,
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+          }
+
+          def request(method, path, payload=None, timeout=40):
+              body = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(base + path, data=body, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=timeout) as response:
+                  raw = response.read().decode("utf-8", "replace")
+                  return response.status, json.loads(raw) if raw else {}
+
+          _, roster_data = request("GET", "/api/employees")
+          if roster_data.get("ok") is not True:
+              raise SystemExit("FAIL: production employee roster request failed")
+          roster = {e.get("id"): e for e in roster_data.get("employees", [])}
+          required = ["analyst", "developer", "verifier", "executor"]
+          missing = [eid for eid in required if eid not in roster]
+          if missing:
+              raise SystemExit("FAIL: production is missing employees: " + ", ".join(missing))
+
+          dossier = """LIVE READ-ONLY ACCEPTANCE TASK.
+          Do not use tools, browsers, GitHub, external services, or files. Use only these three supplied facts.
+          FACT 1: The written rule says launch is permitted only after approval is received.
+          FACT 2: The approval register says approval has NOT been received.
+          FACT 3: The planned launch date is tomorrow.
+          Decide GO or NO-GO by applying FACT 1 to FACT 2. Explain the reasoning in two to four sentences. Label the rule and register statements FACT and the decision INFERENCE. Do not invent details. End with this exact one-line evidence index (you may add no extra pipe-separated fields):
+          EVIDENCE INDEX: launch decision | INFERENCE | supplied dossier | FACT 1 + FACT 2 | approval is required and the register says it has not been received
+          Correct decision: NO-GO."""
+
+          records = {}
+          for employee_id in required:
+              employee = roster[employee_id]
+              initial_brain = employee.get("brain") or {}
+              status, response = request("POST", "/api/tasks", {
+                  "task": dossier,
+                  "employeeId": employee_id,
+                  "kind": "smoke"
+              })
+              if status != 202 or response.get("ok") is not True:
+                  print(json.dumps({"employee": employee_id, "http_status": status, "response": response}, ensure_ascii=False))
+                  raise SystemExit("FAIL: production rejected task for " + employee_id)
+              record = response.get("task") or {}
+              task_id = record.get("id")
+              if not task_id:
+                  raise SystemExit("FAIL: no task ID returned for " + employee_id)
+              records[employee_id] = {
+                  "task_id": task_id,
+                  "assigned_provider": record.get("provider") or initial_brain.get("provider"),
+                  "assigned_model": record.get("model") or initial_brain.get("model"),
+                  "employee": record.get("employee") or employee.get("name")
+              }
+              print(json.dumps({"check": "task_assigned", "employee_id": employee_id, **records[employee_id]}, ensure_ascii=False), flush=True)
+
+          assigned_models = [r["assigned_model"] for r in records.values() if r.get("assigned_model")]
+          if len(set(assigned_models)) != 4:
+              print(json.dumps({"assigned_models": assigned_models}, ensure_ascii=False))
+              raise SystemExit("FAIL: production did not assign four distinct initial worker models")
+
+          deadline = time.time() + 900
+          unfinished = set(required)
+          while unfinished and time.time() < deadline:
+              for employee_id in list(unfinished):
+                  try:
+                      _, response = request("GET", "/api/tasks/" + records[employee_id]["task_id"], timeout=30)
+                      task = response.get("task") or response
+                      state = str(task.get("status", "")).lower()
+                      if state in ("completed", "failed", "cancelled", "canceled", "dead"):
+                          records[employee_id].update({
+                              "status": state,
+                              "actual_provider": task.get("provider"),
+                              "actual_model": task.get("model"),
+                              "error": task.get("error"),
+                              "result": task.get("result"),
+                              "evidence_index": task.get("evidenceSummary")
+                          })
+                          unfinished.remove(employee_id)
+                          print(json.dumps({"check": "task_finished", "employee_id": employee_id, **records[employee_id]}, ensure_ascii=False)[:6000], flush=True)
+                  except Exception as exc:
+                      print(json.dumps({"check": "task_poll_retry", "employee_id": employee_id, "error": str(exc)}, ensure_ascii=False), flush=True)
+              if unfinished:
+                  time.sleep(5)
+
+          for employee_id in unfinished:
+              records[employee_id]["status"] = "timeout"
+              records[employee_id]["error"] = "task did not reach a terminal state before timeout"
+
+          failed = []
+          dash_translation = str.maketrans({
+              "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+              "\u2014": "-", "\u2212": "-", "\ufe63": "-", "\uff0d": "-",
+          })
+          for employee_id in required:
+              r = records[employee_id]
+              result = str(r.get("result") or "").upper().translate(dash_translation)
+              if r.get("status") != "completed":
+                  failed.append(employee_id + ": " + str(r.get("error") or r.get("status")))
+              elif "NO-GO" not in result:
+                  failed.append(employee_id + ": did not return expected NO-GO decision")
+              elif not r.get("evidence_index"):
+                  failed.append(employee_id + ": missing evidence index in task snapshot")
+
+          model_switches = [
+              {
+                  "employee_id": employee_id,
+                  "assigned_provider": records[employee_id].get("assigned_provider"),
+                  "assigned_model": records[employee_id].get("assigned_model"),
+                  "actual_provider": records[employee_id].get("actual_provider"),
+                  "actual_model": records[employee_id].get("actual_model"),
+                  "model_changed": bool(records[employee_id].get("actual_model")) and records[employee_id].get("actual_model") != records[employee_id].get("assigned_model"),
+              }
+              for employee_id in required
+          ]
+          report = {
+              "check": "four_employee_live_task",
+              "production_url": base,
+              "employees": records,
+              "initial_models": assigned_models,
+              "distinct_initial_models": len(set(assigned_models)),
+              "model_switches": model_switches,
+              "all_four_completed": not unfinished and all(records[eid].get("status") == "completed" for eid in required),
+              "failures": failed
+          }
+          print(json.dumps(report, ensure_ascii=False)[:24000], flush=True)
+          if failed:
+              raise SystemExit("FAIL: four-employee task did not pass: " + "; ".join(failed))
+          print("PASS: four employees completed the task with a normalized NO-GO decision and evidence. Assigned-versus-actual model routing is reported separately.", flush=True)
+          PY

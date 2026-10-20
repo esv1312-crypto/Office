@@ -7,7 +7,7 @@ import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, s
 import { enforceVerificationEvidence } from "./verification.js";
 import { extractEvidenceIndex } from "./evidence-index.js";
 import { extractFinalAssistantText } from "./provider-response.js";
-import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
+import { buildProviderCandidateOrder, orderPrimaryModelFirst } from "./provider-candidate-order.js";
 import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
@@ -236,14 +236,26 @@ function resolveBrain(employee, task = "") {
     : employee?.id==="chief" ? "planning delegation coordination"
     : task;
   const selected = selectModelForTask(roleTask || task, employee);
-  const model = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id, selected.selected.provider)
+  const assignedProvider=String(employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase();
+  const assignedModel=String(employee?.model || "").trim();
+  const assignedAvailable=Boolean(assignedModel && !isModelSuppressed(assignedModel,assignedProvider));
+  const selectedModel = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id, selected.selected.provider)
     ? selected.selected
     : (selected.candidates || []).find(x => !isModelSuppressed(x.routeModel || x.id, x.provider)) || null;
+  // Employee configuration is the primary assignment. Model Scout remains useful
+  // as the ranked fallback pool when that assigned model is unavailable.
+  const model = assignedAvailable
+    ? {provider:assignedProvider,id:assignedModel,routeModel:assignedModel,qualification:"employee_assignment"}
+    : selectedModel;
+  const candidates = [
+    ...(assignedAvailable ? [{provider:assignedProvider,id:assignedModel,routeModel:assignedModel,qualification:"employee_assignment"}] : []),
+    ...(selected.candidates || [])
+  ];
   return {
     provider: String(model?.provider || employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase(),
-    model: model?.routeModel || model?.id || employee?.model || null,
+    model: model?.routeModel || model?.id || assignedModel || null,
     taskKind: selected.kind,
-    candidates: selected.candidates || []
+    candidates
   };
 }
 
@@ -710,7 +722,7 @@ function openRouterPool(employee, preferredModel = null) {
     }
   } catch (_) {}
   const configured=String(process.env.OPENROUTER_MODEL || "").trim();
-  if (configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool.unshift(configured);
+  if (!preferredModel && configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool.unshift(configured);
   return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter")))];
 }
 
@@ -721,8 +733,12 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
   const fallbackLimit=boundedIntegerSetting(process.env.OPENROUTER_MAX_MODEL_FALLBACKS,12,8,20);
-  const ordered=pool.map((_,i)=>pool[(cursor+i)%pool.length]).slice(0,allowModelFallback?fallbackLimit:1);
-  openRouterRotation.set(role,(cursor+1)%Math.max(1,pool.length));
+  const ordered=allowModelFallback
+    ? orderPrimaryModelFirst(pool, preferredModel, cursor).slice(0,fallbackLimit)
+    : pool.slice(0,1);
+  // Rotate backup candidates only. The assigned primary must not be skipped
+  // merely because this role has advanced its fallback cursor.
+  openRouterRotation.set(role,(cursor+1)%Math.max(1,pool.length-1));
 
   let lastError;
   for (let i=0;i<ordered.length;i++) {
@@ -913,7 +929,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       : provider==="huggingface"
         ? (sameAsApproved ? String(approvedCandidate.model) : null)
         : provider==="openrouter"
-          ? (sameAsApproved ? String(approvedCandidate.model) : openRouterModel())
+          ? (sameAsApproved ? String(approvedCandidate.model) : String(brain.model || openRouterModel()))
           : provider==="cloudflare"
             ? (sameAsApproved ? String(approvedCandidate.model) : (process.env.CLOUDFLARE_MODEL || null))
             : provider==="apinex"
