@@ -51,7 +51,8 @@ test("OpenRouter empty completions immediately fall through to another candidate
   assert.match(gateway, /empty completion is evidence that this route is not usable/);
   assert.doesNotMatch(gateway, /const retry=await callOpenAICompatible/);
   assert.match(gateway, /const fallbackLimit=boundedIntegerSetting\(process\.env\.OPENROUTER_MAX_MODEL_FALLBACKS,12,8,20\)/);
-  assert.match(gateway, /const readiness=await preflightModel\("openrouter",model,employee\)/);
+  assert.match(gateway, /Send the real task immediately/);
+  assert.doesNotMatch(gateway, /const readiness=await preflightModel\("openrouter",model,employee\)/);
 });
 
 
