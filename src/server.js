@@ -759,6 +759,9 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
         }
       });
       emit("gateway.model_success",{employeeId:employee?.id || null,role,provider:"openrouter",model});
+      // A real successful task is stronger evidence than catalog discovery. Promote
+      // this provider/model for this role so Model Scout can reuse it on later tasks.
+      recordModelQualification({provider:"openrouter",model,role,ok:true,latencyMs:null,checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+PREFLIGHT_TTL_MS).toISOString()});
       return result;
     } catch(error) {
       lastError=error;
