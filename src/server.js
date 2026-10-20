@@ -5,6 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, getCandidatePool, selectModelForTask, recordModelQualification } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
+import { extractFinalAssistantText } from "./provider-response.js";
 import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
 import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
@@ -463,14 +464,15 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
         }
         continue;
       }
-      const content=message.content;
-      const reasoning=message.reasoning;
-      const reasoningDetails=Array.isArray(message.reasoning_details)
-        ? message.reasoning_details.map(x=>x?.text||x?.content||"").filter(Boolean).join("\n")
-        : "";
       const choiceText=data?.choices?.[0]?.text;
-      const text=String(typeof content==="string" ? content : Array.isArray(content) ? content.map(x=>x?.text||"").filter(Boolean).join("\n") : reasoning || reasoningDetails || choiceText || "").trim();
-      if(!text) throw new Error(provider+" returned an empty response");
+      const text=extractFinalAssistantText(message,choiceText);
+      if(!text) {
+        const finishReason=String(data?.choices?.[0]?.finish_reason || "unknown");
+        const error=new Error(provider+" returned an empty response (no final assistant content; finish_reason="+finishReason+")");
+        error.code="EMPTY_RESPONSE";
+        error.finishReason=finishReason;
+        throw error;
+      }
       return {text,model,usage:data?.usage||null};
     }
     throw new Error("AI tool loop exceeded maximum rounds");
