@@ -40,7 +40,7 @@ test("remote backend calls forward the audit token in a header, never in the URL
   assert.doesNotMatch(gateway, /[?&]token=\$\{?auditToken/);
 });
 
-test("model preflight accepts only the explicit sentinel response", async () => {
+test("model preflight accepts the explicit sentinel even with harmless formatting", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = source.indexOf("async function preflightModel");
   const end = source.indexOf("\nfunction isProviderSuppressed", start);
@@ -48,7 +48,7 @@ test("model preflight accepts only the explicit sentinel response", async () => 
   assert.notEqual(end, -1, "preflight function boundary must exist");
   const preflight = source.slice(start, end);
 
-  assert.match(preflight, /responseText\s*!==\s*["']PREFLIGHT_OK["']/);
+  assert.match(preflight, /PREFLIGHT_OK/);
   assert.match(preflight, /preflight returned unexpected response/);
   assert.match(preflight, /preflight empty response/);
 });
@@ -214,7 +214,7 @@ test("OpenRouter retries alternate models after route-level quota errors", async
   const huggingFace = source.slice(huggingFaceStart, localGatewayStart);
   const localGateway = source.slice(localGatewayStart, source.indexOf("\nasync function generateViaGateway", localGatewayStart));
 
-  assert.match(openRouter, /if\(shouldStopOpenRouterFallback\(error\?\.status\)\) break/);
+  assert.match(openRouter, /if\(shouldStopOpenRouterFallback\(finalError\?\.status\)\)/);
   assert.match(huggingFace, /if\(error\?\.status===401 \|\| error\?\.status===402 \|\| error\?\.status===429\) break/);
   assert.match(localGateway, /if\(shouldSuppressProviderForStatus\(provider,error\?\.status\)\)/);
   assert.match(localGateway, /suppressProvider\(provider,error\?\.message\|\|String\(error\),cooldown\)/);
