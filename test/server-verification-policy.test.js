@@ -303,7 +303,7 @@ test("independent verifier excludes planner, synthesis, and worker models", asyn
   const readyStart = source.indexOf("async function ensureEmployeeReady");
   const readyEnd = source.indexOf("\nfunction isProviderSuppressed", readyStart);
   const verifyStart = source.indexOf("async function verifyRootTask");
-  const verifyEnd = source.indexOf("\nasync function executeRootTask", verifyStart);
+  const verifyEnd = source.indexOf("async function executeRootTask", verifyStart);
   const ready = source.slice(readyStart, readyEnd);
   const verify = source.slice(verifyStart, verifyEnd);
 
