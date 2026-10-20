@@ -623,6 +623,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
   const maxProbes=boundedIntegerSetting(process.env.MODEL_PREFLIGHT_MAX_PROBES,8,4,20);
   for(const candidate of unique){
     if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
+    if(maxProbes<=4) { if(probes>=4) break; }
     if(probes>=maxProbes) break;
     probes++;
     const check=await preflightModel(candidate.provider,candidate.model,employee);
