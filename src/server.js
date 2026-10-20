@@ -6,7 +6,7 @@ import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTa
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
-import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus } from "./provider-retry-policy.js";
+import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
@@ -311,7 +311,7 @@ async function generateWithGemini(task, preferredModel, configuredOverride = nul
         emit("ai.error",{provider:"gemini",model,attempt:attempt+1,error:error?.message||String(error),transient:Boolean(error?.transient),quota});
         if (quota) {
           emit("ai.quota_exhausted",{provider:"gemini",model,error:error?.message||String(error)});
-          suppressProvider("gemini",error?.message||"Gemini quota exhausted",60*60*1000);
+          suppressProvider("gemini",error?.message||"Gemini quota exhausted",12*60*60*1000);
           return Promise.reject(lastError);
         }
         if (!error?.transient || attempt===2) break;
@@ -565,7 +565,7 @@ async function preflightModel(provider, model, employee) {
     const transient=Boolean(error?.transient)||/402|404|408|409|429|quota|rate.?limit|timeout|temporarily|unavailable|overloaded|empty response|does not exist|not found/i.test(message);
     const ttl= /402|404|does not exist|not found|invalid model/i.test(message) ? 6*60*60*1000 : 15*60*1000;
     if(shouldSuppressProviderForStatus(provider,error?.status)) {
-      const cooldown=Number(error?.status)===429 ? 60*1000 : 15*60*1000;
+      const cooldown=providerCooldownMs(provider,error?.status,message);
       suppressProvider(provider,message,cooldown);
     } else suppressModel(model,message,ttl,provider);
     const failedAt=new Date().toISOString();
@@ -921,7 +921,7 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
     } catch(error) {
       lastError=error;
       if(shouldSuppressProviderForStatus(provider,error?.status)) {
-        const cooldown=Number(error?.status)===429 ? 60*1000 : 15*60*1000;
+        const cooldown=providerCooldownMs(provider,error?.status,error?.message||String(error));
         suppressProvider(provider,error?.message||String(error),cooldown);
       }
       emit("gateway.provider_failed",{employeeId:employee.id,provider,error:error?.message||String(error),transient:Boolean(error?.transient),freeOnly:freeOnly(),backend:"local"});
