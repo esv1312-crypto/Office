@@ -1,0 +1,163 @@
+name: AI-OFFICE four-employee live task test
+
+on:
+  push:
+    branches:
+      - fix/evidence-index-markdown-formats
+    paths:
+      - .github/workflows/office-four-employee-live-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-office-four-employee-live-test
+  cancel-in-progress: false
+
+jobs:
+  four-employee-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OFFICE_BASE_URL: https://ai-office-runtime-8pir.onrender.com
+      OFFICE_AUDIT_TOKEN: ${{ secrets.OFFICE_AUDIT_TOKEN }}
+    steps:
+      - name: Assign one real task to four employees and verify completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, time, urllib.request, urllib.error, sys
+
+          base = os.environ["OFFICE_BASE_URL"].rstrip("/")
+          token = os.environ.get("OFFICE_AUDIT_TOKEN", "").strip()
+          if not token:
+              raise SystemExit("FAIL: OFFICE_AUDIT_TOKEN secret is missing; value was not printed")
+          headers = {
+              "x-ai-office-audit-token": token,
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+          }
+
+          def request(method, path, payload=None, timeout=40):
+              body = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(base + path, data=body, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=timeout) as response:
+                  raw = response.read().decode("utf-8", "replace")
+                  return response.status, json.loads(raw) if raw else {}
+
+          employees_status, employees_data = request("GET", "/api/employees")
+          if employees_status != 200 or employees_data.get("ok") is not True:
+              raise SystemExit("FAIL: production did not return the authorized employee roster")
+          roster = employees_data.get("employees", [])
+          required = ["analyst", "developer", "verifier", "executor"]
+          selected = {e.get("id"): e for e in roster}
+          missing = [employee_id for employee_id in required if employee_id not in selected]
+          if missing:
+              print(json.dumps({"roster_ids": list(selected), "missing_required_employees": missing}))
+              raise SystemExit("FAIL: required employees are not present in production")
+          print(json.dumps({
+              "check": "production_employee_roster",
+              "ok": True,
+              "employees": [{
+                  "id": selected[eid].get("id"),
+                  "role": selected[eid].get("role"),
+                  "provider": (selected[eid].get("brain") or {}).get("provider", selected[eid].get("provider")),
+                  "model": (selected[eid].get("brain") or {}).get("model", selected[eid].get("model")),
+                  "configured": selected[eid].get("configured")
+              } for eid in required]
+          }, ensure_ascii=False), flush=True)
+
+          task = """AI-OFFICE LIVE ACCEPTANCE TASK — READ ONLY; DO NOT USE EXTERNAL TOOLS.
+          Decide whether the planned launch is permitted from this complete dossier.
+          FACT 1: The written launch rule says launch is permitted only after approval is received.
+          FACT 2: The approval register says approval has NOT been received.
+          FACT 3: The planned launch date is tomorrow.
+          Each of the four workers must independently evaluate the rule and facts, state a clear GO or NO-GO decision, explain the exact evidence, and distinguish FACT from INFERENCE and UNPROVEN.
+          The correct result must follow the rule even if the launch date is near.
+          Each worker MUST end with a parseable line in this exact format:
+          EVIDENCE INDEX: launch decision | INFERENCE | supplied dossier | FACT 1 + FACT 2 | the rule requires approval and the register confirms it is absent
+          Chief: delegate exactly four subtasks, one each to analyst, developer, verifier, and executor. Do not omit or substitute any worker. Do not perform or claim any external action."""
+          status, accepted = request("POST", "/api/tasks", {
+              "task": task,
+              "employeeId": "chief",
+              "kind": "root"
+          })
+          if status != 202 or accepted.get("ok") is not True:
+              print(json.dumps({"http_status": status, "response": accepted}, ensure_ascii=False))
+              raise SystemExit("FAIL: production did not accept the four-employee task")
+          root = accepted.get("task") or {}
+          task_id = root.get("id")
+          if not task_id:
+              raise SystemExit("FAIL: accepted task response had no task ID")
+          print(json.dumps({
+              "check": "task_accepted",
+              "ok": True,
+              "task_id": task_id,
+              "status": root.get("status"),
+              "planner_model": root.get("model")
+          }), flush=True)
+
+          deadline = time.time() + 1200
+          last = root
+          while time.time() < deadline:
+              try:
+                  _, data = request("GET", "/api/tasks/" + task_id, timeout=40)
+                  last = data.get("task") or data
+              except Exception as exc:
+                  print(json.dumps({"check": "poll", "transient_error": str(exc)}), flush=True)
+                  time.sleep(5)
+                  continue
+              state = str(last.get("status", "")).lower()
+              children = last.get("children") or []
+              if state in ("completed", "failed", "cancelled", "canceled", "dead"):
+                  break
+              time.sleep(8)
+
+          children = last.get("children") or []
+          results = []
+          for child in children:
+              results.append({
+                  "employee_id": child.get("employeeId"),
+                  "employee": child.get("employee"),
+                  "role": child.get("role"),
+                  "status": child.get("status"),
+                  "provider": child.get("provider"),
+                  "model": child.get("model"),
+                  "error": child.get("error"),
+                  "result": child.get("result"),
+                  "evidence_index": child.get("evidenceSummary")
+              })
+          by_id = {item.get("employee_id"): item for item in results}
+          missing_workers = [eid for eid in required if eid not in by_id]
+          failed_workers = [eid for eid in required if eid in by_id and by_id[eid].get("status") != "completed"]
+          used_models = {by_id[eid].get("model") for eid in required if eid in by_id and by_id[eid].get("model")}
+          decisions = {
+              eid: ("NO-GO" in str(by_id[eid].get("result") or "").upper())
+              for eid in required if eid in by_id
+          }
+          report = {
+              "check": "four_employee_live_task",
+              "task_id": task_id,
+              "root_status": last.get("status"),
+              "planner_provider": last.get("plannerProvider"),
+              "planner_model": last.get("plannerModel"),
+              "workers": results,
+              "missing_workers": missing_workers,
+              "failed_workers": failed_workers,
+              "distinct_worker_models": sorted(used_models),
+              "distinct_worker_model_count": len(used_models),
+              "all_workers_decided_no_go": len(decisions) == 4 and all(decisions.values())
+          }
+          print(json.dumps(report, ensure_ascii=False)[:24000], flush=True)
+          if str(last.get("status", "")).lower() != "completed":
+              raise SystemExit("FAIL: root task did not complete successfully")
+          if missing_workers or failed_workers:
+              raise SystemExit("FAIL: one or more of the four required employees did not complete")
+          if len(used_models) != 4:
+              raise SystemExit("FAIL: production did not use four distinct worker models")
+          if not report["all_workers_decided_no_go"]:
+              raise SystemExit("FAIL: one or more employees did not independently reach the expected NO-GO decision")
+          print("PASS: four distinct model assignments; all four employees completed the task with the expected decision.", flush=True)
+          PY
