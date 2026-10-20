@@ -135,6 +135,16 @@ test("planned subtasks and recovery workers are persisted before execution", asy
 });
 
 
+test("evidence smoke leaves an independent model available for root verification", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf('app.get("/api/smoke/evidence"');
+  const end = server.indexOf("\\n\\nasync function startOfficeAudit()", start);
+  const route = server.slice(start, end);
+  assert.match(route, /Delegate exactly two subtasks: Analyst and Developer/);
+  assert.match(route, /Do not create Verifier or Executor subtasks/);
+  assert.match(route, /runtime independent verifier must reject any material finding without a source path and locator/);
+});
+
 test("root recovery smoke fixture provides explicit evidence-verification checks", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = server.indexOf('app.get("/api/smoke/recovery"');

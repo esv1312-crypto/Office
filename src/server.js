@@ -2071,9 +2071,10 @@ app.get("/api/smoke/evidence", async (req,res)=>{
     "===== test/config.txt =====",
     "FACT C: The retry limit is 2.",
     "Requirements:",
+    "- Delegate exactly two subtasks: Analyst and Developer. Do not create Verifier or Executor subtasks; the runtime runs its independent verifier after synthesis.",
     "- Analyst must report all three facts with exact source path and label FACT.",
     "- Developer must independently verify the same three facts.",
-    "- Verifier must reject any material finding without a source path and locator.",
+    "- The runtime independent verifier must reject any material finding without a source path and locator.",
     "- Final result must separate FACT, INFERENCE, ASSUMPTION and UNPROVEN.",
     "This is an internal read-only smoke test; do not perform external actions."
   ].join("\n");
