@@ -362,3 +362,13 @@ test("independent verifier prompt compacts runtime evidence and bounds worker/fi
   assert.match(verification, /result:String\(worker\.result\|\|""\)\.slice\(0,2200\)/);
   assert.match(verification, /finalResult:String\(record\.result\s*\|\|\s*""\)\.slice\(0,8000\)/);
 });
+
+test("independent verifier excludes only models that produced completed worker results", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function verifyRootTask");
+  const next = source.indexOf(String.fromCharCode(10)+"async function executeRootTask", start);
+  const verification = source.slice(start, next);
+  assert.match(verification, /completedRelatedTasks=relatedTasks\.filter\(task=>task\.status==="completed"/);
+  assert.match(verification, /\.\.\.completedRelatedTasks\.map\(task=>task\.model\)/);
+  assert.doesNotMatch(verification, /\.\.\.relatedTasks\.map\(task=>task\.model\)/);
+});
