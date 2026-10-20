@@ -870,6 +870,9 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
     : Array.isArray(forcedProvider)
       ? { provider:String(forcedProvider[0] || "auto").toLowerCase(), model:null, taskKind:"forced-provider", candidates:[] }
       : resolveBrain(employee, task);
+  const rootRecord=taskId ? tasks.get(taskId) : null;
+  const rootTask=rootRecord ? rootTaskFor(rootRecord) : null;
+  const allowTools=!(rootTask?.kind==="smoke" || rootTask?.readOnlyAudit===true);
   const providers=strictCandidate && approvedCandidate
     ? [String(approvedCandidate.provider).toLowerCase()].filter(p=>aiConfigured(p))
     : Array.isArray(forcedProvider)
@@ -899,12 +902,12 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       let result;
       if(provider==="gemini") result=await generateWithGemini(task,model,overrides.geminiModels || null);
       else if(provider==="huggingface") result=await generateWithHuggingFace(task,employee,model,!strictCandidate);
-      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate,!strictCandidate && toolSchemasForEmployee(employee).length>0,aiRequestTimeoutMs());
+      else if(provider==="openrouter") result=await generateWithOpenRouter(task,employee,model,taskId,!strictCandidate,!strictCandidate && allowTools && toolSchemasForEmployee(employee).length>0,aiRequestTimeoutMs());
       else if(provider==="cloudflare") result=await generateWithCloudflare(task,model);
       else if(provider==="apinex") {
         const preflight=await preflightModel(provider,model,employee);
         if(!preflight.ok) throw Object.assign(new Error("APINEX model failed preflight"),{code:"PREFLIGHT_FAILED"});
-        const enableTools=!strictCandidate && toolSchemasForEmployee(employee).length>0;
+        const enableTools=!strictCandidate && allowTools && toolSchemasForEmployee(employee).length>0;
         result=await generateWithApinex(task,employee,model,taskId,enableTools,aiRequestTimeoutMs());
       }
       else if(provider==="openai") { if(freeOnly()) throw Object.assign(new Error("Paid OpenAI is blocked by FREE_ONLY policy"),{code:"PAID_PROVIDER_BLOCKED"}); result=await generateWithOpenAI(task,model); }
@@ -1167,7 +1170,7 @@ function buildWorkerPrompt(record,employee){
 async function executeWorkerTask(record) {
   await acquireWorkerSlot(record.id);
   try {
-    await transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1});
+    await transitionTask(record,"running",{startedAt:new Date().toISOString(),attempts:Number(record.attempts||0)+1,waitingReason:null});
     const employee=getEmployee(record.employeeId);
     record.employeeId=employee.id; record.employee=employee.name; record.role=employee.role;
     const ready=await ensureEmployeeReady(employee,record.task);
@@ -1623,7 +1626,7 @@ function buildPlanningPrompt(task) {
 
 async function executeRootTask(record) {
   try {
-    await transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1});
+    await transitionTask(record,"planning",{startedAt:new Date().toISOString(),attempts:Number(record.attempts || 0)+1,waitingReason:null});
     const chief=getEmployee("chief");
     const planResult=await generateViaGateway(buildPlanningPrompt(record.task),chief,null,record.id);
     record.plannerModel=planResult.model || null;
@@ -2201,6 +2204,7 @@ async function startOfficeAudit() {
       "\n===== SOURCE DOSSIER =====\n"+dossier.join("")
     ].join("\n");
     const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
+    record.readOnlyAudit=true;
     tasks.set(record.id,record);
     try {
       await saveTaskSnapshot(taskSnapshot(record));
