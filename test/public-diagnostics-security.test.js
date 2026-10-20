@@ -88,9 +88,9 @@ test("task lifecycle endpoints require internal or audit authorization", () => {
   for (const marker of protectedPaths) {
     const start = source.indexOf(marker);
     assert.notEqual(start, -1, marker + " exists");
-    const end = source.indexOf("\\napp.", start + 5);
+    const end = source.indexOf("\napp.", start + 5);
     const route = source.slice(start, end < 0 ? source.length : end);
-    assert.match(route, /requireInternalOrAudit\\(req,res\\)/, marker + " is protected");
+    assert.match(route, /requireInternalOrAudit\(req,res\)/, marker + " is protected");
   }
 });
 
@@ -103,11 +103,11 @@ test("live audit endpoints reject missing or query-string-only credentials", () 
   ]) {
     const start = source.indexOf(marker);
     assert.notEqual(start, -1, marker + " exists");
-    const end = source.indexOf("\\napp.", start + 5);
+    const end = source.indexOf("\napp.", start + 5);
     const route = source.slice(start, end < 0 ? source.length : end);
-    assert.match(route, /const expected=String\\(process\\.env\\.OFFICE_AUDIT_TOKEN/);
-    assert.match(route, /req\\.headers\\["x-ai-office-audit-token"\\]/);
-    assert.match(route, /!expected \\|\\| supplied !== expected/);
-    assert.doesNotMatch(route, /req\\.query\\?\\.token/);
+    assert.match(route, /const expected=String\(process\.env\.OFFICE_AUDIT_TOKEN/);
+    assert.match(route, /req\.headers\["x-ai-office-audit-token"\]/);
+    assert.match(route, /!expected \|\| supplied !== expected/);
+    assert.doesNotMatch(route, /req\.query\?\.token/);
   }
 });
