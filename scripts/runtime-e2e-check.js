@@ -16,6 +16,7 @@ const planner = {
 };
 
 let recoveryVerifierFailedOnce = false;
+let missingEvidenceSentOnce = false;
 
 function mockCompletion(body) {
   const user = String(body?.messages?.at(-1)?.content || "");
@@ -44,7 +45,12 @@ function mockCompletion(body) {
   } else if (user.includes("Synthesize the worker results")) {
     content = "Both delegated workers returned results. The independent verifier checked the required completion evidence.";
   } else if (user.includes("EVIDENCE-FIRST RULES")) {
-    content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
+    if (user.includes("FORCE_MISSING_EVIDENCE_TEST") && !missingEvidenceSentOnce) {
+      missingEvidenceSentOnce = true;
+      content = "FACT: The assigned worker completed its bounded analysis, but deliberately omitted the required evidence index.";
+    } else {
+      content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
+    }
   } else if (user.includes("AI-OFFICE PREFLIGHT.")) {
     content = "PREFLIGHT_OK";
   } else {
@@ -118,7 +124,7 @@ test("full root-task lifecycle completes with delegated workers and independent 
     WORKER_WATCHDOG_INTERVAL_MS: "3600000",
     AI_REQUEST_TIMEOUT_MS: "5000",
     PREFLIGHT_TIMEOUT_MS: "3000",
-    MAX_WORKER_REPLACEMENTS: "0",
+    MAX_WORKER_REPLACEMENTS: "1",
     MAX_RECOVERY_ATTEMPTS: "0"
   };
   const child = spawn(process.execPath, ["src/server.js"], {
@@ -189,6 +195,46 @@ test("full root-task lifecycle completes with delegated workers and independent 
     assert.ok(finalTask.workerResults.every(worker => worker.status === "completed" && worker.result));
     assert.ok(finalTask.subtaskIds.length === 2);
     assert.ok(mockRequests >= 6, `expected preflight + planner + workers + synthesis + verifier requests, got ${mockRequests}`);
+
+    // A worker that returns prose but omits the mandatory evidence index must fail,
+    // then the parent must recover with a replacement instead of treating it as success.
+    const missingEvidenceResponse = await request("/api/tasks", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ai-office-audit-token": token },
+      body: JSON.stringify({ task: "FORCE_MISSING_EVIDENCE_TEST: require a worker replacement after missing evidence.", employeeId: "chief" })
+    });
+    const missingEvidenceText = await missingEvidenceResponse.text();
+    assert.equal(missingEvidenceResponse.status, 202, missingEvidenceText);
+    const missingEvidenceAccepted = JSON.parse(missingEvidenceText);
+    let missingEvidenceRoot;
+    const missingEvidenceDeadline = Date.now() + 25000;
+    while (Date.now() < missingEvidenceDeadline) {
+      const response = await request(`/api/tasks/${encodeURIComponent(missingEvidenceAccepted.task.id)}`, {
+        headers: { "x-ai-office-audit-token": token }
+      });
+      assert.equal(response.status, 200);
+      missingEvidenceRoot = (await response.json()).task;
+      if (["completed", "failed"].includes(missingEvidenceRoot.status)) break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    const missingEvidenceStateResponse = await request("/api/state", { headers: { "x-ai-office-audit-token": token } });
+    const missingEvidenceState = missingEvidenceStateResponse.ok ? await missingEvidenceStateResponse.json() : null;
+    const missingEvidenceEvents = (missingEvidenceState?.events || []).filter(event =>
+      event.type === "worker.evidence_index_missing" && event.parentTaskId === missingEvidenceAccepted.task.id
+    );
+    assert.equal(missingEvidenceRoot?.status, "completed", `missing-evidence worker was not recovered: ${JSON.stringify({
+      status: missingEvidenceRoot?.status,
+      error: missingEvidenceRoot?.error,
+      workerResults: missingEvidenceRoot?.workerResults,
+      missingEvidenceEvents
+    })}\n${output}`);
+    assert.ok(missingEvidenceEvents.length >= 1, "runtime did not record the missing evidence index");
+    assert.ok(missingEvidenceRoot.workerResults.some(worker =>
+      worker.status === "failed" && String(worker.error || "").includes("missing required EVIDENCE INDEX")
+    ), "worker missing evidence was incorrectly marked completed");
+    assert.ok(missingEvidenceRoot.workerResults.some(worker =>
+      worker.status === "completed" && worker.replacesTaskId
+    ), "a replacement worker did not complete after missing evidence");
 
     const recoveryAcceptedResponse = await request("/api/tasks", {
       method: "POST",
