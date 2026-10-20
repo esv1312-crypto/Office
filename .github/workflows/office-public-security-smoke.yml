@@ -57,7 +57,7 @@ jobs:
                   raise SystemExit("FAIL: public health endpoint leaked internal diagnostic fields: " + path)
 
           checks = [
-              ("create_task_without_auth", "/api/tasks", "POST", {"task": "SECURITY TEST MUST NOT CREATE A TASK", "employeeId": "chief"}),
+              ("create_task_without_auth", "/api/tasks", "POST", {"task": "SECURITY TEST MUST NOT CREATE A TASK", "employeeId": "chief"}, None),
               ("read_task_without_auth", "/api/tasks/security-smoke-nonexistent", "GET", None, None),
               ("create_subtask_without_auth", "/api/tasks/security-smoke-nonexistent/subtasks", "POST", {"task": "must not be created"}, None),
               ("diagnostic_without_auth", "/api/env-diagnostic", "GET", None, None),
