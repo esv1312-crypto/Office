@@ -396,7 +396,7 @@ test("verifier preflight includes configured Cloudflare and explicitly free APIN
   const ready = source.slice(readyStart, readyEnd);
 
   assert.match(ready, /const apinexModels=aiConfigured\("apinex"\)/);
-  assert.match(ready, /getDynamicPool\(employee,"apinex"\)\.filter\(model=>String\(model\)\.startsWith\("free\/"\)\)/);
+  assert.match(ready, /getCandidatePool\(employee,"apinex"\)\.filter\(model=>String\(model\)\.startsWith\("free\/"\)\)/);
   assert.match(ready, /String\(process\.env\.APINEX_MODEL\|\|""\)\.trim\(\)\.startsWith\("free\/"\)/);
   assert.match(ready, /const cloudflareModels=aiConfigured\("cloudflare"\)/);
   assert.match(ready, /provider:"cloudflare",model:String\(process\.env\.CLOUDFLARE_MODEL\|\|"@cf\/meta\/llama-3\.1-8b-instruct"\)/);
