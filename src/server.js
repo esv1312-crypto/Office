@@ -1387,7 +1387,7 @@ async function verifyRootTask(record) {
   // enormous candidate/error diagnostics that push free models past their context limits.
   const eventEvidence=events
     .filter(e => e.ts >= (record.startedAt || record.acceptedAt || "1970-01-01T00:00:00.000Z"))
-    .filter(e => /task\\.(accepted|completed|failed|state_changed)|gateway\\.(fallback|model_fallback|model_success|model_failed)|verification\\.(requested|model_selected|model_attempt_failed|passed|failed)|model\\.preflight_(passed|failed|selected)/.test(String(e.type||"")))
+    .filter(e => /task\.(accepted|completed|failed|state_changed)|gateway\.(fallback|model_fallback|model_success|model_failed)|verification\.(requested|model_selected|model_attempt_failed|passed|failed)|model\.preflight_(passed|failed|selected)/.test(String(e.type||"")))
     .slice(-60)
     .map(e=>({
       ts:e.ts||null,type:e.type||null,taskId:e.taskId||null,parentTaskId:e.parentTaskId||null,
