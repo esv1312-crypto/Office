@@ -814,9 +814,14 @@ async function generateWithOpenAI(task, preferredModel) {
 }
 
 async function generateViaLocalGateway(task, employee, forcedProvider = null, approvedCandidate = null, taskId = null, strictCandidate = false, overrides = {}) {
+  // Explicit provider lists are used by controlled fallback checks and callers that
+  // intentionally bypass Model Scout. Do not let an unrelated/unsupported role model
+  // prevent those providers from being attempted.
   const brain=approvedCandidate
     ? { ...resolveBrain(employee, task), provider:String(approvedCandidate.provider), model:String(approvedCandidate.model), candidates:[approvedCandidate] }
-    : resolveBrain(employee, task);
+    : Array.isArray(forcedProvider)
+      ? { provider:String(forcedProvider[0] || "auto").toLowerCase(), model:null, taskKind:"forced-provider", candidates:[] }
+      : resolveBrain(employee, task);
   const providers=strictCandidate && approvedCandidate
     ? [String(approvedCandidate.provider).toLowerCase()].filter(p=>aiConfigured(p))
     : paidTestEnabled()
