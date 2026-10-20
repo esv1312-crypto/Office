@@ -426,6 +426,7 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
         ...(enableTools && toolSchemasForEmployee(getEmployee(employeeId||"executor")).length
           ? {tools:toolSchemasForEmployee(getEmployee(employeeId||"executor")),tool_choice:"auto"}
           : {}),
+        ...(provider==="openrouter"&&!paidTestEnabled()?{max_tokens:boundedIntegerSetting(process.env.OPENROUTER_MAX_OUTPUT_TOKENS,2048,256,8192)}:{}),
         ...(provider==="openrouter"&&paidTestEnabled()?{max_tokens:paidTestMaxOutputTokens(),reasoning:{effort:String(process.env.AI_PAID_TEST_REASONING_EFFORT||"low")}}: {})
       };
       const response=await fetch(baseUrl,{
