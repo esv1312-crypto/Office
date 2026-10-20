@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { isZeroPrice, isUsableFreeModel, resolveProviderDiscovery, recordModelQualification, getModelScoutState } from "../src/model-scout.js";
+import { isZeroPrice, isUsableFreeModel, resolveProviderDiscovery, recordModelQualification, getModelScoutState, isModelQualifiedForRole } from "../src/model-scout.js";
 
 test("explicit zero input and output pricing is free", () => {
   assert.equal(isZeroPrice({ input: "0", output: "0" }), true);
@@ -127,4 +127,29 @@ test("runtime reports model preflight results to Model Scout", async () => {
   assert.match(source, /recordModelQualification/);
   assert.match(source, /ok:true,latencyMs:entry\.latencyMs/);
   assert.match(source, /ok:false,latencyMs:Date\.now\(\)-started/);
+});
+
+
+test("production model qualification requires a passed, unexpired probe for the same provider, model, and role", () => {
+  const now = Date.parse("2026-10-20T16:00:00.000Z");
+  const qualifications = new Map([
+    ["openrouter:vendor/good:verifier", { status: "passed", expiresAt: "2026-10-20T16:10:00.000Z" }],
+    ["openrouter:vendor/expired:verifier", { status: "passed", expiresAt: "2026-10-20T15:59:00.000Z" }],
+    ["huggingface:vendor/good:developer", { status: "passed", expiresAt: "2026-10-20T16:10:00.000Z" }],
+    ["openrouter:vendor/failed:verifier", { status: "failed", expiresAt: "2026-10-20T16:10:00.000Z" }]
+  ]);
+  assert.equal(isModelQualifiedForRole({provider:"openrouter",id:"vendor/good"}, "verifier", qualifications, now), true);
+  assert.equal(isModelQualifiedForRole({provider:"openrouter",id:"vendor/expired"}, "verifier", qualifications, now), false);
+  assert.equal(isModelQualifiedForRole({provider:"openrouter",id:"vendor/failed"}, "verifier", qualifications, now), false);
+  assert.equal(isModelQualifiedForRole({provider:"huggingface",id:"vendor/good"}, "verifier", qualifications, now), false);
+  assert.equal(isModelQualifiedForRole({provider:"huggingface",id:"vendor/good"}, "developer", qualifications, now), true);
+});
+
+test("catalog discovery is explicitly unverified for OpenRouter and Hugging Face", async () => {
+  const source = await readFile(new URL("../src/model-scout.js", import.meta.url), "utf8");
+  assert.match(source, /provider:"openrouter",[\s\S]{0,100}qualification:"discovered_unverified"/);
+  assert.match(source, /provider:"huggingface",[\s\S]{0,120}qualification:"discovered_unverified"/);
+  assert.match(source, /\.filter\(m=>isModelQualifiedForRole\(m,role\)\)/);
+  assert.match(source, /export function getCandidatePool/);
+  assert.match(source, /rankRoles\(\);[\s\S]*?const pool=state\.rolePools\[role\]/);
 });
