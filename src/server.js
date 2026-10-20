@@ -623,7 +623,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
   const allUnique=candidates;
   const unique=allUnique.filter(x=>!excludedModels.has(x.model));
   let probes=0;
-  const maxProbes=boundedIntegerSetting(process.env.MODEL_PREFLIGHT_MAX_PROBES,8,4,20);
+  const maxProbes=boundedIntegerSetting(process.env.MODEL_PREFLIGHT_MAX_PROBES,12,8,20);
   for(const candidate of unique){
     if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
     if(maxProbes<=4) { if(probes>=4) break; }
@@ -710,7 +710,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
   const pool=allowModelFallback ? openRouterPool(employee, preferredModel) : [String(preferredModel||"")].filter(Boolean);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
-  const fallbackLimit=boundedIntegerSetting(process.env.OPENROUTER_MAX_MODEL_FALLBACKS,8,2,20);
+  const fallbackLimit=boundedIntegerSetting(process.env.OPENROUTER_MAX_MODEL_FALLBACKS,12,8,20);
   const ordered=pool.map((_,i)=>pool[(cursor+i)%pool.length]).slice(0,allowModelFallback?fallbackLimit:1);
   openRouterRotation.set(role,(cursor+1)%Math.max(1,pool.length));
 
@@ -741,33 +741,9 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
     } catch(error) {
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
-      if(!shouldStopOpenRouterFallback(error?.status) && /empty response/i.test(error?.message || "") && i===0) {
-        emit("gateway.model_retry",{employeeId:employee?.id || null,role,provider:"openrouter",model,reason:"empty_response",retryIndex:1});
-        try {
-          const retry=await callOpenAICompatible({
-            provider:"openrouter",
-            baseUrl:openRouterChatCompletionsUrl(),
-            apiKey:openRouterApiKey(),
-            model,task,employeeId:employee?.id||"executor",taskId,enableTools,timeoutMs,
-            headers:{
-              "HTTP-Referer":process.env.OPENROUTER_SITE_URL || "https://ai-office-runtime-8pir.onrender.com",
-              "X-Title":"AI-OFFICE"
-            }
-          });
-          // A successful retry is positive runtime evidence. Do not poison the model's
-          // qualification or cooldown state based on the first, transient empty response.
-          const qualifiedAt=new Date().toISOString();
-          const qualifiedUntil=Date.now()+PREFLIGHT_TTL_MS;
-          recordModelQualification({provider:"openrouter",model,role,ok:true,latencyMs:null,checkedAt:qualifiedAt,expiresAt:new Date(qualifiedUntil).toISOString()});
-          preflightCache.set(preflightKey("openrouter",model,role),{ok:true,provider:"openrouter",model,role,latencyMs:null,expiresAt:qualifiedUntil});
-          modelSuppressions.delete("openrouter:"+model);
-          emit("gateway.model_success",{employeeId:employee?.id || null,role,provider:"openrouter",model,retry:true});
-          return retry;
-        } catch(retryError) {
-          lastError=retryError;
-          emit("gateway.model_retry_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:retryError?.message || String(retryError)});
-        }
-      }
+      // An empty completion is evidence that this route is not usable for this request.
+      // Do not spend another full timeout retrying the same model; suppress it and
+      // immediately advance to the next independently preflighted candidate.
       const finalError=lastError || error;
       const failureMessage=String(finalError?.message || "");
       const errorCategory=finalError?.status===402 || /quota|credit|billing/i.test(failureMessage) ? "quota"
