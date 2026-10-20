@@ -2076,7 +2076,7 @@ app.get("/api/smoke/evidence", async (req,res)=>{
     "- Developer must independently verify the same three facts.",
     "- The runtime independent verifier must reject any material finding without a source path and locator.",
     "- Final result must separate FACT, INFERENCE, ASSUMPTION and UNPROVEN.",
-    "This is an internal read-only smoke test; do not perform external actions."
+    "The complete dossier is already in this prompt. Do not call any tools, browser, GitHub, or external services; the file paths are source labels, not URLs. This is an internal read-only smoke test; do not perform external actions."
   ].join("\n");
   const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"smoke"});
   tasks.set(record.id,record);
@@ -2107,7 +2107,7 @@ async function startOfficeAudit() {
     dossier.push("\n===== RUNTIME BROWSER SNAPSHOT =====\n"+JSON.stringify(browser.summary()));
     const taskText=[
       "MASTER ENGINEERING AUDIT — AI-OFFICE.",
-      "READ-ONLY. Do not modify code, infrastructure, GitHub, databases, deployments, external websites, or user data during the audit.",
+      "READ-ONLY. Do not modify code, infrastructure, GitHub, databases, deployments, external websites, or user data during the audit. Do not call tools, browser.request, GitHub, or external services: all source contents and the runtime browser snapshot are already supplied below. Inspect the supplied dossier only; the browser audit is a code/policy review, not a request to launch a browser workflow.",
       "Audit the CURRENT integrated runtime and source dossier as one system. Do not give generic advice. Every material conclusion must be FACT, INFERENCE, ASSUMPTION, or UNPROVEN and cite exact source path plus precise locator (function, endpoint, constant, event, workflow, or line range) or runtime event.",
       "Do not invent evidence. A worker claim is not proof. If a runtime behavior cannot be observed from supplied evidence, mark it UNPROVEN.",
       "",
