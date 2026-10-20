@@ -687,20 +687,20 @@ function isProviderModelSuppressed(provider, model) {
 function openRouterPool(employee, preferredModel = null) {
   const role=String(employee?.role || "executor");
   if (paidTestEnabled()) return [paidTestModel()];
-  const dynamic=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x));
-  let pool=dynamic.length ? dynamic : ["openrouter/free"];
+  const qualified=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter"));
+  const discovered=getCandidatePool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter"));
+  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[role] || [];
+  let pool=[preferredModel,...qualified,...discovered,...staticRoleFallbacks,"openrouter/free"].filter(Boolean);
   try {
     const custom=JSON.parse(process.env.OPENROUTER_MODEL_POOLS_JSON || "null");
     if (custom && Array.isArray(custom[role]) && custom[role].length) {
-      const liveCustom=custom[role].filter(x => x && !isModelSuppressed(x));
-      if (liveCustom.length) pool=[...liveCustom,...pool];
+      const liveCustom=custom[role].filter(x => x && !isModelSuppressed(x,"openrouter"));
+      pool=[...liveCustom,...pool];
     }
   } catch (_) {}
   const configured=String(process.env.OPENROUTER_MODEL || "").trim();
-  if (configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool=[configured,...pool];
-  if (preferredModel && !isModelSuppressed(preferredModel,"openrouter")) pool=[preferredModel,...pool];
-  const result=[...new Set(pool.filter(Boolean))];
-  return result.length ? result : ["openrouter/free"];
+  if (configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool.unshift(configured);
+  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter")))];
 }
 
 async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
@@ -709,13 +709,21 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
   const pool=allowModelFallback ? openRouterPool(employee, preferredModel) : [String(preferredModel||"")].filter(Boolean);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
-  const ordered=pool.map((_,i)=>pool[(cursor+i)%pool.length]);
-  openRouterRotation.set(role,(cursor+1)%pool.length);
+  const fallbackLimit=boundedIntegerSetting(process.env.OPENROUTER_MAX_MODEL_FALLBACKS,8,2,20);
+  const ordered=pool.map((_,i)=>pool[(cursor+i)%pool.length]).slice(0,allowModelFallback?fallbackLimit:1);
+  openRouterRotation.set(role,(cursor+1)%Math.max(1,pool.length));
 
   let lastError;
   for (let i=0;i<ordered.length;i++) {
     const model=ordered[i];
     try {
+      // Catalog membership is not readiness. Qualify every fallback before sending real work.
+      const readiness=await preflightModel("openrouter",model,employee);
+      if(!readiness.ok) {
+        lastError=new Error("Model preflight failed for "+model+": "+String(readiness.error||"unavailable"));
+        emit("gateway.model_skipped",{employeeId:employee?.id||null,role,provider:"openrouter",model,reason:"preflight_failed"});
+        continue;
+      }
       emit("gateway.model_attempt",{employeeId:employee?.id || null,role,provider:"openrouter",model,rotationIndex:i});
       const result=await callOpenAICompatible({
         provider:"openrouter",
@@ -731,6 +739,13 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
       return result;
     } catch(error) {
       lastError=error;
+      const failureMessage=String(error?.message || "");
+      const errorCategory=error?.status===402 || /quota|credit|billing/i.test(failureMessage) ? "quota"
+        : error?.status===429 ? "rate_limited"
+        : /timeout|timed out|abort/i.test(failureMessage) ? "timeout"
+        : /empty response/i.test(failureMessage) ? "invalid_response"
+        : "provider_error";
+      recordModelQualification({provider:"openrouter",model,role,ok:false,errorCategory,transient:Boolean(error?.transient),checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+5*60*1000).toISOString()});
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
       if(shouldStopOpenRouterFallback(error?.status)) break;
       if (/empty response/i.test(error?.message || "") && i===0) {
