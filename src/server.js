@@ -1446,7 +1446,7 @@ async function recoverRootTask(record) {
       "You are a recovery specialist inside AI-OFFICE.",
       "Do not merely describe what should be fixed. Produce a corrected, evidence-rich replacement analysis addressing every failed verification check.",
       "For read-only audits remain read-only. Do not modify the user's project.",
-      "Re-check the supplied original source dossier before each conclusion.",
+      "Re-check any source dossier supplied in the task; if none is supplied, use only the task and available runtime evidence. Do not call browser or external tools unless the original task explicitly requires external research.",
       "Never claim an external action without runtime evidence.",
       "Original task: "+record.task,
       "Failure class: "+failureClass.type,
