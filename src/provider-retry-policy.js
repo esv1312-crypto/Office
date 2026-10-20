@@ -4,3 +4,13 @@ export function shouldStopOpenRouterFallback(status) {
   // suppressing the entire provider.
   return Number(status) === 401;
 }
+
+export function shouldSuppressProviderForStatus(provider, status) {
+  const name=String(provider || "").trim().toLowerCase();
+  const code=Number(status);
+  // OpenRouter serves many independently metered free routes behind one API key.
+  // A model-specific 402/429 must cool down that model, not disable every model.
+  if(name === "openrouter" && (code === 402 || code === 429)) return false;
+  // A 401 indicates the shared provider credential is rejected.
+  return code === 401 || code === 402 || code === 429;
+}

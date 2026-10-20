@@ -564,9 +564,10 @@ async function preflightModel(provider, model, employee) {
     const message=error?.message||String(error);
     const transient=Boolean(error?.transient)||/402|404|408|409|429|quota|rate.?limit|timeout|temporarily|unavailable|overloaded|empty response|does not exist|not found/i.test(message);
     const ttl= /402|404|does not exist|not found|invalid model/i.test(message) ? 6*60*60*1000 : 15*60*1000;
-    if(error?.status===401 || error?.status===402) suppressProvider(provider,message,15*60*1000);
-    else if(error?.status===429) suppressProvider(provider,message,60*1000);
-    else suppressModel(model,message,ttl,provider);
+    if(shouldSuppressProviderForStatus(provider,error?.status)) {
+      const cooldown=Number(error?.status)===429 ? 60*1000 : 15*60*1000;
+      suppressProvider(provider,message,cooldown);
+    } else suppressModel(model,message,ttl,provider);
     const failedAt=new Date().toISOString();
     const expiresAt=Date.now()+Math.min(ttl,PREFLIGHT_TTL_MS);
     const errorCategory=error?.status===401? "auth"
@@ -919,8 +920,10 @@ async function generateViaLocalGateway(task, employee, forcedProvider = null, ap
       return result;
     } catch(error) {
       lastError=error;
-      if(error?.status===401 || error?.status===402) suppressProvider(provider,error?.message||String(error),15*60*1000);
-      else if(error?.status===429) suppressProvider(provider,error?.message||String(error),60*1000);
+      if(shouldSuppressProviderForStatus(provider,error?.status)) {
+        const cooldown=Number(error?.status)===429 ? 60*1000 : 15*60*1000;
+        suppressProvider(provider,error?.message||String(error),cooldown);
+      }
       emit("gateway.provider_failed",{employeeId:employee.id,provider,error:error?.message||String(error),transient:Boolean(error?.transient),freeOnly:freeOnly(),backend:"local"});
       if(providers[providers.indexOf(provider)+1]) emit("gateway.fallback",{from:provider,to:providers[providers.indexOf(provider)+1],reason:error?.message||String(error),backend:"local"});
     }
