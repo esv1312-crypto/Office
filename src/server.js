@@ -630,6 +630,13 @@ async function ensureEmployeeReady(employee, task, options={}) {
     if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
     if(maxProbes<=4) { if(probes>=4) break; }
     if(probes>=maxProbes) break;
+    // OpenRouter free routes are validated by the real task, not by a synthetic
+    // exact-string probe. Some otherwise callable routes reject/empty the probe.
+    // Let generateWithOpenRouter attempt the actual task and fail over on real errors.
+    if(candidate.provider==="openrouter") {
+      emit("model.route_selected_real_task_first",{employeeId:employee.id,role:employee.role,provider:candidate.provider,model:candidate.model});
+      return candidate;
+    }
     probes++;
     const check=await preflightModel(candidate.provider,candidate.model,employee);
     if(check.ok) {
@@ -720,13 +727,9 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
   for (let i=0;i<ordered.length;i++) {
     const model=ordered[i];
     try {
-      // Catalog membership is not readiness. Qualify every fallback before sending real work.
-      const readiness=await preflightModel("openrouter",model,employee);
-      if(!readiness.ok) {
-        lastError=new Error("Model preflight failed for "+model+": "+String(readiness.error||"unavailable"));
-        emit("gateway.model_skipped",{employeeId:employee?.id||null,role,provider:"openrouter",model,reason:"preflight_failed"});
-        continue;
-      }
+      // Send the real task immediately. A synthetic preflight adds latency and can
+      // reject a route that could handle the actual request; actual request failures
+      // below suppress the route and advance to the next candidate.
       emit("gateway.model_attempt",{employeeId:employee?.id || null,role,provider:"openrouter",model,rotationIndex:i});
       const result=await callOpenAICompatible({
         provider:"openrouter",

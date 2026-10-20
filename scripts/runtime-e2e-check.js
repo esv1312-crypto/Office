@@ -194,7 +194,7 @@ test("full root-task lifecycle completes with delegated workers and independent 
     assert.equal(finalTask.workerResults.length, 2);
     assert.ok(finalTask.workerResults.every(worker => worker.status === "completed" && worker.result));
     assert.ok(finalTask.subtaskIds.length === 2);
-    assert.ok(mockRequests >= 6, `expected preflight + planner + workers + synthesis + verifier requests, got ${mockRequests}`);
+    assert.ok(mockRequests >= 5, `expected planner + workers + synthesis + verifier requests, got ${mockRequests}`);
 
     // A worker that returns prose but omits the mandatory evidence index must fail,
     // then the parent must recover with a replacement instead of treating it as success.
