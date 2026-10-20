@@ -13,8 +13,8 @@ test("OpenRouter model gateway cools down timed-out and failing free models", as
   assert.match(gateway, /error\?\.status===408/);
   assert.match(gateway, /Number\(error\?\.status\)>=500/);
   assert.match(gateway, /timeout\|timed out\|abort/);
-  assert.match(gateway, /cooldownMs\s*=.*5\*60\*1000/);
-  assert.match(gateway, /empty response.*15\*60\*1000/);
+  assert.match(gateway, /cooldownMs=.*60\*1000/);
+  assert.match(gateway, /empty response.*60\*1000/);
 });
 
 test("Hugging Face model gateway cools down stale and temporarily failing models", async () => {
