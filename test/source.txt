@@ -1,0 +1,2 @@
+FACT A: The launch gate is called GREEN.
+FACT B: The required owner is STAS.
