@@ -567,11 +567,35 @@ async function preflightModel(provider, model, employee) {
 
 async function ensureEmployeeReady(employee, task, options={}) {
   const brain=resolveBrain(employee,task);
-  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[String(employee?.role||"executor")] || [];
+  const role=String(employee?.role||"executor");
+  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[role] || [];
+  const geminiModels=aiConfigured("gemini")
+    ? String(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean).map(model=>({provider:"gemini",model}))
+    : [];
+  const providerPools={
+    openrouter:[
+      ...getDynamicPool(employee,"openrouter").map(model=>({provider:"openrouter",model})),
+      ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
+    ],
+    huggingface:getDynamicPool(employee,"huggingface").map(model=>({provider:"huggingface",model})),
+    gemini:geminiModels
+  };
+  // Interleave providers so one provider's catalog cannot consume the entire
+  // preflight budget. This is especially important when a provider is suppressed.
+  const orderedProviders=[...new Set([...providerOrder(),"huggingface","gemini"])]
+    .filter(provider=>providerPools[provider]?.length && aiConfigured(provider));
+  const crossProviderCandidates=[];
+  const maxPoolLength=Math.max(0,...orderedProviders.map(provider=>providerPools[provider].length));
+  for(let index=0;index<maxPoolLength;index++) {
+    for(const provider of orderedProviders) {
+      const candidate=providerPools[provider][index];
+      if(candidate) crossProviderCandidates.push(candidate);
+    }
+  }
   const candidates=[
     {provider:brain.provider,model:brain.model},
-    ...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id})),
-    ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
+    ...crossProviderCandidates,
+    ...(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
   ];
   const excludedModels=new Set(options.excludeModels || []);
   const allUnique=candidates.filter(x=>x.provider&&x.model).filter((x,i,a)=>a.findIndex(y=>y.provider===x.provider&&y.model===x.model)===i);
@@ -597,7 +621,6 @@ async function ensureEmployeeReady(employee, task, options={}) {
   emit("model.preflight_exhausted",{employeeId:employee?.id||null,role:employee?.role||null,probes,candidates:diagnostics});
   throw Object.assign(new Error("No preflight-approved model is available for "+employee.role+"; candidates="+JSON.stringify(diagnostics)),{code:"PREFLIGHT_EXHAUSTED"});
 }
-
 function isProviderSuppressed(provider) {
   const key=String(provider).toLowerCase();
   const until=Number(providerSuppressions.get(key)||0);
