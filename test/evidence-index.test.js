@@ -18,11 +18,11 @@ test("extracts evidence written on lines after the EVIDENCE INDEX header", () =>
 
 test("accepts Markdown heading and bold inline index formats", () => {
   assert.deepEqual(
-    extractEvidenceIndex("Report\\n### EVIDENCE INDEX\\nclaim | FACT | src/a.js | fn() | source confirms it"),
+    extractEvidenceIndex("Report\n### EVIDENCE INDEX\nclaim | FACT | src/a.js | fn() | source confirms it"),
     ["claim | FACT | src/a.js | fn() | source confirms it"]
   );
   assert.deepEqual(
-    extractEvidenceIndex("Report\\n**EVIDENCE INDEX:** claim | FACT | src/a.js | fn() | source confirms it"),
+    extractEvidenceIndex("Report\n**EVIDENCE INDEX:** claim | FACT | src/a.js | fn() | source confirms it"),
     ["claim | FACT | src/a.js | fn() | source confirms it"]
   );
 });
