@@ -146,6 +146,17 @@ test("evidence smoke leaves an independent model available for root verification
   assert.match(route, /Do not call any tools, browser, GitHub, or external services/);
 });
 
+test("preflight interleaves alternate providers when the preferred provider is suppressed", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf("async function ensureEmployeeReady");
+  const end = server.indexOf("\nfunction isProviderSuppressed", start);
+  const ready = server.slice(start, end);
+  assert.match(ready, /getDynamicPool\(employee,"huggingface"\)/);
+  assert.match(ready, /aiConfigured\("gemini"\)/);
+  assert.match(ready, /for\(let index=0;index<maxPoolLength;index\+\+\)/);
+  assert.match(ready, /Interleave providers so one provider's catalog cannot consume the entire/);
+});
+
 test("master office audit inspects supplied evidence without launching tools", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = server.indexOf("async function startOfficeAudit()");
