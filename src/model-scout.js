@@ -78,7 +78,13 @@ async function discoverOpenRouter(){
   const models = Array.isArray(data?.data) ? data.data : [];
   return models
     .filter(isUsableFreeModel)
-    .filter(m => (m?.architecture?.output_modalities || ["text"]).includes("text"))
+    .filter(m => {
+      const modalities=m?.architecture?.output_modalities;
+      if(Array.isArray(modalities)) return modalities.includes("text");
+      // Some catalog records omit modality metadata. Exclude known non-chat routes rather
+      // than silently treating every missing modality declaration as text generation.
+      return !/(lyria|image|video|audio|tts|whisper|embed(?:ding)?|rerank|content.?safety|moderation)/i.test(String(m?.id||"")+" "+String(m?.name||""));
+    })
     .map(m => ({
       provider:"openrouter",
       qualification:"discovered_unverified",
