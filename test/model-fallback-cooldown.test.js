@@ -60,3 +60,24 @@ test("free OpenRouter requests always set a bounded output token budget", async 
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   assert.ok(source.includes('provider==="openrouter"&&!paidTestEnabled()?{max_tokens:boundedIntegerSetting(process.env.OPENROUTER_MAX_OUTPUT_TOKENS,2048,256,8192)}:{}'));
 });
+
+
+test("default worker assignments use distinct free models with recent production successes", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = source.indexOf("const DEFAULT_EMPLOYEES = [");
+  const end = source.indexOf("\n];", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const roster = source.slice(start, end);
+  const expected = [
+    'model:"minimax/minimax-m3.1-flash:free"',
+    'model:"dots-studio/dots-3-note-preview:free"',
+    'model:"nvidia/nemotron-3.5-lightning:free"',
+    'model:"liquid/lfm-2.5-2.6b:free"'
+  ];
+  for (const assignment of expected) assert.ok(roster.includes(assignment), "missing worker assignment " + assignment);
+  const workerModels = [...roster.matchAll(/\{id:"(?:developer|analyst|verifier|executor)"[^\n]*?model:"([^"]+)"/g)].map(match => match[1]);
+  assert.equal(workerModels.length, 4);
+  assert.equal(new Set(workerModels).size, 4);
+  assert.ok(workerModels.every(model => model.endsWith(":free")));
+});
