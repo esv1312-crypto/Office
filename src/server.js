@@ -1372,7 +1372,10 @@ async function verifyRootTask(record) {
   const checklist=Array.isArray(record.verificationChecklist) ? record.verificationChecklist : [];
   emit("verification.requested",{taskId:record.id,employeeId:verifier.id,checkCount:checklist.length});
   const relatedTasks=[...tasks.values()].filter(task=>task.parentTaskId===record.id && ["subtask","replacement"].includes(task.kind));
-  const excludedModels=new Set([record.model,record.plannerModel,...relatedTasks.map(task=>task.model)].filter(Boolean));
+  // Only exclude models that actually produced a completed worker result. A failed attempt's
+  // planned model did not contribute to the candidate answer and must not block verification.
+  const completedRelatedTasks=relatedTasks.filter(task=>task.status==="completed" && String(task.result||"").trim());
+  const excludedModels=new Set([record.model,record.plannerModel,...completedRelatedTasks.map(task=>task.model)].filter(Boolean));
   let verifierCandidate;
   try {
     verifierCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels:excludedModels});
