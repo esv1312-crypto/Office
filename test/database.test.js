@@ -146,6 +146,19 @@ test("evidence smoke leaves an independent model available for root verification
   assert.match(route, /Do not call any tools, browser, GitHub, or external services/);
 });
 
+test("watchdog resumes tasks that were waiting for AI availability", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf("async function resumeTasksWaitingForAI()");
+  const end = server.indexOf("\nasync function runWorkerWatchdog()", start);
+  const resume = server.slice(start, end);
+  assert.match(resume, /record\.status!=="waiting"/);
+  assert.match(resume, /record\.waitingReason!=="ai_not_configured"/);
+  assert.match(resume, /if\(!aiAvailable\(record\.provider\)\) continue/);
+  assert.match(resume, /record\.parentTaskId\s*\?\s*executeWorkerTask\(record\)\s*:\s*executeRootTask\(record\)/);
+  assert.match(resume, /aiResumeInProgress/);
+  assert.match(server, /await resumeTasksWaitingForAI\(\)/);
+});
+
 test("preflight interleaves alternate providers when the preferred provider is suppressed", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = server.indexOf("async function ensureEmployeeReady");
