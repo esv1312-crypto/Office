@@ -167,7 +167,7 @@ test("preflight interleaves alternate providers when the preferred provider is s
   assert.match(ready, /getDynamicPool\(employee,"huggingface"\)/);
   assert.match(ready, /aiConfigured\("gemini"\)/);
   assert.match(ready, /for\(let index=0;index<maxPoolLength;index\+\+\)/);
-  assert.match(ready, /Interleave providers so one provider's catalog cannot consume the entire/);
+  assert.match(ready, /Interleave every configured provider so one provider's catalog cannot consume/);
 });
 
 test("master office audit inspects supplied evidence without launching tools", async () => {

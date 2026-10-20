@@ -385,3 +385,20 @@ test("independent verification retries a bounded set of qualified candidates and
   assert.match(verify, /all qualified verifier candidates failed/);
   assert.match(verify, /if\(!result\)\s*\{[\s\S]*?record\.verification=\{status:"FAIL"/);
 });
+
+
+test("verifier preflight includes configured Cloudflare and explicitly free APINEX candidates", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const readyStart = source.indexOf("async function ensureEmployeeReady");
+  const readyEnd = source.indexOf("\nfunction isProviderSuppressed", readyStart);
+  assert.notEqual(readyStart, -1);
+  assert.notEqual(readyEnd, -1);
+  const ready = source.slice(readyStart, readyEnd);
+
+  assert.match(ready, /const apinexModels=aiConfigured\("apinex"\)/);
+  assert.match(ready, /getDynamicPool\(employee,"apinex"\)\.filter\(model=>String\(model\)\.startsWith\("free\/"\)\)/);
+  assert.match(ready, /String\(process\.env\.APINEX_MODEL\|\|""\)\.trim\(\)\.startsWith\("free\/"\)/);
+  assert.match(ready, /const cloudflareModels=aiConfigured\("cloudflare"\)/);
+  assert.match(ready, /provider:"cloudflare",model:String\(process\.env\.CLOUDFLARE_MODEL\|\|"@cf\/meta\/llama-3\.1-8b-instruct"\)/);
+  assert.match(ready, /"apinex","cloudflare"/);
+});
