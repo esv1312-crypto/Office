@@ -1997,7 +1997,12 @@ app.get("/api/smoke/recovery", async (req,res)=>{
   const supplied=String(req.headers["x-ai-office-audit-token"] || "").trim();
   if(!expected || supplied !== expected) return res.status(401).json({ok:false,error:"audit token required"});
   if(String(req.query?.run || "") !== "1") return res.json({ok:true,usage:"GET /api/smoke/recovery?run=1 (send x-ai-office-audit-token header)"});
-  const root=createTaskRecord({task:"INTERNAL READ-ONLY RECOVERY TEST. Produce a short evidence-rich confirmation that the recovery worker can replace a failed worker and return a usable result.",employeeId:"chief",kind:"root"});
+  const root=createTaskRecord({task:"INTERNAL READ-ONLY RECOVERY TEST. Produce a short evidence-rich confirmation that the recovery worker can replace a failed worker and return a usable result. Use only the supplied task and runtime events; do not call external tools.",employeeId:"chief",kind:"root"});
+  root.verificationChecklist=[
+    "A recovery worker was requested and started after the forced failure.",
+    "The recovery worker completed and returned a non-empty result.",
+    "The root task was re-tested after recovery."
+  ];
   root.status="failed"; root.error="INTERNAL_RECOVERY_SMOKE_FAILURE"; root.verification={status:"FAIL",checks:[{name:"forced smoke failure",passed:false,evidence:"runtime forced failure",classification:"FACT",source:"runtime event",locator:"smoke/recovery"}],summary:"forced recovery smoke failure"};
   tasks.set(root.id,root);
   try {

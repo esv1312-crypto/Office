@@ -135,6 +135,18 @@ test("planned subtasks and recovery workers are persisted before execution", asy
 });
 
 
+test("root recovery smoke fixture provides explicit evidence-verification checks", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  const start = server.indexOf('app.get("/api/smoke/recovery"');
+  const end = server.indexOf('app.get("/api/smoke/evidence"', start);
+  const route = server.slice(start, end);
+  assert.match(route, /root\.verificationChecklist=\[/);
+  assert.match(route, /A recovery worker was requested and started after the forced failure/);
+  assert.match(route, /The recovery worker completed and returned a non-empty result/);
+  assert.match(route, /The root task was re-tested after recovery/);
+  assert.match(route, /do not call external tools/i);
+});
+
 test("provider fallback smoke test does not mutate process-wide model configuration", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = server.indexOf('app.get("/api/smoke/fallback"');
