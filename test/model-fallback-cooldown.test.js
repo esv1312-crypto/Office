@@ -54,3 +54,9 @@ test("successful OpenRouter retry clears failure suppression and restores qualif
   assert.match(gateway, /const fallbackLimit=boundedIntegerSetting\(process\.env\.OPENROUTER_MAX_MODEL_FALLBACKS,8,2,20\)/);
   assert.match(gateway, /const readiness=await preflightModel\("openrouter",model,employee\)/);
 });
+
+
+test("free OpenRouter requests always set a bounded output token budget", async () => {
+  const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.ok(source.includes('provider==="openrouter"&&!paidTestEnabled()?{max_tokens:boundedIntegerSetting(process.env.OPENROUTER_MAX_OUTPUT_TOKENS,2048,256,8192)}:{}'));
+});
