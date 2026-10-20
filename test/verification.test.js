@@ -21,6 +21,25 @@ test("verification passes only when every checklist item has grounded evidence",
   assert.equal(result.checks[0].passed, true);
 });
 
+test("descriptive line locators are grounded against the exact source line", () => {
+  const result = enforceVerificationEvidence({
+    status: "PASS",
+    summary: "The source line supports the claim.",
+    checks: [{
+      name: "Launch gate is GREEN",
+      requirement: "Confirm the launch gate name",
+      passed: true,
+      evidence: "The supplied source line names the launch gate as GREEN.",
+      classification: "FACT",
+      source: "test/source.txt",
+      locator: "Line beginning FACT A: The launch gate is called GREEN."
+    }]
+  }, ["Confirm the launch gate name"]);
+
+  assert.equal(result.status, "PASS");
+  assert.equal(result.checks[0].referenceGrounded, true);
+});
+
 test("claimed PASS fails closed when source or locator is missing", () => {
   const result = enforceVerificationEvidence({
     status: "PASS",
