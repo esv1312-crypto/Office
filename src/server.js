@@ -739,16 +739,8 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
       return result;
     } catch(error) {
       lastError=error;
-      const qualificationFailureMessage=String(error?.message || "");
-      const errorCategory=error?.status===402 || /quota|credit|billing/i.test(qualificationFailureMessage) ? "quota"
-        : error?.status===429 ? "rate_limited"
-        : /timeout|timed out|abort/i.test(qualificationFailureMessage) ? "timeout"
-        : /empty response/i.test(qualificationFailureMessage) ? "invalid_response"
-        : "provider_error";
-      recordModelQualification({provider:"openrouter",model,role,ok:false,errorCategory,transient:Boolean(error?.transient),checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+5*60*1000).toISOString()});
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
-      if(shouldStopOpenRouterFallback(error?.status)) break;
-      if (/empty response/i.test(error?.message || "") && i===0) {
+      if(!shouldStopOpenRouterFallback(error?.status) && /empty response/i.test(error?.message || "") && i===0) {
         emit("gateway.model_retry",{employeeId:employee?.id || null,role,provider:"openrouter",model,reason:"empty_response",retryIndex:1});
         try {
           const retry=await callOpenAICompatible({
@@ -761,6 +753,13 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
               "X-Title":"AI-OFFICE"
             }
           });
+          // A successful retry is positive runtime evidence. Do not poison the model's
+          // qualification or cooldown state based on the first, transient empty response.
+          const qualifiedAt=new Date().toISOString();
+          const qualifiedUntil=Date.now()+PREFLIGHT_TTL_MS;
+          recordModelQualification({provider:"openrouter",model,role,ok:true,latencyMs:null,checkedAt:qualifiedAt,expiresAt:new Date(qualifiedUntil).toISOString()});
+          preflightCache.set(preflightKey("openrouter",model,role),{ok:true,provider:"openrouter",model,role,latencyMs:null,expiresAt:qualifiedUntil});
+          modelSuppressions.delete("openrouter:"+model);
           emit("gateway.model_success",{employeeId:employee?.id || null,role,provider:"openrouter",model,retry:true});
           return retry;
         } catch(retryError) {
@@ -768,19 +767,26 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
           emit("gateway.model_retry_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:retryError?.message || String(retryError)});
         }
       }
-      const failureMessage=String(error?.message || "");
-      if (error?.status===404 || /model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(failureMessage)) {
-        // Bad/stale model IDs should leave the rotation pool for a long cooldown.
-        suppressModel(model,failureMessage || "model unavailable",6*60*60*1000,"openrouter");
-      } else if (error?.status===408 || (Number(error?.status)>=500 && Number(error?.status)<=599)
-        || /timeout|timed out|abort|429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|high demand|overloaded|empty response|provider returned error/i.test(failureMessage)) {
-        // Free model endpoints often advertise models that are not actually serving.
-        // Cool them down so the next task rotates to a healthier candidate instead of repeating the failure.
-        const cooldownMs=/empty response/i.test(failureMessage) ? 15*60*1000 : 5*60*1000;
-        suppressModel(model,failureMessage || "model temporarily unavailable",cooldownMs,"openrouter");
+      const finalError=lastError || error;
+      const failureMessage=String(finalError?.message || "");
+      const errorCategory=finalError?.status===402 || /quota|credit|billing/i.test(failureMessage) ? "quota"
+        : finalError?.status===429 ? "rate_limited"
+        : /timeout|timed out|abort/i.test(failureMessage) ? "timeout"
+        : /empty response/i.test(failureMessage) ? "invalid_response"
+        : "provider_error";
+      const cooldownMs= /model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(failureMessage) || finalError?.status===404
+        ? 6*60*60*1000
+        : /empty response|provider returned error/i.test(failureMessage) ? 60*1000
+        : finalError?.status===408 || (Number(finalError?.status)>=500 && Number(finalError?.status)<=599) ? 2*60*1000
+        : providerCooldownMs("openrouter",finalError?.status,failureMessage);
+      recordModelQualification({provider:"openrouter",model,role,ok:false,errorCategory,transient:Boolean(finalError?.transient),checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+cooldownMs).toISOString()});
+      if(shouldStopOpenRouterFallback(finalError?.status)) {
+        suppressProvider("openrouter",failureMessage || "OpenRouter authentication failed",cooldownMs);
+        break;
       }
+      suppressModel(model,failureMessage || "model temporarily unavailable",cooldownMs,"openrouter");
       if (i<ordered.length-1) {
-        emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:error?.message || String(error)});
+        emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:failureMessage});
       }
     }
   }
