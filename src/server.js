@@ -1211,6 +1211,7 @@ async function executeWorkerTask(record) {
         provider:ready.provider,
         model:result.model || ready.model,
         code:"WORKER_EVIDENCE_INDEX_MISSING",
+        code:"WORKER_EVIDENCE_INDEX_MISSING",
         reason:"required EVIDENCE INDEX is missing or empty"
       });
       throw Object.assign(new Error("Worker result missing required EVIDENCE INDEX"),{code:"WORKER_EVIDENCE_INDEX_MISSING"});
