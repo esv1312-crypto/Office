@@ -6,6 +6,7 @@ import { refreshModelScout, getModelScoutState, getDynamicPool, selectModelForTa
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
+import { shouldStopOpenRouterFallback } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
@@ -730,7 +731,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
     } catch(error) {
       lastError=error;
       emit("gateway.model_failed",{employeeId:employee?.id || null,role,provider:"openrouter",model,error:error?.message || String(error),transient:Boolean(error?.transient)});
-      if(error?.status===401 || error?.status===402 || error?.status===429) break;
+      if(shouldStopOpenRouterFallback(error?.status)) break;
       if (/empty response/i.test(error?.message || "") && i===0) {
         emit("gateway.model_retry",{employeeId:employee?.id || null,role,provider:"openrouter",model,reason:"empty_response",retryIndex:1});
         try {
