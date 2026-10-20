@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildProviderCandidateOrder } from "../src/provider-candidate-order.js";
+import { buildProviderCandidateOrder, orderPrimaryModelFirst } from "../src/provider-candidate-order.js";
 
 test("preflight candidate order gives every configured provider a first-round chance",()=>{
   const providerPools={
@@ -26,4 +26,18 @@ test("preferred model is first in its provider lane and duplicates are removed",
     fallbackCandidates:[{provider:"openrouter",model:"or-backup"},{provider:"gemini",model:"gem-main"}]
   });
   assert.deepEqual(candidates.map(x=>x.provider+":"+x.model),["openrouter:or-main","gemini:gem-main","openrouter:or-backup"]);
+});
+
+
+test("assigned primary model stays first while only fallback order rotates", () => {
+  const pool = ["assigned-primary", "backup-a", "backup-b", "backup-c"];
+  assert.deepEqual(orderPrimaryModelFirst(pool, "assigned-primary", 0), [
+    "assigned-primary", "backup-a", "backup-b", "backup-c"
+  ]);
+  assert.deepEqual(orderPrimaryModelFirst(pool, "assigned-primary", 1), [
+    "assigned-primary", "backup-b", "backup-c", "backup-a"
+  ]);
+  assert.deepEqual(orderPrimaryModelFirst(pool, "unavailable-primary", 1), [
+    "assigned-primary", "backup-b", "backup-c", "backup-a"
+  ]);
 });
