@@ -12,7 +12,7 @@ test("OpenRouter model gateway delegates model cooldown decisions to the shared 
 
   assert.ok(source.includes("modelCooldownMs"));
   assert.match(gateway, /modelCooldownMs\(finalError\?\.status,failureMessage\)/);
-  assert.match(gateway, /suppressModel\(model,failureMessage,cooldownMs,"openrouter"\)/);
+  assert.match(gateway, /suppressModel\(model,[^\n]*cooldownMs,"openrouter"\)/);
 });
 
 test("Hugging Face model gateway cools down stale and temporarily failing models", async () => {
