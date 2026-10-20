@@ -5,6 +5,7 @@ import { createBrowserManager } from "./browser-manager.js";
 import { refreshModelScout, getModelScoutState, getDynamicPool, getCandidatePool, selectModelForTask, recordModelQualification } from "./model-scout.js";
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
+import { extractEvidenceIndex } from "./evidence-index.js";
 import { extractFinalAssistantText } from "./provider-response.js";
 import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
 import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs } from "./provider-retry-policy.js";
@@ -1171,10 +1172,7 @@ function rootTaskFor(record) {
   while(current?.parentTaskId && !seen.has(current.id)){seen.add(current.id);current=tasks.get(current.parentTaskId)||current;}
   return current;
 }
-function extractEvidenceIndex(text){
-  const lines=String(text||"").split(/\r?\n/), start=lines.findIndex(x=>/EVIDENCE INDEX/i.test(x));
-  return start<0?[]:lines.slice(start+1).filter(x=>x.trim()).slice(0,80).map(x=>x.trim());
-}
+
 function buildWorkerPrompt(record,employee){
   const root=rootTaskFor(record), original=String(root?.task||record.task||"");
   const context=original.length>120000?original.slice(0,120000)+"\n[CONTEXT TRUNCATED BY RUNTIME]":original;
@@ -2327,7 +2325,7 @@ app.get("/api/state", (req,res)=>{
   return res.json({
   service:"ai-office-runtime",provider:aiProvider(),aiConfigured:aiAvailable(),configuredProviders:providerOrder().filter(aiConfigured),
   employees:employees().map(e=>({...e,brain:resolveBrain(e),configured:aiConfigured(resolveBrain(e).provider)})),
-  tasks:[...tasks.values()].map(taskSnapshot),workerQueue:{active:workerQueue.active,pending:workerQueue.pending.length,limit:workerQueue.limit},persistence:databaseStatus(),events:events.slice(0,100)
+  tasks:[...tasks.values()].map(taskSnapshot),workerQueue:{active:workerQueue.active,pending:workerQueue.pending.length,limit:workerQueue.limit},persistence:databaseStatus(),events:events.slice(0,500)
   });
 });
 

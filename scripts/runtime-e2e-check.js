@@ -44,13 +44,11 @@ function mockCompletion(body) {
     });
   } else if (user.includes("Synthesize the worker results")) {
     content = "Both delegated workers returned results. The independent verifier checked the required completion evidence.";
-  } else if (user.includes("EVIDENCE-FIRST RULES")) {
-    if (user.includes("FORCE_MISSING_EVIDENCE_TEST") && !missingEvidenceSentOnce) {
-      missingEvidenceSentOnce = true;
-      content = "FACT: The assigned worker completed its bounded analysis, but deliberately omitted the required evidence index.";
-    } else {
-      content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
-    }
+  } else if (user.includes("FORCE_MISSING_EVIDENCE_TEST") && !missingEvidenceSentOnce) {
+    missingEvidenceSentOnce = true;
+    content = "FACT: The assigned worker completed its bounded analysis, but deliberately omitted the mandatory index.";
+  } else if (user.includes("EVIDENCE-FIRST RULES") || user.includes("EVIDENCE INDEX")) {
+    content = "FACT: The assigned worker completed its bounded analysis.\nEVIDENCE INDEX:\nworker completion | FACT | runtime event | task.completed | the worker task completed successfully";
   } else if (user.includes("AI-OFFICE PREFLIGHT.")) {
     content = "PREFLIGHT_OK";
   } else {
@@ -207,6 +205,7 @@ test("full root-task lifecycle completes with delegated workers and independent 
     assert.equal(missingEvidenceResponse.status, 202, missingEvidenceText);
     const missingEvidenceAccepted = JSON.parse(missingEvidenceText);
     let missingEvidenceRoot;
+    const missingEvidenceEventMap = new Map();
     const missingEvidenceDeadline = Date.now() + 25000;
     while (Date.now() < missingEvidenceDeadline) {
       const response = await request(`/api/tasks/${encodeURIComponent(missingEvidenceAccepted.task.id)}`, {
@@ -214,14 +213,33 @@ test("full root-task lifecycle completes with delegated workers and independent 
       });
       assert.equal(response.status, 200);
       missingEvidenceRoot = (await response.json()).task;
+
+      // /api/state intentionally exposes only the latest 100 runtime events.
+      // Capture this security-relevant rejection while the task runs so a busy
+      // replacement/recovery sequence cannot evict it before the final assertion.
+      const stateResponse = await request("/api/state", {
+        headers: { "x-ai-office-audit-token": token }
+      });
+      if (stateResponse.ok) {
+        const state = await stateResponse.json();
+        for (const event of state.events || []) {
+          if (event.type === "worker.evidence_index_missing") {
+            missingEvidenceEventMap.set(event.id, event);
+          }
+        }
+      }
+
       if (["completed", "failed"].includes(missingEvidenceRoot.status)) break;
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     const missingEvidenceStateResponse = await request("/api/state", { headers: { "x-ai-office-audit-token": token } });
     const missingEvidenceState = missingEvidenceStateResponse.ok ? await missingEvidenceStateResponse.json() : null;
-    const missingEvidenceEvents = (missingEvidenceState?.events || []).filter(event =>
-      event.type === "worker.evidence_index_missing" && event.parentTaskId === missingEvidenceAccepted.task.id
-    );
+    for (const event of missingEvidenceState?.events || []) {
+      if (event.type === "worker.evidence_index_missing") {
+        missingEvidenceEventMap.set(event.id, event);
+      }
+    }
+    const missingEvidenceEvents = [...missingEvidenceEventMap.values()];
     assert.equal(missingEvidenceRoot?.status, "completed", `missing-evidence worker was not recovered: ${JSON.stringify({
       status: missingEvidenceRoot?.status,
       error: missingEvidenceRoot?.error,
