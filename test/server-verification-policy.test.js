@@ -373,7 +373,7 @@ test("public health endpoints do not expose model pools or browser configuration
 test("independent verification retries a bounded set of qualified candidates and fails closed", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const verifyStart = source.indexOf("async function verifyRootTask");
-  const verifyEnd = source.indexOf("\\nasync function executeRootTask", verifyStart);
+  const verifyEnd = source.indexOf("\nasync function executeRootTask", verifyStart);
   assert.notEqual(verifyStart, -1, "verifyRootTask must exist");
   assert.notEqual(verifyEnd, -1, "verifyRootTask boundary must exist");
   const verify = source.slice(verifyStart, verifyEnd);
