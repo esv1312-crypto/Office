@@ -5,14 +5,14 @@ import { readFile } from "node:fs/promises";
 test("OpenRouter model gateway delegates model cooldown decisions to the shared retry policy", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
   const start = source.indexOf("async function generateWithOpenRouter");
-  const end = source.indexOf("\\nfunction normalizeHuggingFaceModel", start);
+  const end = source.indexOf("\nfunction normalizeHuggingFaceModel", start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const gateway = source.slice(start, end);
 
   assert.ok(source.includes("modelCooldownMs"));
-  assert.match(gateway, /modelCooldownMs\\(finalError\\?\\.status,failureMessage\\)/);
-  assert.match(gateway, /suppressModel\\(model,failureMessage,cooldownMs,"openrouter"\\)/);
+  assert.match(gateway, /modelCooldownMs\(finalError\?\.status,failureMessage\)/);
+  assert.match(gateway, /suppressModel\(model,failureMessage,cooldownMs,"openrouter"\)/);
 });
 
 test("Hugging Face model gateway cools down stale and temporarily failing models", async () => {
