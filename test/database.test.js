@@ -145,6 +145,11 @@ test("root recovery smoke fixture provides explicit evidence-verification checks
   assert.match(route, /The recovery worker completed and returned a non-empty result/);
   assert.match(route, /The root task was re-tested after recovery/);
   assert.match(route, /do not call external tools/i);
+  assert.match(route, /executeRecoveryTask:async fixTask/);
+  assert.match(route, /verifyRecoveredTask:async\(record,fixTask\)/);
+  assert.match(route, /mode:"deterministic_recovery_state_machine"/);
+  assert.match(route, /transitionTask\(root,"completed"/);
+  assert.match(server, /async function recoverRootTask\(record, options = \{\}\)/);
 });
 
 test("provider fallback smoke test does not mutate process-wide model configuration", async () => {
