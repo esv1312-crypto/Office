@@ -7,7 +7,7 @@ import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, s
 import { enforceVerificationEvidence } from "./verification.js";
 import { extractEvidenceIndex } from "./evidence-index.js";
 import { extractFinalAssistantText } from "./provider-response.js";
-import { buildProviderCandidateOrder } from "./provider-candidate-order.js";
+import { buildProviderCandidateOrder, orderPrimaryModelFirst } from "./provider-candidate-order.js";
 import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
