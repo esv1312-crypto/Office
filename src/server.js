@@ -63,8 +63,23 @@ let resourceScoutTimer = null;
 const workerWatchdogIntervalMs=boundedIntegerSetting(process.env.WORKER_WATCHDOG_INTERVAL_MS,15000,5000,3600000);
 const workerTimeoutMs=boundedIntegerSetting(process.env.WORKER_TIMEOUT_MS,600000,30000,86400000);
 let workerWatchdogTimer=null;
+const aiResumeInProgress=new Set();
+async function resumeTasksWaitingForAI(){
+  for(const record of tasks.values()){
+    if(record.status!=="waiting" || record.waitingReason!=="ai_not_configured" || aiResumeInProgress.has(record.id)) continue;
+    if(!aiAvailable(record.provider)) continue;
+    aiResumeInProgress.add(record.id);
+    emit("task.ai_available",{taskId:record.id,employeeId:record.employeeId,provider:record.provider});
+    const work=record.parentTaskId
+      ? executeWorkerTask(record)
+      : executeRootTask(record);
+    void Promise.resolve(work).catch(error=>{
+      emit("task.ai_resume_failed",{taskId:record.id,error:error?.message||String(error)});
+    }).finally(()=>aiResumeInProgress.delete(record.id));
+  }
+}
 async function runWorkerWatchdog(){
-  return runWorkerWatchdogPass({
+  const result=await runWorkerWatchdogPass({
     tasks,
     nowMs:Date.now(),
     timeoutMs:workerTimeoutMs,
@@ -73,6 +88,8 @@ async function runWorkerWatchdog(){
     recoverFailedWorker,
     onRecoveryError:error=>console.error("[watchdog] recovery failed",error?.message||error)
   });
+  await resumeTasksWaitingForAI();
+  return result;
 }
 
 async function transitionTask(record, nextStatus, extra = {}) {
