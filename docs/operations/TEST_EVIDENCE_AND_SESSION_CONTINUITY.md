@@ -1,6 +1,6 @@
 # AI-ОФИС: правила фиксации тестов и продолжения работы
 
-## Источник правды
+## Источники правды
 
 - Текущая точка остановки и следующий шаг: [AI_OFFICE_SESSION_HANDOFF.md](./AI_OFFICE_SESSION_HANDOFF.md).
 - Подробные первичные доказательства: конкретные GitHub Actions run/job logs и artifacts, плюс Render deploy/events/logs.
@@ -36,9 +36,12 @@
 
 ## Автоматизация evidence
 
-- GitHub Actions уже хранит run/job logs; для важных тестов сохранять нормализованный JSON summary и диагностические файлы как artifacts с понятным именем и сроком хранения.
+- GitHub Actions хранит исходные run/job logs. Для важных тестов нужен дополнительный нормализованный summary artifact.
+- В PR [#39](https://github.com/esv1312-crypto/Office/pull/39) добавлен workflow `.github/workflows/office-evidence-archive.yml`, который должен запускаться после завершения выбранных тестовых workflows и архивировать SHA, branch, run URL, итог workflow и job/step outcomes в JSON/Markdown artifact на 90 дней.
+- **До merge PR и появления успешного запуска архивации эта автоматизация не считается активной.**
+- Artifact содержит metadata и outcomes, а не полную копию raw console logs. Полные подробности остаются в исходных GitHub Actions run/job logs.
 - Live workflow должен сохранять итог каждого независимого check даже при частичном отказе; secrets и заголовки авторизации никогда не записывать в artifacts.
-- Если автоматическое обновление handoff из workflow добавляется позже, оно должно избегать бесконечных push-trigger loops и не запускать production audit при каждом изменении документа.
+- Автоматическое обновление handoff из workflow пока не реализовано. Если добавлять его позже, нужно избежать бесконечных push-trigger loops и запуска production audit при каждом изменении документа.
 - После ручных проверок обновлять handoff в отдельном commit/PR. Не делать запись в журнал на основании предположения.
 - Предпочитать ветку и PR для изменений workflow/документации, а не незаметные изменения production.
 
