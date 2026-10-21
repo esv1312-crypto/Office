@@ -12,6 +12,7 @@ import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, provider
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
+import { buildPlanningTaskBrief } from "./task-context.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -1720,7 +1721,7 @@ function buildPlanningPrompt(task) {
     "Return ONLY valid JSON, no markdown.",
     'Schema: {"summary":"string","subtasks":[{"employeeId":"developer|analyst|verifier|executor","task":"string"}],"verificationChecklist":["string"]}',
     "Use 1-4 subtasks. Choose workers by skills. Do not choose chief as a worker.",
-    "Task: " + task
+    "Task: " + buildPlanningTaskBrief(task)
   ].join("\n");
 }
 
@@ -1814,7 +1815,7 @@ async function executeRootTask(record) {
       "You are the Chief of Staff of AI-OFFICE.",
       "Synthesize the worker results into the final answer to the original task.",
       "Be concise and factual. Do not claim external actions that were not actually performed.",
-      "Original task: " + record.task,
+      "Original task: " + buildPlanningTaskBrief(record.task),
       "Plan: " + JSON.stringify(record.plan),
       "Verification checklist: " + JSON.stringify(record.verificationChecklist),
       "Worker results: " + JSON.stringify(record.workerResults)
