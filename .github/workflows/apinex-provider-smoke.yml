@@ -18,6 +18,8 @@ jobs:
     env:
       APINEX_API_KEY: ${{ secrets.APINEX_API_KEY }}
     steps:
+      - name: Validate smoke-test script syntax
+        run: python -m py_compile scripts/apinex-provider-smoke.py
       - name: Check APINEX catalog and up to three free models
         shell: bash
         run: |
