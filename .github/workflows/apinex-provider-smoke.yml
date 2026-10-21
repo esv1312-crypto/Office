@@ -1,0 +1,43 @@
+name: APINEX free-model smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apinex-provider-smoke
+  cancel-in-progress: false
+
+jobs:
+  apinex-smoke:
+    name: Test APINEX catalog and free models
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      APINEX_API_KEY: ${{ secrets.APINEX_API_KEY }}
+    steps:
+      - name: Check APINEX catalog and up to three free models
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/apinex-provider-smoke.py | tee apinex-smoke-output.json
+          {
+            echo "## APINEX free-model smoke test"
+            echo
+            echo 'The script tests only model IDs explicitly prefixed free/.'
+            echo 'The API key and generated response text are not logged.'
+            echo
+            echo '```json'
+            cat apinex-smoke-output.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload redacted smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apinex-smoke-report
+          path: apinex-smoke-report.json
+          if-no-files-found: ignore
+          retention-days: 14
