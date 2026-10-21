@@ -1,0 +1,131 @@
+name: AI-OFFICE test evidence archive
+
+# Archive metadata and per-job/step outcomes whenever a relevant workflow completes.
+# This workflow is read-only: it does not deploy, mutate source files, or call production.
+on:
+  workflow_run:
+    workflows:
+      - AI-OFFICE runtime smoke integration
+      - AI-OFFICE unit tests
+      - AI-OFFICE PostgreSQL integration tests
+      - AI-OFFICE four-employee live task test
+      - AI-OFFICE authorized live runtime audit
+      - AI-OFFICE Pognali READ-ONLY AUDIT
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  archive-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Build normalized run evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_PATH: ${{ github.event_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p office-evidence
+          python - <<'PY'
+          import json, os, pathlib, subprocess
+          event = json.loads(pathlib.Path(os.environ["EVENT_PATH"]).read_text())
+          run = event["workflow_run"]
+          run_id = str(run["id"])
+          repo = os.environ["REPOSITORY"]
+          jobs = subprocess.run(
+              ["gh", "api", f"repos/{repo}/actions/runs/{run_id}/jobs", "--paginate"],
+              check=True, capture_output=True, text=True,
+              env={**os.environ, "GH_TOKEN": os.environ["GH_TOKEN"]}
+          )
+          jobs_data = json.loads(jobs.stdout)
+          normalized = {
+              "repository": repo,
+              "workflow": run.get("name"),
+              "run_id": run.get("id"),
+              "run_number": run.get("run_number"),
+              "run_attempt": run.get("run_attempt"),
+              "html_url": run.get("html_url"),
+              "head_branch": run.get("head_branch"),
+              "head_sha": run.get("head_sha"),
+              "event": run.get("event"),
+              "status": run.get("status"),
+              "conclusion": run.get("conclusion"),
+              "created_at": run.get("created_at"),
+              "updated_at": run.get("updated_at"),
+              "run_started_at": run.get("run_started_at"),
+              "jobs": [
+                  {
+                      "name": job.get("name"),
+                      "status": job.get("status"),
+                      "conclusion": job.get("conclusion"),
+                      "html_url": job.get("html_url"),
+                      "started_at": job.get("started_at"),
+                      "completed_at": job.get("completed_at"),
+                      "steps": [
+                          {
+                              "name": step.get("name"),
+                              "number": step.get("number"),
+                              "status": step.get("status"),
+                              "conclusion": step.get("conclusion"),
+                              "started_at": step.get("started_at"),
+                              "completed_at": step.get("completed_at")
+                          }
+                          for step in job.get("steps", [])
+                      ]
+                  }
+                  for job in jobs_data.get("jobs", [])
+              ]
+          }
+          pathlib.Path("office-evidence/run-evidence.json").write_text(
+              json.dumps(normalized, ensure_ascii=False, indent=2) + "\n"
+          )
+          lines = [
+              f"# Evidence: {normalized['workflow']}",
+              "",
+              f"- Repository: {repo}",
+              f"- Run ID: {run_id}",
+              f"- Run: {normalized['html_url']}",
+              f"- Branch: {normalized['head_branch']}",
+              f"- Commit SHA: {normalized['head_sha']}",
+              f"- Trigger: {normalized['event']}",
+              f"- Conclusion: {normalized['conclusion']}",
+              f"- Created (UTC): {normalized['created_at']}",
+              "",
+              "## Jobs and steps",
+              ""
+          ]
+          for job in normalized["jobs"]:
+              lines.append(f"### {job['name']}: {job['conclusion']}")
+              if job.get("html_url"):
+                  lines.append(f"- Job logs: {job['html_url']}")
+              for step in job["steps"]:
+                  lines.append(f"- Step {step['number']}: {step['name']} — {step['conclusion']}")
+              lines.append("")
+          lines += [
+              "## Interpretation guardrails",
+              "",
+              "- This artifact records GitHub Actions metadata and job/step outcomes; it is not a copy of raw console logs.",
+              "- Follow the linked original run/job logs for full output.",
+              "- A successful workflow on a branch or old SHA does not prove that the same SHA is deployed to production.",
+              "- A live audit is PASS only when its own checks and evidence say PASS; absence of a run means NOT VERIFIED.",
+              ""
+          ]
+          pathlib.Path("office-evidence/README.md").write_text("\n".join(lines))
+          summary = "\n".join(lines)
+          pathlib.Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(summary)
+          print(f"Archived metadata for {normalized['workflow']} run {run_id}: {normalized['conclusion']}")
+          PY
+
+      - name: Upload run evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: office-evidence-${{ github.event.workflow_run.id }}-attempt-${{ github.event.workflow_run.run_attempt }}
+          path: office-evidence/
+          if-no-files-found: error
+          retention-days: 90
