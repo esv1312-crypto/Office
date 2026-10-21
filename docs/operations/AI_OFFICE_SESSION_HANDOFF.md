@@ -6,8 +6,7 @@
 
 - Репозиторий: [esv1312-crypto/Office](https://github.com/esv1312-crypto/Office)
 - Основная ветка: `main`
-- Последний проверенный SHA в GitHub `main`: `eb7a5bf0cc493bef3de4e3df348b2dce93559e75`
-- Сообщение коммита: `Respect explicit role constraints in planner recovery`
+- Последний проверенный SHA `main` перед этой записью: `0a80d02e6691a02ef42b3b1a2c61ce9a529cbe4d` (`fix: read GitHub workflow event payload reliably`). Эта запись сама создаёт следующий commit; при новом старте обязательно получить свежий SHA `main`.
 - Последний подтверждённый production deploy Render: `dep-dbc7evl9fdbs73c4jjag`
 - SHA этого deploy: `93d43b30193caf8bd4ed81399eb453019fb9995a`
 - **Важно:** GitHub `main` опережает подтверждённый production deploy. Не считать новый код установленным на production, пока свежая проверка Render не подтвердит SHA/деплой.
@@ -17,14 +16,12 @@
 ### Подтверждено
 - Production health endpoint ранее вернул `ok: true`, `status: online`, persistence `ready: true`.
 - Последний подтверждённый Render deploy `93d43b3` завершился успешно 2026-10-21 в 08:28:13 UTC.
-- На SHA `eb7a5bf` успешно завершились:
-  - [Runtime smoke integration — run 39584716712](https://github.com/esv1312-crypto/Office/actions/runs/39584716712)
-  - [Unit tests — run 39584716730](https://github.com/esv1312-crypto/Office/actions/runs/39584716730)
-  - [PostgreSQL integration — run 39584716745](https://github.com/esv1312-crypto/Office/actions/runs/39584716745)
+- На SHA `64eb122` (merge PR #39) успешно завершились unit, runtime smoke и PostgreSQL integration: [unit](https://github.com/esv1312-crypto/Office/actions/runs/39587051588), [runtime smoke](https://github.com/esv1312-crypto/Office/actions/runs/39587051502), [PostgreSQL](https://github.com/esv1312-crypto/Office/actions/runs/39587051499).
+- На SHA `0a80d02` unit tests прошли: [run 39587169717](https://github.com/esv1312-crypto/Office/actions/runs/39587169717). На момент этой записи runtime smoke [run 39587169552](https://github.com/esv1312-crypto/Office/actions/runs/39587169552) и PostgreSQL [run 39587169747](https://github.com/esv1312-crypto/Office/actions/runs/39587169747) ещё выполняются; перепроверить итог.
 - Ранее live-тест четырёх сотрудников завершился успешно: все четыре задачи завершены без ошибок, но все использовали одну и ту же модель. Реальное переключение модели этим тестом не доказано.
 
 ### Ещё не доказано
-- Что Render уже развернул текущий `main` SHA `eb7a5bf`.
+- Что Render развернул свежий `main`: последний найденный production deploy — `dep-dbc7evl9fdbs73c4jjag`, SHA `93d43b30193caf8bd4ed81399eb453019fb9995a`. В Render включён auto-deploy от `main`; после docs/workflow commits повторно проверить список deploys, не предполагать результат.
 - Живое поведение provider fallback и recovery в production.
 - Фактическое переключение сотрудника на другую модель при отказе основной.
 - Сквозная проверка evidence и office audit именно после свежего production deploy.
@@ -71,7 +68,7 @@
 
 ## 6. Автоматизация журнала — текущий статус
 
-В PR [#39](https://github.com/esv1312-crypto/Office/pull/39) подготовлен workflow `.github/workflows/office-evidence-archive.yml`. После принятия и включения в `main` он должен после завершения выбранных workflows сохранять JSON со SHA, branch, run URL, conclusion и job/step outcomes как GitHub Actions artifact на 90 дней. Он также создаёт читаемое резюме. Пока PR не принят и workflow не запустился, считать эту автоматизацию **предложенной, но не активной**.
+PR [#39](https://github.com/esv1312-crypto/Office/pull/39) слит в `main` коммитом `64eb122bb3dde547fed1b402d66c8a6a1c4926bc`. Workflow `.github/workflows/office-evidence-archive.yml` впервые падал из-за пустого `EVENT_PATH`; исправлено в `0a80d02e6691a02ef42b3b1a2c61ce9a529cbe4d` чтением встроенного `GITHUB_EVENT_PATH`. Первый подтверждённый успешный архив: [run 39587207880](https://github.com/esv1312-crypto/Office/actions/runs/39587207880), artifact `office-evidence-39587169717-attempt-1`, создан 2026-10-21 10:48 UTC, хранится до 2027-01-19. Artifact содержит JSON и Markdown с метаданными run и итогами job/step. Три ранних архивных запуска на SHA `64eb122` упали до исправления; их не считать успешными.
 
 Архив evidence не заменяет оригинальные job logs и не доказывает production-состояние без проверки SHA/deploy. Handoff по-прежнему обновляется после существенных действий; автоматическое обновление файла handoff не реализовано.
 
@@ -81,4 +78,4 @@
 
 ## Краткий итог на момент записи
 
-**Состояние:** production ранее отвечал и последний подтверждённый deploy успешен; GitHub `main` уже новее production SHA. Unit, runtime smoke и PostgreSQL тесты на текущем `main` прошли. Production fallback/recovery audit пока не подтверждён. PR #39 содержит документацию по передаче контекста и предлагаемый автоматический архив test evidence; он ещё не принят.
+**Состояние на 2026-10-21 10:48 UTC:** PR #39 слит; постоянный handoff опубликован; автоматический архив впервые успешно создал artifact (run 39587207880). Исправление архива прошло unit tests; runtime smoke и PostgreSQL на SHA `0a80d02` на момент записи ещё проверяются. Последний подтверждённый Render deploy остаётся SHA `93d43b3`; свежий production fallback/recovery audit и фактическая смена модели не подтверждены. Следующий шаг — проверить завершение двух CI runs, свежий Render deploy/SHA, затем отдельно решать вопрос live audit.
