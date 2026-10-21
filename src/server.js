@@ -8,7 +8,7 @@ import { enforceVerificationEvidence } from "./verification.js";
 import { extractEvidenceIndex } from "./evidence-index.js";
 import { extractFinalAssistantText } from "./provider-response.js";
 import { buildProviderCandidateOrder, orderPrimaryModelFirst } from "./provider-candidate-order.js";
-import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs } from "./provider-retry-policy.js";
+import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs, modelCooldownMs } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
@@ -776,11 +776,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
         : /timeout|timed out|abort/i.test(failureMessage) ? "timeout"
         : /empty response/i.test(failureMessage) ? "invalid_response"
         : "provider_error";
-      const cooldownMs= /model.*(not found|does not exist|not available)|unknown model|invalid model/i.test(failureMessage) || finalError?.status===404
-        ? 6*60*60*1000
-        : /empty response|provider returned error/i.test(failureMessage) ? 60*1000
-        : finalError?.status===408 || (Number(finalError?.status)>=500 && Number(finalError?.status)<=599) ? 2*60*1000
-        : providerCooldownMs("openrouter",finalError?.status,failureMessage);
+      const cooldownMs=modelCooldownMs(finalError?.status,failureMessage);
       recordModelQualification({provider:"openrouter",model,role,ok:false,errorCategory,transient:Boolean(finalError?.transient),checkedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+cooldownMs).toISOString()});
       if(shouldStopOpenRouterFallback(finalError?.status)) {
         suppressProvider("openrouter",failureMessage || "OpenRouter authentication failed",cooldownMs);

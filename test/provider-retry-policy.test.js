@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shouldStopOpenRouterFallback } from "../src/provider-retry-policy.js";
+import { shouldStopOpenRouterFallback, modelCooldownMs } from "../src/provider-retry-policy.js";
 
 test("OpenRouter stops immediately on authentication failure", () => {
   assert.equal(shouldStopOpenRouterFallback(401), true);
@@ -39,4 +39,18 @@ test("ordinary gateway routing skips providers already under cooldown", async ()
   assert.match(gateway, /!Array\.isArray\(forcedProvider\)\s*&&\s*isProviderSuppressed\(provider\)/);
   assert.match(gateway, /gateway\.provider_skipped/);
   assert.match(gateway, /ALL_PROVIDERS_SUPPRESSED/);
+});
+
+
+test("explicitly restricted and stale free routes receive long model cooldowns", () => {
+  const sixHours=6*60*60*1000;
+  assert.equal(modelCooldownMs(403,"This model is only available on agentic harnesses"),sixHours);
+  assert.equal(modelCooldownMs(404,"This model is unavailable for free"),sixHours);
+  assert.equal(modelCooldownMs(400,"Provider returned error"),15*60*1000);
+});
+
+test("empty responses and temporary outages receive bounded short cooldowns", () => {
+  assert.equal(modelCooldownMs(null,"openrouter returned an empty response"),60*1000);
+  assert.equal(modelCooldownMs(503,"upstream unavailable"),2*60*1000);
+  assert.equal(modelCooldownMs(429,"rate limited"),60*1000);
 });

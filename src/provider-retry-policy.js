@@ -26,3 +26,16 @@ export function providerCooldownMs(provider, status, message = "") {
   }
   return code === 429 ? 60 * 1000 : 15 * 60 * 1000;
 }
+
+export function modelCooldownMs(status, message = "") {
+  const code=Number(status);
+  const text=String(message || "");
+  // Explicit route-policy denials and stale free slugs will not heal after a short retry.
+  if(code===403 && /only available on agentic harnesses|not available to this application|not permitted/i.test(text)) return 6*60*60*1000;
+  if(code===404 || /model.*(not found|does not exist|unavailable for free)|unknown model|invalid model/i.test(text)) return 6*60*60*1000;
+  // Bad-request route failures should not be retried on every task; retain a bounded cooldown.
+  if(code===400) return 15*60*1000;
+  if(/empty response/i.test(text)) return 60*1000;
+  if(code===408 || (code>=500 && code<=599)) return 2*60*1000;
+  return code===429 ? 60*1000 : 15*60*1000;
+}
