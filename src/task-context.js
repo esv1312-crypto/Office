@@ -17,7 +17,7 @@ export function buildPlanningTaskBrief(task, maxChars = 12000) {
       instructions,
       "",
       "[SOURCE DOSSIER OMITTED FROM PLANNING PROMPT TO KEEP MODEL INPUT BOUNDED.]",
-      "The full source dossier remains attached to the parent task and is available to worker prompts.",
+      "The full source dossier remains attached to the parent task; worker prompts receive the runtime's bounded parent-task context.",
       "Dossier size: " + dossier.length + " characters.",
       "Dossier files: " + (uniqueFiles.length ? uniqueFiles.join(", ") : "file headings not detected")
     ].join("\n").slice(0, maxChars);
