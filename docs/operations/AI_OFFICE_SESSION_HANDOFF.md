@@ -2,6 +2,25 @@
 
 > Обновлять в конце каждой рабочей сессии и после существенного теста. Это источник правды для продолжения в новом чате. Проверено: 2026-10-21 (UTC).
 
+
+
+## Актуальное обновление рабочей сессии — 2026-10-21 10:56 UTC
+
+Этот блок новее исторических статусов ниже и имеет приоритет при продолжении.
+
+### Production deployment — PASS
+- GitHub main SHA перед деплоем: `7678fcfdb7c50a3ad8452e6eb5bc765f8198f8bd`.
+- Render deploy: [dep-dbc9k5mi0phs73ar2ck0](https://dashboard.render.com/web/srv-davoj1s9v7es738jino0/deploys/dep-dbc9k5mi0phs73ar2ck0), статус `live`, старт 2026-10-21 10:55:18 UTC, завершён 10:56:01 UTC.
+- Build завершился успешно; Render logs подтвердили checkout точного SHA `7678fcfdb7c50a3ad8452e6eb5bc765f8198f8bd`, `npm install` без уязвимостей, затем запуск `npm start`.
+- После деплоя `/` вернул `service=ai-office-runtime,status=online`; `/health` вернул `ok=true,status=online,persistence.enabled=true,persistence.ready=true`. Время старта процесса: `2026-10-21T10:55:49.922Z`.
+- Unit, runtime smoke и PostgreSQL integration на том же SHA `7678fcfdb7c5` завершились успешно: [unit](https://github.com/esv1312-crypto/Office/actions/runs/39587904921), [runtime smoke](https://github.com/esv1312-crypto/Office/actions/runs/39587904943), [PostgreSQL](https://github.com/esv1312-crypto/Office/actions/runs/39587905036). Evidence archive также успешен: [run 39587982780](https://github.com/esv1312-crypto/Office/actions/runs/39587982780).
+
+### Live production audit — NOT VERIFIED
+- Авторизованный workflow `.github/workflows/office-live-runtime-smoke.yml` после свежего деплоя ещё не запускался. Он нужен для проверки provider fallback, root recovery, evidence pipeline и office audit.
+- Доступный GitHub connector поддерживает read-only fetch и не предоставляет workflow-dispatch action. Не вызывать защищённые диагностические endpoints без `OFFICE_AUDIT_TOKEN`; секреты не извлекать и не записывать.
+- Следующий шаг: запустить вручную GitHub Actions workflow **AI-OFFICE authorized live runtime audit** через Actions UI после подтверждения, что repository secret `OFFICE_AUDIT_TOKEN` настроен и совпадает с Render. Затем сохранить run ID, все результаты и artifact в журнале.
+- Фактическое переключение assigned model на другую модель остаётся отдельной проверкой: прошлый четырёхсотрудниковый тест использовал одну модель; fallback/recovery нельзя считать доказанными до live audit evidence.
+
 ## 1. Сначала сверять версии
 
 - Репозиторий: [esv1312-crypto/Office](https://github.com/esv1312-crypto/Office)
