@@ -3,7 +3,7 @@ name: AI-OFFICE four-employee live task test
 on:
   push:
     branches:
-      - fix/evidence-index-markdown-formats
+      - fix/office-live-test-yaml-and-evidence-checks
     paths:
       - .github/workflows/office-four-employee-live-test.yml
   workflow_dispatch:
