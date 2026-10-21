@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   launch:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[office pognali audit]') || contains(github.event.head_commit.message, '[office pognali audit]')
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[office pognali audit]')
     runs-on: ubuntu-latest
     steps:
       - name: Build read-only Pognali source dossier
