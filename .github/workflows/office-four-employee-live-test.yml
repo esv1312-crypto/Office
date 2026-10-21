@@ -135,8 +135,21 @@ jobs:
                   failed.append(employee_id + ": " + str(r.get("error") or r.get("status")))
               elif "NO-GO" not in result:
                   failed.append(employee_id + ": did not return expected NO-GO decision")
-              elif not r.get("evidence_index"):
-                  failed.append(employee_id + ": missing evidence index in task snapshot")
+              elif not isinstance(r.get("evidence_index"), list) or len(r.get("evidence_index")) != 1:
+                  failed.append(employee_id + ": evidence index must contain exactly one normalized row")
+              else:
+                  evidence_fields = [field.strip() for field in str(r["evidence_index"][0]).split("|")]
+                  expected_fields = [
+                      "launch decision",
+                      "INFERENCE",
+                      "supplied dossier",
+                      "FACT 1 + FACT 2",
+                      "approval is required and the register says it has not been received",
+                  ]
+                  if len(evidence_fields) != 5:
+                      failed.append(employee_id + ": evidence index must contain exactly five pipe-separated fields")
+                  elif evidence_fields != expected_fields:
+                      failed.append(employee_id + ": evidence index fields do not match the required source, label, basis, and rationale")
 
           model_switches = [
               {
