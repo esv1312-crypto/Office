@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json, pathlib, urllib.request
+          import json, os, pathlib, time, urllib.request
           parts = ["README.txt","BUILD_PIPELINE.md","build.gradle","settings.gradle","gradle.properties","app-build.gradle","AndroidManifest.xml","MainActivity.java","styles.xml","pognali_final.html","docs-index.html","android.yml","android-ui-test.yml","emulator-health-check.yml","pages.yml","MANIFEST.txt"]
           dossier = []
           for name in parts:
@@ -101,7 +101,35 @@ jobs:
               method="POST",
           )
           with urllib.request.urlopen(req, timeout=120) as resp:
-              print(resp.read().decode())
+              accepted = json.loads(resp.read().decode("utf-8", "replace"))
+          task_record = accepted.get("task") or accepted
+          task_id = task_record.get("id")
+          if accepted.get("ok") is not True or not task_id:
+              raise SystemExit("FAIL: AI-OFFICE did not return an accepted task ID")
+          print(json.dumps({"event":"task_accepted","task_id":task_id,"status":task_record.get("status")}), flush=True)
+
+          deadline = time.time() + 900
+          while time.time() < deadline:
+              poll = urllib.request.Request(
+                  "https://ai-office-runtime-8pir.onrender.com/api/tasks/" + task_id,
+                  headers={"x-ai-office-audit-token": token, "Accept":"application/json"},
+                  method="GET")
+              with urllib.request.urlopen(poll, timeout=30) as resp:
+                  data = json.loads(resp.read().decode("utf-8", "replace"))
+              task_state = data.get("task") or data
+              state = str(task_state.get("status", "")).lower()
+              if state in ("completed", "complete", "succeeded", "success"):
+                  result = str(task_state.get("result") or "").strip()
+                  if not result:
+                      raise SystemExit("FAIL: task completed without a non-empty result")
+                  print(json.dumps({"event":"task_completed","task_id":task_id,"status":state,"verification":(task_state.get("verification") or {}).get("status"),"result":result}, ensure_ascii=False)[:18000], flush=True)
+                  print("PASS: the read-only Pognali audit task completed.", flush=True)
+                  raise SystemExit(0)
+              if state in ("failed", "cancelled", "canceled", "dead"):
+                  print(json.dumps({"event":"task_failed","task_id":task_id,"task":task_state}, ensure_ascii=False)[:10000], flush=True)
+                  raise SystemExit("FAIL: AI-OFFICE task ended in state " + state)
+              time.sleep(8)
+          raise SystemExit("FAIL: AI-OFFICE task did not complete within 15 minutes")
           PY
 
 # authorized read-only Pognali audit [office pognali audit]
