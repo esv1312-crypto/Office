@@ -17,7 +17,7 @@
 ### Подтверждено
 - Production health endpoint ранее вернул `ok: true`, `status: online`, persistence `ready: true`.
 - Последний подтверждённый Render deploy `93d43b3` завершился успешно 2026-10-21 в 08:28:13 UTC.
-- На GitHub SHA `eb7a5bf` успешно завершились:
+- На SHA `eb7a5bf` успешно завершились:
   - [Runtime smoke integration — run 39584716712](https://github.com/esv1312-crypto/Office/actions/runs/39584716712)
   - [Unit tests — run 39584716730](https://github.com/esv1312-crypto/Office/actions/runs/39584716730)
   - [PostgreSQL integration — run 39584716745](https://github.com/esv1312-crypto/Office/actions/runs/39584716745)
@@ -69,10 +69,16 @@
 
 Никаких секретов, токенов или их значений в журнал не помещать.
 
-## 6. Правило продолжения в новом чате
+## 6. Автоматизация журнала — текущий статус
 
-Первое действие нового чата — перечитать этот handoff и выполнить read-only сверку GitHub ↔ Render. Не повторять тест, пока не проверены последние run ID и evidence. После работы обновить этот файл и, где возможно, приложить машинно-читаемые результаты теста как GitHub Actions artifacts. Этот документ является краткой точкой восстановления контекста, а не заменой оригинальных логов.
+В PR [#39](https://github.com/esv1312-crypto/Office/pull/39) подготовлен workflow `.github/workflows/office-evidence-archive.yml`. После принятия и включения в `main` он должен после завершения выбранных workflows сохранять JSON со SHA, branch, run URL, conclusion и job/step outcomes как GitHub Actions artifact на 90 дней. Он также создаёт читаемое резюме. Пока PR не принят и workflow не запустился, считать эту автоматизацию **предложенной, но не активной**.
+
+Архив evidence не заменяет оригинальные job logs и не доказывает production-состояние без проверки SHA/deploy. Handoff по-прежнему обновляется после существенных действий; автоматическое обновление файла handoff не реализовано.
+
+## 7. Правило продолжения в новом чате
+
+Первое действие нового чата — перечитать этот handoff и выполнить read-only сверку GitHub ↔ Render. Не повторять тест, пока не проверены последние run ID и evidence. После работы обновить этот файл и сохранить ссылки на evidence. Этот документ является краткой точкой восстановления контекста, а не заменой оригинальных логов.
 
 ## Краткий итог на момент записи
 
-**Состояние:** production ранее отвечал и последний подтверждённый deploy успешен; GitHub `main` уже новее production SHA. Unit, runtime smoke и PostgreSQL тесты на текущем `main` прошли. Production fallback/recovery audit пока не подтверждён. Следующее действие — свежая сверка SHA/деплоя, затем авторизованный live audit.
+**Состояние:** production ранее отвечал и последний подтверждённый deploy успешен; GitHub `main` уже новее production SHA. Unit, runtime smoke и PostgreSQL тесты на текущем `main` прошли. Production fallback/recovery audit пока не подтверждён. PR #39 содержит документацию по передаче контекста и предлагаемый автоматический архив test evidence; он ещё не принят.
