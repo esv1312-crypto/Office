@@ -216,3 +216,41 @@ test("a claim that all workers completed is rejected when a worker remains faile
   assert.equal(result.checks[0].passed, false);
   assert.match(result.checks[0].evidence, /all workers completed conflicts/i);
 });
+
+test("grounds citations against source documents supplied inline in the task dossier", () => {
+  const task = [
+    "Use the supplied source dossier:",
+    "===== test/source.txt =====",
+    "FACT A: The launch gate is called GREEN.",
+    "FACT B: The required owner is STAS.",
+    "===== test/config.txt =====",
+    "FACT C: The retry limit is 2."
+  ].join("\n");
+  const result = enforceVerificationEvidence({
+    status: "PASS",
+    summary: "All supplied dossier facts are grounded.",
+    checks: [
+      {
+        name: "Launch gate is GREEN",
+        requirement: "Confirm the launch gate name",
+        passed: true,
+        evidence: "The supplied source states the launch gate is GREEN.",
+        classification: "FACT",
+        source: "test/source.txt",
+        locator: "Line beginning FACT A: The launch gate is called GREEN."
+      },
+      {
+        name: "Retry limit is 2",
+        requirement: "Confirm the retry limit",
+        passed: true,
+        evidence: "The supplied config states the retry limit is 2.",
+        classification: "FACT",
+        source: "test/config.txt",
+        locator: "FACT C: The retry limit is 2."
+      }
+    ]
+  }, ["Confirm the launch gate name", "Confirm the retry limit"], { task });
+
+  assert.equal(result.status, "PASS");
+  assert.equal(result.checks.every(check => check.referenceGrounded), true);
+});

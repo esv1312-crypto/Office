@@ -30,6 +30,24 @@ function readLocalSource(source, repoRoot = process.cwd()) {
   catch { return { recognized:true, content:"" }; }
 }
 
+function readSuppliedSource(source, context = {}) {
+  const requestedPath = String(source || "").replace(/\\/g, "/").trim().replace(/#L\d+(?:-L?\d+)?$/i, "");
+  if (!requestedPath) return "";
+  const lines = String(context.task || context.suppliedDossier || "").split(/\r?\n/);
+  const documents = new Map();
+  let currentPath = "";
+  for (const line of lines) {
+    const header = line.match(/^={5,}\s*(.+?)\s*={5,}\s*$/);
+    if (header) {
+      currentPath = header[1].trim().replace(/\\/g, "/");
+      if (!documents.has(currentPath.toLowerCase())) documents.set(currentPath.toLowerCase(), []);
+      continue;
+    }
+    if (currentPath) documents.get(currentPath.toLowerCase()).push(line);
+  }
+  return (documents.get(requestedPath.toLowerCase()) || []).join("\n");
+}
+
 function referenceIsGrounded(check, context = {}) {
   const source=String(check?.source || "").trim();
   const locator=String(check?.locator || "").trim();
@@ -37,10 +55,19 @@ function referenceIsGrounded(check, context = {}) {
   if(!source || !locator || !locatorKey || /^n\/?a$/i.test(locator)) return false;
 
   const local=readLocalSource(source,context.repoRoot);
-  if(local.recognized) {
+  if(local.recognized && local.content) {
     const contentKey=normalizeReference(local.content);
     return Boolean(contentKey) && locatorCandidates(locator).some(candidate=>contentKey.includes(candidate));
   }
+
+  // Some tasks provide a source dossier inline instead of creating files on disk.
+  // Ground citations against that exact supplied document before rejecting a missing local path.
+  const suppliedContent=readSuppliedSource(source,context);
+  if(suppliedContent) {
+    const contentKey=normalizeReference(suppliedContent);
+    return Boolean(contentKey) && locatorCandidates(locator).some(candidate=>contentKey.includes(candidate));
+  }
+  if(local.recognized) return false;
 
   const workerResults=Array.isArray(context.workerResults)?context.workerResults:[];
   const eventEvidence=Array.isArray(context.eventEvidence)?context.eventEvidence:[];

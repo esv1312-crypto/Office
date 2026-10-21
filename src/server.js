@@ -1512,7 +1512,7 @@ async function verifyRootTask(record) {
     }
     throw Object.assign(new Error("Verifier returned invalid verification result"),{code:"VERIFICATION_INVALID"});
   }
-  verification=enforceVerificationEvidence(verification,checklist,{workerResults:record.workerResults,eventEvidence,finalResult:String(record.result || "").slice(0,20000)});
+  verification=enforceVerificationEvidence(verification,checklist,{workerResults:record.workerResults,eventEvidence,finalResult:String(record.result || "").slice(0,20000),task:String(record.task || "").slice(0,20000)});
   const failedChecks=verification.checks.filter(x=>x?.passed!==true);
   const passed=verification.status==="PASS" && failedChecks.length===0;
   record.verification={
