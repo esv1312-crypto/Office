@@ -27,14 +27,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          EVENT_PATH: ${{ github.event_path }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p office-evidence
           python - <<'PY'
           import json, os, pathlib, subprocess
-          event = json.loads(pathlib.Path(os.environ["EVENT_PATH"]).read_text())
+          event = json.loads(pathlib.Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
           run = event["workflow_run"]
           run_id = str(run["id"])
           repo = os.environ["REPOSITORY"]
