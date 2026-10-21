@@ -18,6 +18,11 @@ INTAKE → RECON → PLAN → DELEGATE → EXECUTE → VERIFY → FIX → RETEST
 - Evidence — обязательное подтверждение выполненной работы.
 - Departments / Rooms / Competency Pools — динамические сущности, создаваемые под реальные потребности проекта.
 
+## Непрерывность работы и доказательства
+
+- [Текущая точка остановки и статус проекта](docs/operations/AI_OFFICE_SESSION_HANDOFF.md) — читать в начале каждой новой рабочей сессии.
+- [Правила фиксации тестов и evidence](docs/operations/TEST_EVIDENCE_AND_SESSION_CONTINUITY.md) — обязательный порядок сверки GitHub/Render и записи результатов.
+
 ## Продукты
 
 Один продукт может иметь несколько клиентских интерфейсов и один общий backend.
