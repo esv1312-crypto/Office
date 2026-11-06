@@ -240,6 +240,6 @@ test("completion reads the task fencing token before validating and persisting t
   const taskLockQuery = calls.find(call => call.sql.includes("FROM studio.tasks t JOIN studio.projects p") && call.sql.includes("FOR UPDATE OF t"));
   assert.match(taskLockQuery.sql, /t\.fencing_token/);
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.artifacts")));
-  assert.ok(calls.some(call => call.sql.includes("UPDATE studio.tasks SET status = 'qa'")));
+  assert.ok(calls.some(call => /UPDATE studio\\.tasks\\s+SET status = 'qa'/.test(call.sql)));
   assert.equal(calls.at(-2).sql, "COMMIT");
 });
