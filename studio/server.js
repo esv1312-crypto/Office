@@ -257,6 +257,10 @@ async function runConfiguredOwnerExecution() {
     await lockClient.query("SELECT pg_advisory_lock(741920262)");
     locked = true;
     const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    const recovery = await controlPlane.runtime.recovery.recover({ actor, limit: 50 });
+    if (recovery.recovered) {
+      console.log(`[studio] owner execution recovered expired tasks=${recovery.recovered}`);
+    }
     let plan = await controlPlane.access.loadPlan({ planId, actor });
     if (!plan) throw Object.assign(new Error("Owner execution plan was not found"), { code: "PLAN_NOT_FOUND" });
     if (plan.status === "proposed") {
