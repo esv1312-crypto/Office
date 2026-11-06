@@ -51,15 +51,16 @@ export function createPostgresExecutionStore({ pool, createId }) {
   }
 
   return Object.freeze({
-    async startExecution({ taskId, specialistId, workerId, at }) {
+    async startExecution({ taskId, specialistId, workerId, at, leaseMs = 300_000 }) {
       const id = required(taskId, "taskId");
       const specialist = required(specialistId, "specialistId");
       const worker = required(workerId, "workerId");
       const timestamp = required(at, "at");
+      if (!Number.isInteger(leaseMs) || leaseMs < 1_000) throw new TypeError("leaseMs must be an integer of at least 1000");
 
       return inTransaction(pool, async client => {
         const selected = await client.query(
-          `SELECT t.id, t.project_id, t.status, t.assignee_specialist_id, t.version, t.payload,
+          `SELECT t.id, t.project_id, t.status, t.assignee_specialist_id, t.version, t.fencing_token, t.payload,
                   p.organization_id
              FROM studio.tasks t
              JOIN studio.projects p ON p.id = t.project_id
@@ -94,6 +95,9 @@ export function createPostgresExecutionStore({ pool, createId }) {
         );
         const attempt = Number(attemptResult.rows[0]?.next_attempt || 1);
         const executionId = required(createId(), "generated executionId");
+        const leaseToken = required(createId(), "generated leaseToken");
+        const fencingToken = Number(row.fencing_token || 0) + 1;
+        const leaseExpiresAt = new Date(Date.parse(timestamp) + leaseMs).toISOString();
         const nextTask = {
           ...taskFromRow(row),
           status: "running",
@@ -103,18 +107,20 @@ export function createPostgresExecutionStore({ pool, createId }) {
 
         await client.query(
           `UPDATE studio.tasks
-              SET status = 'running', version = $2, payload = $3::jsonb, updated_at = $4
+              SET status = 'running', version = $2, payload = $3::jsonb, updated_at = $4,
+                  fencing_token = $5
             WHERE id = $1`,
-          [id, nextTask.version, JSON.stringify(nextTask), timestamp],
+          [id, nextTask.version, JSON.stringify(nextTask), timestamp, fencingToken],
         );
         await client.query(
           `INSERT INTO studio.executions
-             (id, task_id, specialist_id, worker_id, status, attempt, started_at)
-           VALUES ($1, $2, $3, $4, 'running', $5, $6)`,
-          [executionId, id, specialist, worker, attempt, timestamp],
+             (id, task_id, specialist_id, worker_id, status, attempt, started_at,
+              fencing_token, lease_token, lease_expires_at, heartbeat_at)
+           VALUES ($1, $2, $3, $4, 'running', $5, $6, $7, $8, $9, $6)`,
+          [executionId, id, specialist, worker, attempt, timestamp, fencingToken, leaseToken, leaseExpiresAt],
         );
         const startedEventId = required(createId(), "generated eventId");
-        const startedPayload = { executionId, specialistId: specialist, workerId: worker, attempt };
+        const startedPayload = { executionId, specialistId: specialist, workerId: worker, attempt, fencingToken };
         await client.query(
           `INSERT INTO studio.events
              (id, organization_id, project_id, aggregate_type, aggregate_id,
@@ -131,17 +137,19 @@ export function createPostgresExecutionStore({ pool, createId }) {
         return {
           executionId,
           task: nextTask,
-          execution: { id: executionId, attempt, workerId: worker, startedAt: timestamp },
+          execution: { id: executionId, attempt, workerId: worker, startedAt: timestamp, fencingToken, leaseToken, leaseExpiresAt },
         };
       });
     },
 
-    async completeExecution({ executionId, output, modelSnapshot, artifact, at }) {
+    async completeExecution({ executionId, output, modelSnapshot, artifact, at, fencingToken, leaseToken }) {
       const id = required(executionId, "executionId");
       const text = required(output, "output");
       const snapshot = asObject(modelSnapshot, "modelSnapshot");
       const artifactInput = asObject(artifact, "artifact");
       const timestamp = required(at, "at");
+      if (!Number.isInteger(fencingToken) || fencingToken < 1) throw new TypeError("fencingToken is required");
+      const lease = required(leaseToken, "leaseToken");
 
       return inTransaction(pool, async client => {
         const executionResult = await client.query(
@@ -162,6 +170,10 @@ export function createPostgresExecutionStore({ pool, createId }) {
         if (execution.status !== "running") {
           throw Object.assign(new Error("Execution is not running"), { code: "EXECUTION_NOT_RUNNING" });
         }
+        if (Number(execution.fencing_token) !== fencingToken || execution.lease_token !== lease ||
+            !execution.lease_expires_at || Date.parse(execution.lease_expires_at) <= Date.parse(timestamp)) {
+          throw Object.assign(new Error("Execution lease expired or fencing token is stale"), { code: "EXECUTION_LEASE_LOST" });
+        }
 
         const taskResult = await client.query(
           `SELECT t.id, t.project_id, t.status, t.version, t.payload, p.organization_id
@@ -170,7 +182,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
           [execution.task_id],
         );
         const taskRow = taskResult.rows[0];
-        if (!taskRow || taskRow.status !== "running") {
+        if (!taskRow || taskRow.status !== "running" || Number(taskRow.fencing_token) !== fencingToken) {
           throw Object.assign(new Error("Task is not running"), { code: "TASK_NOT_RUNNING" });
         }
 
@@ -225,10 +237,12 @@ export function createPostgresExecutionStore({ pool, createId }) {
       });
     },
 
-    async failExecution({ executionId, reason, at }) {
+    async failExecution({ executionId, reason, at, fencingToken, leaseToken }) {
       const id = required(executionId, "executionId");
       const failureReason = required(reason, "reason").slice(0, 1000);
       const timestamp = required(at, "at");
+      if (!Number.isInteger(fencingToken) || fencingToken < 1) throw new TypeError("fencingToken is required");
+      const lease = required(leaseToken, "leaseToken");
 
       return inTransaction(pool, async client => {
         const executionResult = await client.query(
@@ -244,6 +258,10 @@ export function createPostgresExecutionStore({ pool, createId }) {
         if (execution.status !== "running") {
           throw Object.assign(new Error("Execution is not running"), { code: "EXECUTION_NOT_RUNNING" });
         }
+        if (Number(execution.fencing_token) !== fencingToken || execution.lease_token !== lease ||
+            !execution.lease_expires_at || Date.parse(execution.lease_expires_at) <= Date.parse(timestamp)) {
+          throw Object.assign(new Error("Execution lease expired or fencing token is stale"), { code: "EXECUTION_LEASE_LOST" });
+        }
 
         const taskResult = await client.query(
           `SELECT t.id, t.project_id, t.status, t.version, t.payload, p.organization_id
@@ -252,7 +270,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
           [execution.task_id],
         );
         const taskRow = taskResult.rows[0];
-        if (!taskRow || taskRow.status !== "running") {
+        if (!taskRow || taskRow.status !== "running" || Number(taskRow.fencing_token) !== fencingToken) {
           throw Object.assign(new Error("Task is not running"), { code: "TASK_NOT_RUNNING" });
         }
         const nextTask = {
@@ -285,6 +303,74 @@ export function createPostgresExecutionStore({ pool, createId }) {
         );
         await insertOutboxEvent(client, { eventId: failedEventId, organizationId: taskRow.organization_id, projectId: taskRow.project_id, aggregateType: "task", aggregateId: taskRow.id, eventType: "execution.failed", payload: failedPayload, occurredAt: timestamp });
         return { task: nextTask, alreadyFailed: false };
+      });
+
+    },
+
+    async heartbeatExecution({ executionId, fencingToken, leaseToken, at, leaseMs = 300_000 }) {
+      const id = required(executionId, "executionId");
+      const lease = required(leaseToken, "leaseToken");
+      const timestamp = required(at, "at");
+      if (!Number.isInteger(fencingToken) || fencingToken < 1) throw new TypeError("fencingToken is required");
+      if (!Number.isInteger(leaseMs) || leaseMs < 1_000) throw new TypeError("leaseMs must be an integer of at least 1000");
+      const expiresAt = new Date(Date.parse(timestamp) + leaseMs).toISOString();
+      const result = await pool.query(
+        `UPDATE studio.executions
+            SET heartbeat_at = $4, lease_expires_at = $5
+          WHERE id = $1 AND fencing_token = $2 AND lease_token = $3
+            AND status = 'running' AND lease_expires_at > $4
+          RETURNING id`,
+        [id, fencingToken, lease, timestamp, expiresAt],
+      );
+      if (!result.rowCount) throw Object.assign(new Error("Execution lease expired or fencing token is stale"), { code: "EXECUTION_LEASE_LOST" });
+      return { executionId: id, leaseExpiresAt: expiresAt };
+    },
+
+    async recoverExpiredExecutions({ at, limit = 20 }) {
+      const timestamp = required(at, "at");
+      if (!Number.isInteger(limit) || limit < 1) throw new TypeError("limit must be a positive integer");
+      return inTransaction(pool, async client => {
+        const expired = await client.query(
+          `SELECT e.id AS execution_id, e.task_id, e.fencing_token,
+                  t.project_id, t.status AS task_status, t.version, t.payload,
+                  t.fencing_token AS task_fencing_token, t.assignee_specialist_id,
+                  p.organization_id
+             FROM studio.executions e
+             JOIN studio.tasks t ON t.id = e.task_id
+             JOIN studio.projects p ON p.id = t.project_id
+            WHERE e.status = 'running' AND e.lease_expires_at <= $1
+              AND t.status = 'running' AND t.fencing_token = e.fencing_token
+            ORDER BY e.lease_expires_at, e.started_at
+            LIMIT $2
+            FOR UPDATE OF e, t SKIP LOCKED`,
+          [timestamp, limit],
+        );
+        const recovered = [];
+        for (const row of expired.rows) {
+          const nextTask = { ...taskFromRow(row), status: "assigned",
+            version: Number(row.version) + 1, updatedAt: timestamp };
+          await client.query(
+            "UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3 WHERE id = $1 AND status = 'running'",
+            [row.execution_id, "Worker lease expired; execution recovered", timestamp],
+          );
+          await client.query(
+            "UPDATE studio.tasks SET status = 'assigned', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
+            [row.task_id, nextTask.version, JSON.stringify(nextTask), timestamp],
+          );
+          const eventId = required(createId(), "generated eventId");
+          const payload = { executionId: row.execution_id, reason: "lease_expired", previousFencingToken: Number(row.fencing_token) };
+          await client.query(
+            `INSERT INTO studio.events
+               (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+             VALUES ($1,$2,$3,'task',$4,'execution.lease_expired',$5::jsonb,$6)`,
+            [eventId, row.organization_id, row.project_id, row.task_id, JSON.stringify(payload), timestamp],
+          );
+          await insertOutboxEvent(client, { eventId, organizationId: row.organization_id,
+            projectId: row.project_id, aggregateType: "task", aggregateId: row.task_id,
+            eventType: "execution.lease_expired", payload, occurredAt: timestamp });
+          recovered.push({ taskId: row.task_id, executionId: row.execution_id, status: "assigned" });
+        }
+        return { recovered: recovered.length, tasks: recovered };
       });
     },
   });
