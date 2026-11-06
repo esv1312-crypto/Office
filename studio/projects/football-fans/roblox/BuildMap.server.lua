@@ -272,4 +272,115 @@ for _, x in ipairs({-82, 82}) do
 	crown.Shape = Enum.PartType.Ball
 end
 
+
+-- Neighbourhood life pass: shopfronts, street-facing facades, café interior,
+-- fan posters, street art and a physical football for the first playtest.
+local neighbourhood = folder("NeighbourhoodLife")
+local storefronts = folder("FanStreetStorefronts", neighbourhood)
+local cafeInterior = folder("CafeInterior", neighbourhood)
+local fanCulture = folder("FanCultureDetails", neighbourhood)
+local ballArea = folder("FootballProps", pitch)
+
+local function windowPanel(parent, name, x, y, z, width, height, tint)
+	local w = part(parent, name, Vector3.new(width, height, 1), Vector3.new(x, y, z), tint or C.glass, Enum.Material.Glass)
+	w.Transparency = 0.18
+	w.CanCollide = false
+	return w
+end
+
+local function awning(parent, name, x, z, width, color)
+	part(parent, name .. "Canopy", Vector3.new(width, 3, 12), Vector3.new(x, 15, z), color, Enum.Material.Fabric)
+	for stripe = 1, 6 do
+		local sx = x - width / 2 + stripe * (width / 7)
+		part(parent, name .. "Stripe", Vector3.new(2, 3.2, 12.2), Vector3.new(sx, 15, z), C.white, Enum.Material.Fabric)
+	end
+end
+
+local function poster(parent, name, text, x, y, z, color)
+	local board = part(parent, name, Vector3.new(12, 16, 1), Vector3.new(x, y, z), color or C.orange, Enum.Material.SmoothPlastic)
+	board.CanCollide = false
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 35
+	gui.Parent = board
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = C.white
+	label.TextWrapped = true
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Parent = gui
+end
+
+-- A small row of independent neighbourhood buildings makes the main street
+-- feel like a district rather than isolated points of interest.
+building(storefronts, "ScarfAndBannerStore", -190, 185, 66, 48, 24, C.red, "SCARVES & FLAGS")
+building(storefronts, "MatchdayDiner", 5, 185, 72, 50, 25, C.orange, "MATCHDAY DINER")
+building(storefronts, "SupportersWorkshop", 190, 185, 68, 48, 24, C.blue, "FAN WORKSHOP")
+
+-- Add readable street-facing shop windows, doors and striped awnings.
+for _, shop in ipairs({
+	{x = -190, z = 159, width = 66, colour = C.red},
+	{x = 5, z = 158, width = 72, colour = C.orange},
+	{x = 190, z = 159, width = 68, colour = C.blue},
+}) do
+	windowPanel(storefronts, "ShopWindowLeft", shop.x - 15, 10, shop.z, 18, 12)
+	windowPanel(storefronts, "ShopWindowRight", shop.x + 15, 10, shop.z, 18, 12)
+	part(storefronts, "ShopDoor", Vector3.new(9, 17, 2), Vector3.new(shop.x, 9, shop.z - 1), C.dark, Enum.Material.Metal)
+	awning(storefronts, "ShopAwning", shop.x, shop.z - 7, shop.width, shop.colour)
+end
+
+-- Dress the original Fan Shop storefront with display bays and merchandise racks.
+for _, x in ipairs({-273, -250, -227}) do
+	windowPanel(shops, "FanShopDisplayWindow", x, 12, -130, 18, 13)
+	part(shops, "MerchandiseDisplay", Vector3.new(12, 8, 5), Vector3.new(x, 5, -136), C.orange, Enum.Material.Fabric)
+end
+part(shops, "FanShopDoor", Vector3.new(10, 18, 2), Vector3.new(-250, 9, -131), C.dark, Enum.Material.Metal)
+awning(shops, "FanShopAwning", -250, -139, 66, C.red)
+
+-- Café interior: counter, tables, seats and warm pendant lights.
+part(cafeInterior, "CafeFloor", Vector3.new(72, 1, 52), Vector3.new(230, 2, -120), C.dark, Enum.Material.WoodPlanks)
+part(cafeInterior, "ServiceCounter", Vector3.new(42, 7, 8), Vector3.new(230, 6, -103), C.orange, Enum.Material.Wood)
+part(cafeInterior, "CounterBackWall", Vector3.new(48, 18, 2), Vector3.new(230, 13, -91), C.concrete, Enum.Material.Concrete)
+sign(cafeInterior, "CafeMenu", "COFFEE  •  FOOD  •  MATCHDAY", Vector3.new(230, 20, -93), Vector3.new(38, 8, 1), C.dark)
+for _, x in ipairs({205, 230, 255}) do
+	part(cafeInterior, "IndoorTable", Vector3.new(12, 2, 12), Vector3.new(x, 5, -133), C.orange, Enum.Material.Wood)
+	for _, dx in ipairs({-8, 8}) do
+		part(cafeInterior, "IndoorChair", Vector3.new(5, 5, 5), Vector3.new(x + dx, 3.5, -133), C.blue, Enum.Material.Wood)
+	end
+end
+for _, x in ipairs({210, 250}) do
+	part(cafeInterior, "PendantCable", Vector3.new(1, 7, 1), Vector3.new(x, 22, -112), C.dark, Enum.Material.Metal)
+	local glow = part(cafeInterior, "PendantLamp", Vector3.new(5, 2, 5), Vector3.new(x, 18, -112), C.orange, Enum.Material.Neon)
+	glow.CanCollide = false
+end
+
+-- Matchday posters and fictional fan-culture graphics.
+poster(fanCulture, "MatchdayPoster", "MATCHDAY\nTOGETHER", -150, 13, 86, C.red)
+poster(fanCulture, "FanZonePoster", "FAN ZONE\nOPEN TODAY", 145, 13, 86, C.blue)
+poster(fanCulture, "MiniPitchPoster", "PLAY\nTOGETHER", -355, 13, -260, C.green)
+part(fanCulture, "StreetArtWall", Vector3.new(52, 18, 2), Vector3.new(-90, 12, 176), C.dark, Enum.Material.Concrete)
+sign(fanCulture, "StreetArtMessage", "ONE CITY  •  ONE CROWD", Vector3.new(-90, 15, 174), Vector3.new(44, 10, 1), C.orange)
+
+-- A physical ball gives the first Roblox Studio inspection something interactive.
+local football = Instance.new("Part")
+football.Name = "MatchBall"
+football.Shape = Enum.PartType.Ball
+football.Size = Vector3.new(5, 5, 5)
+football.Position = Vector3.new(-270, 7, -330)
+football.Anchored = false
+football.CanCollide = true
+football.Material = Enum.Material.SmoothPlastic
+football.Color = C.white
+football.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.35, 0.55)
+football.Parent = ballArea
+local ballMark = Instance.new("Decal")
+ballMark.Name = "BallMark"
+ballMark.Face = Enum.NormalId.Front
+ballMark.Texture = "rbxasset://textures/face.png"
+ballMark.Parent = football
+
 print("FootballFansMap generated. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
