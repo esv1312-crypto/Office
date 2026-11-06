@@ -31,6 +31,24 @@ export function createStudioHttpHandlers({ runtime, loadProject, loadPlan }) {
   }
 
   return Object.freeze({
+    async bootstrapWorkspace(request) {
+      if (typeof runtime.bootstrap?.bootstrap !== "function") {
+        throw Object.assign(new Error("Workspace bootstrap is not configured"), {
+          status: 503, code: "BOOTSTRAP_UNAVAILABLE",
+        });
+      }
+      const actor = actorFrom(request);
+      const body = request?.body && typeof request.body === "object" ? request.body : {};
+      const result = await runtime.bootstrap.bootstrap({
+        organizationName: required(body.organizationName, "organizationName"),
+        projectName: required(body.projectName, "projectName"),
+        productProfileId: required(body.productProfileId, "productProfileId"),
+        brief: required(body.brief, "brief"),
+        actor,
+      });
+      return { status: 201, body: result };
+    },
+
     async createPlan(request) {
       const actor = actorFrom(request);
       const projectId = required(request?.params?.projectId, "projectId");
