@@ -64,3 +64,10 @@ The generated map now adds five proximity-prompt scarf choices: Blue, Orange, Re
 Each of the three meetup pads also has a proximity prompt that triggers a short two-arm cheer motion by tweening the character's shoulder joints. Prompts support Roblox's built-in interaction UI across supported input methods.
 
 This remains an early prototype. Validate Script.Source installation from the Studio Command Bar, team assignment, R6/R15 scarf placement, respawn persistence, and cheer joint behaviour in a disposable Roblox Studio place. No persistent account save or external asset dependency is included.
+
+
+## Shared supporter banner interaction
+
+Each of the three meetup pads now has a `Raise crew banner` proximity prompt. A player must first select one of the five fan groups. Activating the prompt creates or recolours a server-visible banner at that meetup location and labels it with the selected crew. Other players can replace the banner by raising their own crew's colours. A short per-player cooldown limits repeated activation.
+
+The banner is a simple anchored primitive model and exists only for the current server session. It is not saved between sessions. Validate prompt placement, visibility from multiple approach directions, and multiplayer updates in a disposable Roblox Studio playtest.
