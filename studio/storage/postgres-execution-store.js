@@ -282,8 +282,8 @@ export function createPostgresExecutionStore({ pool, createId }) {
           failureReason,
         };
         await client.query(
-          "UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3,
-                  lease_token = NULL, lease_expires_at = NULL WHERE id = $1",
+          `UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3,
+                  lease_token = NULL, lease_expires_at = NULL WHERE id = $1`,
           [id, failureReason, timestamp],
         );
         await client.query(
@@ -352,8 +352,8 @@ export function createPostgresExecutionStore({ pool, createId }) {
           const nextTask = { ...taskFromRow(row), status: "assigned",
             version: Number(row.version) + 1, updatedAt: timestamp };
           await client.query(
-            "UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3,
-                  lease_token = NULL, lease_expires_at = NULL WHERE id = $1 AND status = 'running'",
+            `UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3,
+                  lease_token = NULL, lease_expires_at = NULL WHERE id = $1 AND status = 'running'`,
             [row.execution_id, "Worker lease expired; execution recovered", timestamp],
           );
           await client.query(
