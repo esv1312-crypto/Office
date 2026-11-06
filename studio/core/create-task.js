@@ -4,12 +4,19 @@ import { assertStudioTask } from "../contracts/task.js";
  * Create a task in the draft state.
  * The caller owns ID generation, persistence, and authorization.
  */
-export function createTask({ id, projectId, title, description = "", at }) {
+export function createTask({
+  id, projectId, title, description = "", requiredCompetencies = [], at,
+}) {
+  if (!Array.isArray(requiredCompetencies) ||
+      requiredCompetencies.some(value => typeof value !== "string" || !value.trim())) {
+    throw new TypeError("Task requiredCompetencies must be an array of non-empty strings");
+  }
   const task = {
     id,
     projectId,
     title: typeof title === "string" ? title.trim() : title,
     description,
+    requiredCompetencies: [...requiredCompetencies],
     status: "draft",
     assigneeSpecialistId: null,
     version: 1,
