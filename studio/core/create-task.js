@@ -11,12 +11,17 @@ export function createTask({
       requiredCompetencies.some(value => typeof value !== "string" || !value.trim())) {
     throw new TypeError("Task requiredCompetencies must be an array of non-empty strings");
   }
-  if (!Array.isArray(acceptanceCriteria) ||\n      acceptanceCriteria.some(value => typeof value !== "string" || !value.trim())) {\n    throw new TypeError("Task acceptanceCriteria must be an array of non-empty strings");\n  }\n  const task = {
+  if (!Array.isArray(acceptanceCriteria) ||
+      acceptanceCriteria.some(value => typeof value !== "string" || !value.trim())) {
+    throw new TypeError("Task acceptanceCriteria must be an array of non-empty strings");
+  }
+  const task = {
     id,
     projectId,
     title: typeof title === "string" ? title.trim() : title,
     description,
-    requiredCompetencies: [...requiredCompetencies],\n    acceptanceCriteria: [...acceptanceCriteria],
+    requiredCompetencies: [...requiredCompetencies],
+    acceptanceCriteria: [...acceptanceCriteria],
     status: "draft",
     assigneeSpecialistId: null,
     version: 1,
