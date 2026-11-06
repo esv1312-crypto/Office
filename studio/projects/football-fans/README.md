@@ -59,7 +59,7 @@ These are visual prototypes, not yet fully interactive Roblox NPCs: they do not 
 
 ## First social gameplay interactions
 
-The generated map now adds five proximity-prompt scarf choices: Blue, Orange, Red, Green, and White Crew. A server runtime assigns the corresponding Roblox Team, stores the selection on the Player, and attaches a simple colour-matched scarf visual to the character. The choice is reapplied when the character respawns.
+The generated map now adds five proximity-prompt scarf choices: Blue, Orange, Red, Green, and White Crew. A server runtime assigns the corresponding Roblox Team, stores the selection on the Player, and attaches a simple colour-matched scarf visual and a small crew label above the character. The choice is reapplied when the character respawns.
 
 Each of the three meetup pads also has a proximity prompt that triggers a short two-arm cheer motion by tweening the character's shoulder joints. Prompts support Roblox's built-in interaction UI across supported input methods.
 
