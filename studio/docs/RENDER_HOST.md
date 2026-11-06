@@ -34,7 +34,7 @@ Optional configuration:
 
 - Startup fails closed when any required secret/configuration is missing.
 - Startup never migrates the database or makes a model request.
-- The owner identity is derived only from a verified RS256 Neon Auth token.
+- The owner identity is derived only from a verified Neon Auth EdDSA (Ed25519) or RS256 token.
 - Database membership and role authorization remain enforced by Studio's PostgreSQL access-control adapter.
 - Generated repository artifacts can only be written under `studio/projects/` on the dedicated working branch.
 - The entrypoint does not start the legacy server, modify Render, or publish a Roblox experience.
