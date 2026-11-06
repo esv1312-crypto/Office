@@ -116,7 +116,7 @@ test("approval transaction locks only a plan owned by the authenticated active o
   assert.equal(result.plan.status, "approved");
   assert.equal(result.tasks[0].status, "planned");
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.outbox_events")));
-  assert.equal(calls.at(-2).sql, "COMMIT");
+  assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
 test("approval refuses a missing verified owner identity before opening a transaction", async () => {
