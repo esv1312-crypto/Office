@@ -31,7 +31,7 @@ export function createPostgresQaReviewStore({ pool, createId }) {
       try {
         await client.query("BEGIN");
         const taskResult = await client.query(
-          `SELECT t.id, t.project_id, t.status, t.version, t.payload, p.organization_id
+          `SELECT t.id, t.project_id, t.status, t.assignee_specialist_id, t.version, t.payload, p.organization_id
              FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id
             WHERE t.id = $1 FOR UPDATE OF t`, [taskId]);
         const task = taskResult.rows[0];
@@ -92,7 +92,7 @@ export function createPostgresQaReviewStore({ pool, createId }) {
               SET status = $2, assignee_specialist_id = $3, version = $4,
                   payload = $5::jsonb, updated_at = $6
             WHERE id = $1`,
-          [taskId, toStatus, verdict === "accepted" ? task.payload?.assigneeSpecialistId || null : null,
+          [taskId, toStatus, verdict === "accepted" ? task.assignee_specialist_id : null,
             nextTask.version, JSON.stringify(nextTask), at]);
         await client.query(
           `INSERT INTO studio.events
