@@ -268,8 +268,11 @@ test("independent verifier excludes planner, synthesis, and completed worker mod
   const verify = source.slice(verifyStart, verifyEnd);
   assert.match(ready, /options\.excludeModels/);
   assert.match(ready, /!excludedModels\.has\(x\.model\)/);
-  assert.match(verify, /new Set\(\[record\.model,record\.plannerModel,\.\.\.completedRelatedTasks\.map\(task=>task\.model\)\]\.filter\(Boolean\)\)/);
-  assert.match(verify, /ensureEmployeeReady\(verifier,record\.task,\{excludeModels:excludedModels\}\)/);
+  assert.match(verify, /const plannerCanVerify=freeOnly\(\)/);
+  assert.match(verify, /!workerModels\.has\(plannerModel\)/);
+  assert.match(verify, /new Set\(\[record\.model,\.\.\.completedRelatedTasks\.map\(task=>task\.model\)\]\.filter\(Boolean\)\)/);
+  assert.match(verify, /ensureEmployeeReady\(verifier,record\.task,\{/);
+  assert.match(verify, /preferredCandidate:\{provider:record\.plannerProvider\|\|"openrouter",model:plannerModel\}/);
   assert.doesNotMatch(ready, /staticRoleFallbacks|OPENROUTER_MODEL_POOLS/);
   assert.match(ready, /openrouter:getCandidatePool\(employee,"openrouter"\)\.map\(model=>\(\{provider:"openrouter",model\}\)\)/);
   assert.match(verify, /\{strictCandidate:true\}/);

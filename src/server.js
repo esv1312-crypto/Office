@@ -639,7 +639,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
   const allCandidates=buildProviderCandidateOrder({
     providerPools,
     providerOrder:[...new Set([...providerOrder(),"huggingface","gemini","apinex","cloudflare"])].filter(aiConfigured),
-    preferred:{provider:brain.provider,model:brain.model},
+    preferred:options.preferredCandidate || {provider:brain.provider,model:brain.model},
     fallbackCandidates:(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
   });
   const candidates=freeOnly() && !isLoopbackAiTestMode()
@@ -1402,17 +1402,29 @@ function buildVerificationPrompt({task,checklist,workerResults,eventEvidence,fin
 }
 
 async function verifyRootTask(record) {
-  const verifier=getEmployee("verifier");
+  const verifierBase=getEmployee("verifier");
   const checklist=Array.isArray(record.verificationChecklist) ? record.verificationChecklist : [];
-  emit("verification.requested",{taskId:record.id,employeeId:verifier.id,checkCount:checklist.length});
   const relatedTasks=[...tasks.values()].filter(task=>task.parentTaskId===record.id && ["subtask","replacement"].includes(task.kind));
-  // Only exclude models that actually produced a completed worker result. A failed attempt's
-  // planned model did not contribute to the candidate answer and must not block verification.
+  // A planner model can independently verify deterministic synthesis when it did not
+  // produce any completed worker result and differs from the final synthesis model.
   const completedRelatedTasks=relatedTasks.filter(task=>task.status==="completed" && String(task.result||"").trim());
-  const excludedModels=new Set([record.model,record.plannerModel,...completedRelatedTasks.map(task=>task.model)].filter(Boolean));
+  const workerModels=new Set(completedRelatedTasks.map(task=>String(task.model||"")).filter(Boolean));
+  const plannerModel=String(record.plannerModel||"");
+  const plannerCanVerify=freeOnly()
+    && plannerModel.endsWith(":free")
+    && plannerModel!==String(record.model||"")
+    && !workerModels.has(plannerModel);
+  const verifier=plannerCanVerify
+    ? {...verifierBase,provider:record.plannerProvider||"openrouter",model:plannerModel}
+    : verifierBase;
+  const excludedModels=new Set([record.model,...completedRelatedTasks.map(task=>task.model)].filter(Boolean));
+  if(plannerCanVerify) emit("verification.planner_model_reused",{taskId:record.id,employeeId:verifier.id,provider:verifier.provider,model:plannerModel,reason:"planner model is independent from completed worker and synthesis models"});
   let verifierCandidate;
   try {
-    verifierCandidate=await ensureEmployeeReady(verifier,record.task,{excludeModels:excludedModels});
+    verifierCandidate=await ensureEmployeeReady(verifier,record.task,{
+      excludeModels:excludedModels,
+      ...(plannerCanVerify ? {preferredCandidate:{provider:record.plannerProvider||"openrouter",model:plannerModel}} : {})
+    });
   } catch(error) {
     record.verification={status:"FAIL",checks:[{name:"Independent verifier availability",passed:false,evidence:"No separately qualified model was available for independent verification.",classification:"UNPROVEN",source:"Model Gateway preflight",locator:"ensureEmployeeReady()"}],summary:"Verification failed closed because no independent verifier model was available: "+String(error?.message||error),verifierId:verifier.id,model:null,verifiedAt:new Date().toISOString()};
     record.evidence=[];
@@ -1823,21 +1835,38 @@ async function executeRootTask(record) {
       "Plan: " + JSON.stringify(record.plan),
       "Verification checklist: " + JSON.stringify(record.verificationChecklist),
       "Worker results: " + JSON.stringify(record.workerResults)
-    ].join("\\n");
+    ].join("\n");
     let finalResult;
-    try {
-      finalResult=await generateViaGateway(synthesisPrompt,chief,null,record.id);
-    } catch(error) {
-      emit("chief.synthesis_fallback",{taskId:record.id,error:error?.message||String(error)});
+    if(freeOnly()) {
+      // Preserve scarce free routes for independent verification. Worker outputs
+      // are already persisted; deterministic aggregation avoids exhausting the
+      // model pool on a second long coordinator prompt.
+      emit("chief.synthesis_deterministic",{taskId:record.id,workerCount:finalChildren.length,reason:"free-only mode"});
       finalResult={
-        model:record.model || paidTestModel(),
-        text:"Deterministic synthesis fallback. Worker results:\n"+finalChildren.map(x=>[
+        provider:"local",
+        model:"deterministic-synthesis",
+        text:"Сводный результат по завершённым подзадачам:\n"+finalChildren.map(x=>[
           x.employeeId,
           x.status,
           x.error || "",
           String(x.result?.text || x.result || "").slice(0,12000)
         ].join(" | ")).join("\n")
       };
+    } else {
+      try {
+        finalResult=await generateViaGateway(synthesisPrompt,chief,null,record.id);
+      } catch(error) {
+        emit("chief.synthesis_fallback",{taskId:record.id,error:error?.message||String(error)});
+        finalResult={
+          model:"deterministic-synthesis",
+          text:"Deterministic synthesis fallback. Worker results:\n"+finalChildren.map(x=>[
+            x.employeeId,
+            x.status,
+            x.error || "",
+            String(x.result?.text || x.result || "").slice(0,12000)
+          ].join(" | ")).join("\n")
+        };
+      }
     }
     record.model=finalResult.model;
     record.result=finalResult.text;
