@@ -76,3 +76,12 @@ This foundation is not yet connected to HTTP routes, PostgreSQL, model providers
 - The adapter is not yet wired into the production Express server and has not been tested against the live runtime. Its unit tests use an injected fake fetch implementation.
 
 This is the first integration seam. The next step is to add an isolated orchestration service that uses this client, validates permissions and project scope, and records the legacy runtime task ID without changing the production database or deployment.
+
+## Governed task hand-off
+
+- `orchestration/submit-office-task.js` is the application-layer hand-off from a Universal AI Studio project to the existing Chief/root-task endpoint.
+- Only an authenticated actor with role `owner` can submit; the project must be active and the injected authorization policy must explicitly allow `task.submit`.
+- A durable store is mandatory and must persist a `submitting` intent before the runtime POST. The module intentionally has no in-memory persistence fallback.
+- On confirmed runtime acceptance, the store records the legacy task ID. On an ambiguous network/invalid-response failure, the submission is marked `unknown`; it is never automatically retried because the legacy API has no idempotency key.
+- Store operations, authentication, HTTP route wiring, task-status reconciliation, and the UI remain application/infrastructure responsibilities.
+- Unit tests use fakes. No live runtime task has been submitted, and no Neon or Render resources have been changed.
