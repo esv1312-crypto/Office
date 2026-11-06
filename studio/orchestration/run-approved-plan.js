@@ -14,17 +14,16 @@ function eligibleReviewer(candidate, task, producerId) {
 }
 
 export function createPlanExecutionWorkflow({
-  dispatch, worker, qa, directory, createWorkerId,
+  dispatch, workerPool, qa, directory,
 }) {
   if (!dispatch || typeof dispatch.dispatch !== "function") throw new TypeError("Director dispatch is required");
-  if (!worker || typeof worker.execute !== "function") throw new TypeError("Worker Runtime is required");
+  if (!workerPool || typeof workerPool.executeAssignments !== "function") throw new TypeError("Worker Pool is required");
   if (!qa || typeof qa.review !== "function") throw new TypeError("QA Runtime is required");
   if (!directory || typeof directory.getTask !== "function" ||
       typeof directory.getSpecialist !== "function" ||
       typeof directory.listActiveSpecialists !== "function") {
     throw new TypeError("A task and specialist directory is required");
   }
-  if (typeof createWorkerId !== "function") throw new TypeError("createWorkerId is required");
 
   return Object.freeze({
     async run({ planId, actor }) {
@@ -34,23 +33,28 @@ export function createPlanExecutionWorkflow({
         blocked: [...dispatchReport.blocked],
       };
 
-      for (const assignment of dispatchReport.assigned) {
-        const task = await directory.getTask({ taskId: assignment.taskId });
-        const specialist = await directory.getSpecialist({ specialistId: assignment.specialistId });
-        if (!task || !specialist) {
-          report.blocked.push({ taskId: assignment.taskId, code: "DISPATCH_DIRECTORY_LOOKUP_FAILED" });
-          continue;
-        }
-        const workerResult = await worker.execute({
-          taskId: task.id, specialist, workerId: createWorkerId(),
-        });
+      const workerResults = await workerPool.executeAssignments(dispatchReport.assigned);
+      for (const workerResult of workerResults) {
         report.executions.push({
-          taskId: task.id, executionId: workerResult.executionId,
+          taskId: workerResult.taskId, executionId: workerResult.executionId,
           status: workerResult.status, errorCode: workerResult.errorCode || null,
         });
-        if (workerResult.status !== "qa") continue;
+        if (workerResult.status !== "qa") {
+          if (workerResult.status === "failed") {
+            report.blocked.push({
+              taskId: workerResult.taskId, code: workerResult.errorCode || "WORKER_FAILED",
+              reason: workerResult.error || "Worker execution failed",
+            });
+          }
+          continue;
+        }
 
-        const qaTask = await directory.getTask({ taskId: task.id });
+        const task = await directory.getTask({ taskId: workerResult.taskId });
+        const specialist = await directory.getSpecialist({ specialistId: workerResult.specialistId });
+        if (!task || !specialist) {
+          report.blocked.push({ taskId: workerResult.taskId, code: "QA_DIRECTORY_LOOKUP_FAILED" });
+          continue;
+        }
         const specialists = await directory.listActiveSpecialists({ organizationId: task.organizationId });
         const reviewer = specialists
           .filter(candidate => eligibleReviewer(candidate, task, specialist.id))
@@ -69,9 +73,7 @@ export function createPlanExecutionWorkflow({
           content: workerResult.output,
           specialistId: specialist.id,
         };
-        const qaResult = await qa.review({
-          task: qaTask, artifact, reviewer, actor,
-        });
+        const qaResult = await qa.review({ task, artifact, reviewer, actor });
         report.qaReviews.push(qaResult);
       }
 
