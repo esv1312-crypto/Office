@@ -70,10 +70,6 @@ export function createPostgresStudioAccessControl({ pool }) {
   }
 
   async function authorize({ actor, action, project, plan, task, specialist, reviewer }) {
-    const resource = project || plan || task;
-    const resourceKind = project ? "project" : plan ? "plan" : task ? "task" : null;
-    const resourceProjectId = projectIdFrom(resource, resourceKind);
-    if (!resourceProjectId) return false;
     let subject;
     try { subject = actorId(actor); } catch { return false; }
     if (action === "execution.recover") {
@@ -87,6 +83,10 @@ export function createPostgresStudioAccessControl({ pool }) {
         [subject]);
       return Boolean(ownerResult.rows[0]);
     }
+    const resource = project || plan || task;
+    const resourceKind = project ? "project" : plan ? "plan" : task ? "task" : null;
+    const resourceProjectId = projectIdFrom(resource, resourceKind);
+    if (!resourceProjectId) return false;
     const result = await pool.query(
       `SELECT m.role, m.status, o.status AS organization_status
          FROM studio.projects p
