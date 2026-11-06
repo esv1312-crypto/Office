@@ -32,6 +32,7 @@ The first end-to-end workflow is:
 - `director/` — planning and delegation.
 - `agents/` — specialist, worker, and QA runtimes.
 - `gateways/` — model and tool adapters.
+- `storage/` — database migrations and persistence adapters.
 - `governance/` — permissions and approvals.
 - `product-profiles/` — Roblox, web, mobile, SaaS, and future product domains.
 - `projects/` — product-specific briefs, plans, and build artifacts.
@@ -43,7 +44,9 @@ The first end-to-end workflow is:
 - A deterministic task lifecycle state machine.
 - Versioned task status-change domain events.
 - A provider-neutral Worker Runtime contract with injected durable-store and model-gateway dependencies.
-- Worker Runtime tests for successful QA hand-off, model failures, empty output, persistence failures, and assignment validation.
+- A PostgreSQL migration for an isolated `studio` schema.
+- A transactional PostgreSQL execution-store adapter for claiming assigned tasks, persisting executions, storing artifacts, and writing events.
+- Tests authored for Worker Runtime behavior and PostgreSQL task-claim transaction behavior. They have not yet been executed in this branch.
 - First product project: `projects/football-fans/`, with a map design brief and a Roblox Studio blockout generator.
 
 ## Worker Runtime boundary
@@ -57,7 +60,14 @@ The first end-to-end workflow is:
 5. Requires the store to confirm that the task entered `qa` and the artifact was persisted.
 6. Records model execution failures through the store.
 
-The runtime deliberately does not include an in-memory persistence fallback, a concrete database adapter, a model-provider adapter, retries, or tool execution. Those must be added as separate, testable infrastructure components. A failed artifact persistence leaves recovery to the durable store/lease reconciler; it is not misreported as a model failure.
+## PostgreSQL persistence boundary
+
+- `storage/migrations/001_initial.sql` creates an isolated `studio` schema with projects, specialists, tasks, executions, artifacts, and events.
+- `storage/postgres-execution-store.js` accepts an injected pg-compatible pool and uses transactions and row locks to claim assigned work and persist execution outcomes.
+- The adapter does not create a pool, read environment variables, apply migrations, or silently fall back to memory.
+- A dedicated Studio database/schema must be provisioned and migration 001 explicitly applied before this adapter can be used.
+- The migration has not been applied to Neon or any other database. No database was connected or modified.
+- Project, specialist, task creation repositories and lease expiry/recovery are still to be implemented.
 
 ## First product assignment: Football Fans
 
@@ -71,7 +81,7 @@ See:
 
 ## Local verification
 
-Run the current domain, orchestration, and agent tests from the repository root:
+Run the current tests from the repository root:
 
 ```sh
 node --test studio/**/*.test.js
@@ -81,7 +91,7 @@ Tests have been authored but are not yet confirmed as executed in this branch. D
 
 The map generator must be run and visually inspected in Roblox Studio before the map can be called play-tested. It does not publish or change a live Roblox experience.
 
-The new foundation is not yet connected to HTTP routes, PostgreSQL, live model providers, or production workers.
+The new foundation is not yet connected to HTTP routes, a live database, live model providers, or production workers.
 
 ## Legacy Office adapter — isolated and optional
 
