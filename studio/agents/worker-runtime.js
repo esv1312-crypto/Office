@@ -147,7 +147,6 @@ export function createWorkerRuntime({
           execution: started.execution,
           signal: abortController.signal,
         });
-        await stopHeartbeat();
         if (leaseError) throw leaseError;
         if (!generated || typeof generated.text !== "string" || !generated.text.trim()) {
           throw Object.assign(new Error("Model gateway returned an empty result"), {
@@ -204,6 +203,7 @@ export function createWorkerRuntime({
             },
           });
         } catch (error) {
+          await stopHeartbeat();
           const reason = "Artifact repository write failed";
           await store.failExecution({
             executionId: started.executionId,
@@ -230,6 +230,19 @@ export function createWorkerRuntime({
         specialistId,
         ...(externalArtifact ? { external: externalArtifact } : {}),
       };
+
+      // The lease remains renewed while the external artifact repository is
+      // writing. Stop only after that potentially slow operation has finished.
+      await stopHeartbeat();
+      if (leaseError) {
+        return {
+          executionId: started.executionId,
+          taskId: id,
+          status: "lease_lost",
+          errorCode: leaseError.code || "EXECUTION_LEASE_LOST",
+          error: String(leaseError.message || leaseError),
+        };
+      }
 
       // Keep persistence outside the model-error catch. If durable completion
       // fails, leave recovery to the store/lease reconciler rather than
