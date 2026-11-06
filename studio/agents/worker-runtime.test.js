@@ -9,8 +9,8 @@ const specialist = {
   modelProfile: { preferredProvider: "openrouter", preferredModel: "configured-by-gateway" },
 };
 
-function fixture({ generated, startResult, completeResult, gatewayError, gatewayDelayMs = 0, heartbeatIntervalMs = 60_000, heartbeatError } = {}) {
-  const calls = { started: [], generated: [], completed: [], failed: [], heartbeats: [] };
+function fixture({ generated, startResult, completeResult, gatewayError, gatewayDelayMs = 0, heartbeatIntervalMs = 60_000, heartbeatError, artifactWriter } = {}) {
+  const calls = { started: [], generated: [], completed: [], failed: [], heartbeats: [], artifacts: [] };
   const store = {
     async startExecution(value) {
       calls.started.push(value);
@@ -57,6 +57,7 @@ function fixture({ generated, startResult, completeResult, gatewayError, gateway
     modelGateway,
     now: () => "2026-11-07T01:00:00.000Z",
     heartbeatIntervalMs,
+    ...(artifactWriter ? { artifactWriter: { async writeTextArtifact(value) { calls.artifacts.push(value); return artifactWriter(value); } } } : {}),
   });
   return { runtime, calls };
 }
@@ -199,4 +200,35 @@ test("does not commit a result after heartbeat reports a lost lease", async () =
   assert.equal(result.status, "lease_lost");
   assert.equal(calls.completed.length, 0);
   assert.equal(calls.failed.length, 0);
+});
+
+
+test("persists worker output to the approved repository workspace before database QA hand-off", async () => {
+  const { runtime, calls } = fixture({
+    artifactWriter: async value => ({
+      path: value.path, branch: "studio-v1-foundation", sha256: "checksum",
+      commitSha: "commit-1", provenance: value.provenance,
+    }),
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "qa");
+  assert.equal(calls.artifacts.length, 1);
+  assert.equal(calls.artifacts[0].path, "studio/projects/project-1/artifacts/task-1.md");
+  assert.equal(calls.artifacts[0].provenance.executionId, "execution-1");
+  assert.equal(calls.completed[0].artifact.external.commitSha, "commit-1");
+  assert.equal(result.externalArtifact.sha256, "checksum");
+});
+
+test("fails the execution instead of handing off to QA when repository artifact writing fails", async () => {
+  const { runtime, calls } = fixture({
+    artifactWriter: async () => {
+      throw Object.assign(new Error("private provider detail"), { code: "ARTIFACT_REPOSITORY_FORBIDDEN" });
+    },
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "failed");
+  assert.equal(result.errorCode, "ARTIFACT_REPOSITORY_FORBIDDEN");
+  assert.equal(result.error, "Artifact repository write failed");
+  assert.equal(calls.failed.length, 1);
+  assert.equal(calls.completed.length, 0);
 });
