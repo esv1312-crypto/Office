@@ -240,6 +240,35 @@ export function createPostgresDomainStore({ pool, createId }) {
       }
     },
 
+    async getTask({ taskId }) {
+      const id = required(taskId, "taskId");
+      const result = await pool.query(
+        `SELECT t.id, t.project_id, t.status, t.assignee_specialist_id, t.version,
+                t.payload, p.organization_id
+           FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id
+          WHERE t.id = $1`, [id]);
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        ...(row.payload || {}), id: row.id, projectId: row.project_id,
+        organizationId: row.organization_id, status: row.status,
+        assigneeSpecialistId: row.assignee_specialist_id, version: Number(row.version),
+      };
+    },
+
+    async getSpecialist({ specialistId }) {
+      const id = required(specialistId, "specialistId");
+      const result = await pool.query(
+        `SELECT id, organization_id, name, role, status, version, payload
+           FROM studio.specialists WHERE id = $1`, [id]);
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        ...(row.payload || {}), id: row.id, organizationId: row.organization_id,
+        name: row.name, role: row.role, status: row.status, version: Number(row.version),
+      };
+    },
+
     async listActiveSpecialists({ organizationId }) {
       const orgId = required(organizationId, "organizationId");
       const result = await pool.query(
