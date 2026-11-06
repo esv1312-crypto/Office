@@ -30,7 +30,7 @@ function fixture({ generated, startResult, completeResult, gatewayError } = {}) 
     },
     async completeExecution(value) {
       calls.completed.push(value);
-      return completeResult || { task: { status: "qa" }, artifactId: "artifact-1" };
+      return completeResult === null ? null : (completeResult || { task: { status: "qa" }, artifactId: "artifact-1" });
     },
     async failExecution(value) {
       calls.failed.push(value);
