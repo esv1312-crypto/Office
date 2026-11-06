@@ -12,7 +12,7 @@ import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, provider
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
-import { buildPlanningTaskBrief } from "./task-context.js";
+import { buildPlanningTaskBrief, buildWorkerTaskContext } from "./task-context.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -340,23 +340,26 @@ async function generateWithGemini(task, preferredModel, configuredOverride = nul
   throw lastError || new Error("Gemini request failed");
 }
 
-const paidTestUsage={calls:0,estimatedUsd:0};
+const paidTestUsage={calls:0,estimatedUsd:0,reservedUsd:0};
 function paidTestBudgetUsd(){return Math.max(0.05,Number(process.env.AI_PAID_TEST_BUDGET_USD||1));}
 function paidTestMaxOutputTokens(){return Math.max(128,Math.min(8192,Number(process.env.AI_PAID_TEST_MAX_OUTPUT_TOKENS||4096)));}
 function paidTestReserve(task){
-  if(!paidTestEnabled()) return;
+  if(!paidTestEnabled()) return 0;
   const input=Math.ceil(String(task||"").length/3.5);
-  const reserve=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+paidTestMaxOutputTokens()*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
-  if(paidTestUsage.estimatedUsd+reserve>paidTestBudgetUsd()) throw Object.assign(new Error("Paid test budget exhausted"),{code:"PAID_TEST_BUDGET_EXCEEDED"});
+  const rounds=boundedIntegerSetting(process.env.AI_TOOL_MAX_ROUNDS,6,1,8);
+  const reserve=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+paidTestMaxOutputTokens()*rounds*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
+  if(paidTestUsage.estimatedUsd+paidTestUsage.reservedUsd+reserve>paidTestBudgetUsd()) throw Object.assign(new Error("Paid test budget exhausted"),{code:"PAID_TEST_BUDGET_EXCEEDED"});
+  paidTestUsage.reservedUsd+=reserve;
+  emit("paid_test.budget_reserved",{reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
+  return reserve;
 }
 function recordPaidTestUsage(data){
   if(!paidTestEnabled()) return;
   const input=Number(data?.usage?.prompt_tokens||data?.usage?.input_tokens||0);
   const output=Number(data?.usage?.completion_tokens||data?.usage?.output_tokens||0);
-  const estimatedInput=input||0;
-  const cost=(estimatedInput*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.035)+output*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.29))/1e6;
+  const cost=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+output*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
   paidTestUsage.calls++; paidTestUsage.estimatedUsd+=cost;
-  emit("paid_test.usage",{calls:paidTestUsage.calls,estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
+  emit("paid_test.usage",{calls:paidTestUsage.calls,estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
 }
 const AI_OFFICE_TOOL_SCHEMAS = [
   {
@@ -422,7 +425,8 @@ function aiRequestTimeoutMs() {
 }
 
 async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={},employeeId=null,taskId=null,enableTools=false,timeoutMs=null}) {
-  if(provider==="openrouter"&&paidTestEnabled()) paidTestReserve(task);
+  const paidReservation=provider==="openrouter"&&paidTestEnabled()?paidTestReserve(task):0;
+  let paidUsageMetered=false;
   emit("ai.start",{provider,model});
   const controller=new AbortController();
   const requestedTimeout=timeoutMs===null || timeoutMs===undefined ? aiRequestTimeoutMs() : Number(timeoutMs);
@@ -451,7 +455,13 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
         body:JSON.stringify(body)
       });
       const data=await response.json().catch(()=>({}));
-      if(provider==="openrouter"&&paidTestEnabled()) recordPaidTestUsage(data);
+      if(provider==="openrouter"&&paidTestEnabled()){
+        const usage=data?.usage;
+        const hasInputTokens=Boolean(usage) && (usage.prompt_tokens!=null || usage.input_tokens!=null);
+        const hasOutputTokens=Boolean(usage) && (usage.completion_tokens!=null || usage.output_tokens!=null);
+        paidUsageMetered=hasInputTokens && hasOutputTokens;
+        recordPaidTestUsage(data);
+      }
       if(!response.ok){
         const e=new Error(data?.error?.message || ("HTTP "+response.status));
         e.status=response.status;
@@ -495,7 +505,14 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       const e=new Error(provider+" request timed out"); e.status=408; e.transient=true; throw e;
     }
     throw error;
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+    if(paidReservation>0){
+      paidTestUsage.reservedUsd=Math.max(0,paidTestUsage.reservedUsd-paidReservation);
+      if(!paidUsageMetered) paidTestUsage.estimatedUsd+=paidReservation;
+      emit("paid_test.budget_settled",{estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd(),usageMissing:!paidUsageMetered});
+    }
+  }
 }
 
 const OPENROUTER_MODEL_POOLS = {
@@ -1191,7 +1208,7 @@ function rootTaskFor(record) {
 
 function buildWorkerPrompt(record,employee){
   const root=rootTaskFor(record), original=String(root?.task||record.task||"");
-  const context=original.length>120000?original.slice(0,120000)+"\n[CONTEXT TRUNCATED BY RUNTIME]":original;
+  const context=buildWorkerTaskContext(original);
   return [
     "You are "+employee.name+" ("+employee.role+") inside AI-OFFICE.",
     "Use the original parent task/source dossier below. Do not ask the Chief to repeat it.",
