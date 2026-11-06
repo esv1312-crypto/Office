@@ -34,7 +34,10 @@ test("creates project and event in one transaction", async () => {
   const result = await store.createProject(project);
   assert.equal(result.project.id, "p1");
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.projects")));
-  assert.ok(calls.some(call => call.sql.includes("project.created")));
+  const projectEvent = calls.find(call => call.sql.includes("project.created"));
+  assert.ok(projectEvent);
+  assert.match(projectEvent.sql, /project_id/);
+  assert.deepEqual(projectEvent.params.slice(1, 4), ["org-1", "p1", "p1"]);
   assert.equal(calls.at(-2).sql, "COMMIT");
 });
 
