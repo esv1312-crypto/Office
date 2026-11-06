@@ -524,35 +524,6 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
   }
 }
 
-const OPENROUTER_MODEL_POOLS = {
-  coordinator:[
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "qwen/qwen3.8-27b:free",
-    "openrouter/free"
-  ],
-  developer:[
-    "poolside/laguna-s-2.1:free",
-    "cohere/north-mini-code:free",
-    "qwen/qwen3.8-27b:free",
-    "openrouter/free"
-  ],
-  analyst:[
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "qwen/qwen3.8-27b:free",
-    "openrouter/free"
-  ],
-  verifier:[
-    "google/gemma-4-31b-it:free",
-    "qwen/qwen3.8-27b:free",
-    "openrouter/free"
-  ],
-  executor:[
-    "nvidia/nemotron-3.5-lightning:free",
-    "qwen/qwen3.8-27b:free",
-    "openrouter/free"
-  ]
-};
-
 const openRouterRotation = new Map();
 const modelSuppressions = new Map();
 const providerSuppressions = new Map();
@@ -635,7 +606,6 @@ async function ensureEmployeeReady(employee, task, options={}) {
   }
   const brain=resolveBrain(employee,task);
   const role=String(employee?.role||"executor");
-  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[role] || [];
   const geminiModels=aiConfigured("gemini")
     ? String(process.env.GEMINI_MODELS || "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash").split(",").map(x=>x.trim()).filter(Boolean).map(model=>({provider:"gemini",model}))
     : [];
@@ -649,10 +619,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
     ? [{provider:"cloudflare",model:String(process.env.CLOUDFLARE_MODEL||"@cf/meta/llama-3.1-8b-instruct").trim()}]
     : [];
   const providerPools={
-    openrouter:[
-      ...getCandidatePool(employee,"openrouter").map(model=>({provider:"openrouter",model})),
-      ...staticRoleFallbacks.map(model=>({provider:"openrouter",model}))
-    ],
+    openrouter:getCandidatePool(employee,"openrouter").map(model=>({provider:"openrouter",model})),
     huggingface:getCandidatePool(employee,"huggingface").map(model=>({provider:"huggingface",model})),
     gemini:geminiModels,
     apinex:apinexModels,
@@ -665,7 +632,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
     preferred:{provider:brain.provider,model:brain.model},
     fallbackCandidates:(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
   });
-  const candidates=freeOnly()
+  const candidates=freeOnly() && !isLoopbackAiTestMode()
     ? allCandidates.filter(candidate=>candidate.provider==="openrouter" && String(candidate.model).endsWith(":free"))
     : allCandidates;
   const excludedModels=new Set(options.excludeModels || []);
@@ -746,18 +713,11 @@ function openRouterPool(employee, preferredModel = null) {
   if (paidTestEnabled()) return [paidTestModel()];
   const qualified=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter"));
   const discovered=getCandidatePool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter"));
-  const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[role] || [];
-  let pool=[preferredModel,...qualified,...discovered,...staticRoleFallbacks,"openrouter/free"].filter(Boolean);
-  try {
-    const custom=JSON.parse(process.env.OPENROUTER_MODEL_POOLS_JSON || "null");
-    if (custom && Array.isArray(custom[role]) && custom[role].length) {
-      const liveCustom=custom[role].filter(x => x && !isModelSuppressed(x,"openrouter"));
-      pool=[...liveCustom,...pool];
-    }
-  } catch (_) {}
+  let pool=[preferredModel,...qualified,...discovered].filter(Boolean);
+
   const configured=String(process.env.OPENROUTER_MODEL || "").trim();
   if (!preferredModel && configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool.unshift(configured);
-  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter") && (!freeOnly() || String(model).endsWith(":free"))) )];
+  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter") && (!freeOnly() || isLoopbackAiTestMode() || String(model).endsWith(":free"))) )];
 }
 
 async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
