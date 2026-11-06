@@ -37,6 +37,7 @@ export function createStudioExpressRouter({
     }
   };
 
+  router.post("/bootstrap", authenticate, rateLimit, bind(handlers.bootstrapWorkspace));
   router.post("/projects/:projectId/plans", authenticate, rateLimit, bind(handlers.createPlan));
   router.post("/plans/:planId/approve", authenticate, rateLimit, bind(handlers.approvePlan));
   router.post("/plans/:planId/execute", authenticate, rateLimit, bind(handlers.executeApprovedPlan));
