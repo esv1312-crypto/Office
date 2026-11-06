@@ -7,6 +7,7 @@ import { createPlanApproval } from "../governance/approve-plan.js";
 import { createTaskAssignment } from "../orchestration/assign-task.js";
 import { createDirectorDispatch } from "../director/director-dispatch.js";
 import { createWorkerRuntime } from "../agents/worker-runtime.js";
+import { createWorkerPool } from "../agents/worker-pool.js";
 import { createQaRuntime } from "../agents/qa-runtime.js";
 import { createExecutionRecovery } from "../governance/recover-expired-executions.js";
 import { createPlanExecutionWorkflow } from "../orchestration/run-approved-plan.js";
@@ -22,6 +23,7 @@ export function createStudioRuntime({
   pool, createId, createWorkerId, authorize,
   planningGateway, workerModelGateway, qaGateway,
   now = () => new Date().toISOString(),
+  workerConcurrency = 2,
 }) {
   if (!pool || typeof pool.connect !== "function") throw new TypeError("A migrated Studio PostgreSQL pool is required");
   if (typeof createId !== "function" || typeof createWorkerId !== "function") {
@@ -48,12 +50,15 @@ export function createStudioRuntime({
   const worker = createWorkerRuntime({
     store: executionStore, modelGateway: workerModelGateway, now,
   });
+  const workerPool = createWorkerPool({
+    worker, directory: domainStore, createWorkerId, concurrency: workerConcurrency,
+  });
   const qa = createQaRuntime({
     store: qaStore, qaGateway, authorize, now,
   });
   const recovery = createExecutionRecovery({ store: executionStore, authorize, now });
   const workflow = createPlanExecutionWorkflow({
-    dispatch, worker, qa, directory: domainStore, createWorkerId,
+    dispatch, workerPool, qa, directory: domainStore,
   });
 
   return Object.freeze({
@@ -61,6 +66,7 @@ export function createStudioRuntime({
     approval,
     dispatch,
     worker,
+    workerPool,
     qa,
     recovery,
     workflow,
