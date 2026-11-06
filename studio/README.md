@@ -146,3 +146,13 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - If assignment fails after readiness, the task remains `ready` for safe retry; dispatch reports the failure rather than pretending it was assigned.
 - Dispatch does not start Workers or call model providers. Worker execution and independent QA remain separate steps.
 - `director/director-dispatch.test.js` covers deterministic matching, missing skills, denied authorization, and idempotent skipping behavior. Tests are authored but have not been executed.
+
+## Independent QA gate
+
+- `agents/qa-runtime.js` accepts a task, artifact, and active reviewer, checks `task.qa.review` authorization, and invokes an injected QA gateway with the task acceptance criteria and artifact evidence.
+- The producer cannot review their own artifact. The runtime accepts only explicit `accepted` or `revision_required` verdicts and requires a model snapshot and structured findings.
+- `storage/migrations/003_qa_reviews.sql` adds a durable QA review ledger. Apply migrations 001, 002, then 003 to a dedicated Studio database before using the adapter; none has been applied.
+- `storage/postgres-qa-review-store.js` records the verdict, reviewer, producer, findings, model snapshot, and audit event in one transaction. It independently verifies that the artifact belongs to the task, the reviewer is active, belongs to the same organization, has the `qa.review` competency, and is not the producer.
+- An accepted result moves the task from `qa` to `completed`. A revision request moves it back to `ready`, clears the assignee, and preserves findings so it can be assigned for another attempt.
+- QA runtime tests cover approval, revision, self-review prevention, authorization denial, and invalid verdicts. They are authored but have not been executed.
+- The QA gateway and database adapter are not wired to a live model, HTTP endpoint, or database. The end-to-end workflow is not yet running.
