@@ -7,11 +7,11 @@ function fakePool({ planStatus = "proposed", taskStatuses = ["draft"] } = {}) {
   const client = {
     async query(sql, params = []) {
       calls.push({ sql, params });
-      if (sql.includes("FROM studio.plans WHERE")) return { rows: [{
-        id: "plan-1", project_id: "project-1", status: planStatus, version: 1,
+      if (sql.includes("FROM studio.plans pl") && sql.includes("m.role = 'owner'")) return { rows: [{
+        id: "plan-1", project_id: "project-1", organization_id: "org-1",
+        status: planStatus, version: 1,
         payload: { id: "plan-1", status: planStatus, version: 1 },
       }] };
-      if (sql.includes("SELECT organization_id FROM studio.projects")) return { rows: [{ organization_id: "org-1" }] };
       if (sql.includes("FROM studio.tasks WHERE plan_id")) return { rows: taskStatuses.map((status, index) => ({
         id: `task-${index + 1}`, status, version: 1,
         payload: { id: `task-${index + 1}`, status, version: 1 },
@@ -43,7 +43,7 @@ test("rolls back when plan is not proposed", async () => {
   const { pool, calls } = fakePool({ planStatus: "approved" });
   const store = createPostgresDomainStore({ pool, createId: () => "event" });
   await assert.rejects(
-    store.approvePlan({ planId: "plan-1", at: "2026-11-07T10:00:00.000Z" }),
+    store.approvePlan({ planId: "plan-1", actorId: "owner-1", at: "2026-11-07T10:00:00.000Z" }),
     error => error.code === "PLAN_NOT_PROPOSED",
   );
   assert.ok(calls.some(call => call.sql === "ROLLBACK"));
