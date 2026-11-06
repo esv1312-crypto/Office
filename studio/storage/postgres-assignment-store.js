@@ -42,6 +42,10 @@ export function createPostgresAssignmentStore({ pool, createId }) {
         }
         const payload = task.payload || {};
         const specialistPayload = specialist.payload || {};
+        const projectIds = Array.isArray(specialistPayload.projectIds) ? specialistPayload.projectIds : [];
+        if (projectIds.length && !projectIds.includes(task.project_id)) {
+          throw Object.assign(new Error("Specialist is not permitted in this project"), { code: "PROJECT_SCOPE_MISMATCH" });
+        }
         const required = Array.isArray(payload.requiredCompetencies) ? payload.requiredCompetencies : [];
         const available = new Set(Array.isArray(specialistPayload.competencies) ? specialistPayload.competencies : []);
         const missing = required.filter(item => !available.has(item));
