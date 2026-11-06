@@ -1,6 +1,6 @@
 # Studio identity and authorization decision
 
-Status: proposed integration direction; not enabled or deployed.
+Status: Neon Managed Auth provisioned on the isolated Studio database; host integration and owner login remain pending.
 
 ## Decision
 
@@ -43,23 +43,19 @@ requirements immediately before enablement.
 
 ## Not authorized / not done
 
-- Neon Auth has not been provisioned or enabled.
-- No Neon schema, branch, or database was changed.
-- No auth users, passwords, sessions, OAuth credentials, or trusted domains
-  were created or changed.
-- No Render environment variables or deployments were changed.
+- Neon Auth (Managed Better Auth) is provisioned on project `universal-ai-studio`, branch `main`, database `studio_db`.
+- Email/password sign-in is enabled; public sign-up is disabled and email verification is required (OTP).
+- No owner user, password, session, social OAuth credential, or trusted origin has been created.
+- No Render environment variables or deployments have been changed.
 - No login UI or bearer-token verifier has been wired into the legacy server.
 
 ## Enablement checklist
 
-Before enabling Managed Auth:
+Before exposing the Studio host:
 
-- Confirm the exact Neon branch that will host Studio data and auth state.
-- Confirm the current Neon project still satisfies Managed Auth availability
-  and network restrictions.
-- Agree on sign-in method and production email verification / SMTP requirements.
-- Add the real branch Auth URL and JWKS URL to the host's secret configuration
-  without exposing values in logs or source control.
+- Add the exact branch Auth URL and JWKS URL to the host's secret configuration without exposing values in logs or source control.
+- Configure a trusted origin only after the dedicated Studio app URL exists.
+- Create the owner account through a controlled operator flow; do not re-enable public sign-up.
 - Implement and test bearer-token verification and protected API requests.
 - Provision the first Studio organization and owner membership through a
   controlled operator-only bootstrap, not a public first-user-wins endpoint.
