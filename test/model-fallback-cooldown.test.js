@@ -12,7 +12,7 @@ test("OpenRouter model gateway delegates model cooldown decisions to the shared 
 
   assert.ok(source.includes("modelCooldownMs"));
   assert.match(gateway, /modelCooldownMs\(finalError\?\.status,failureMessage\)/);
-  assert.match(gateway, /roleScopedFailure=finalError\?\.status===400 \|\| finalError\?\.code==="EMPTY_RESPONSE"/);
+  assert.match(gateway, /roleScopedFailure=finalError\?\.status===400 \|\| finalError\?\.code==="EMPTY_RESPONSE" \|\| \(!finalError\?\.status/);
   assert.match(gateway, /suppressModel\(model,[^\n]*cooldownMs,"openrouter",roleScopedFailure \? role : null\)/);
 });
 
