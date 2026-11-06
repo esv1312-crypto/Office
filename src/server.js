@@ -12,7 +12,7 @@ import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, provider
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
-import { buildPlanningTaskBrief } from "./task-context.js";
+import { buildPlanningTaskBrief, buildWorkerTaskContext } from "./task-context.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -344,23 +344,26 @@ async function generateWithGemini(task, preferredModel, configuredOverride = nul
   throw lastError || new Error("Gemini request failed");
 }
 
-const paidTestUsage={calls:0,estimatedUsd:0};
+const paidTestUsage={calls:0,estimatedUsd:0,reservedUsd:0};
 function paidTestBudgetUsd(){return Math.max(0.05,Number(process.env.AI_PAID_TEST_BUDGET_USD||1));}
 function paidTestMaxOutputTokens(){return Math.max(128,Math.min(8192,Number(process.env.AI_PAID_TEST_MAX_OUTPUT_TOKENS||4096)));}
 function paidTestReserve(task){
-  if(!paidTestEnabled()) return;
+  if(!paidTestEnabled()) return 0;
   const input=Math.ceil(String(task||"").length/3.5);
-  const reserve=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+paidTestMaxOutputTokens()*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
-  if(paidTestUsage.estimatedUsd+reserve>paidTestBudgetUsd()) throw Object.assign(new Error("Paid test budget exhausted"),{code:"PAID_TEST_BUDGET_EXCEEDED"});
+  const rounds=boundedIntegerSetting(process.env.AI_TOOL_MAX_ROUNDS,6,1,8);
+  const reserve=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+paidTestMaxOutputTokens()*rounds*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
+  if(paidTestUsage.estimatedUsd+paidTestUsage.reservedUsd+reserve>paidTestBudgetUsd()) throw Object.assign(new Error("Paid test budget exhausted"),{code:"PAID_TEST_BUDGET_EXCEEDED"});
+  paidTestUsage.reservedUsd+=reserve;
+  emit("paid_test.budget_reserved",{reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
+  return reserve;
 }
 function recordPaidTestUsage(data){
   if(!paidTestEnabled()) return;
   const input=Number(data?.usage?.prompt_tokens||data?.usage?.input_tokens||0);
   const output=Number(data?.usage?.completion_tokens||data?.usage?.output_tokens||0);
-  const estimatedInput=input||0;
-  const cost=(estimatedInput*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.035)+output*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.29))/1e6;
+  const cost=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+output*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
   paidTestUsage.calls++; paidTestUsage.estimatedUsd+=cost;
-  emit("paid_test.usage",{calls:paidTestUsage.calls,estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
+  emit("paid_test.usage",{calls:paidTestUsage.calls,estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
 }
 const AI_OFFICE_TOOL_SCHEMAS = [
   {
@@ -398,6 +401,7 @@ const AI_OFFICE_TOOL_SCHEMAS = [
 ];
 
 function toolSchemasForEmployee(employee){
+  if(paidTestEnabled()) return [];
   const role=String(employee?.role||"executor");
   return AI_OFFICE_TOOL_SCHEMAS.filter(schema=>{
     const name=schema.function.name;
@@ -426,7 +430,8 @@ function aiRequestTimeoutMs() {
 }
 
 async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={},employeeId=null,taskId=null,enableTools=false,timeoutMs=null}) {
-  if(provider==="openrouter"&&paidTestEnabled()) paidTestReserve(task);
+  const paidReservation=provider==="openrouter"&&paidTestEnabled()?paidTestReserve(task):0;
+  let paidUsageMetered=false;
   emit("ai.start",{provider,model});
   const controller=new AbortController();
   const requestedTimeout=timeoutMs===null || timeoutMs===undefined ? aiRequestTimeoutMs() : Number(timeoutMs);
@@ -455,7 +460,13 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
         body:JSON.stringify(body)
       });
       const data=await response.json().catch(()=>({}));
-      if(provider==="openrouter"&&paidTestEnabled()) recordPaidTestUsage(data);
+      if(provider==="openrouter"&&paidTestEnabled()){
+        const usage=data?.usage;
+        const hasInputTokens=Boolean(usage) && (usage.prompt_tokens!=null || usage.input_tokens!=null);
+        const hasOutputTokens=Boolean(usage) && (usage.completion_tokens!=null || usage.output_tokens!=null);
+        paidUsageMetered=hasInputTokens && hasOutputTokens;
+        recordPaidTestUsage(data);
+      }
       if(!response.ok){
         const e=new Error(data?.error?.message || ("HTTP "+response.status));
         e.status=response.status;
@@ -499,7 +510,14 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       const e=new Error(provider+" request timed out"); e.status=408; e.transient=true; throw e;
     }
     throw error;
-  } finally { clearTimeout(timeout); }
+  } finally {
+    clearTimeout(timeout);
+    if(paidReservation>0){
+      paidTestUsage.reservedUsd=Math.max(0,paidTestUsage.reservedUsd-paidReservation);
+      if(!paidUsageMetered) paidTestUsage.estimatedUsd+=paidReservation;
+      emit("paid_test.budget_settled",{estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd(),usageMissing:!paidUsageMetered});
+    }
+  }
 }
 
 const OPENROUTER_MODEL_POOLS = {
@@ -1198,7 +1216,7 @@ function rootTaskFor(record) {
 
 function buildWorkerPrompt(record,employee){
   const root=rootTaskFor(record), original=String(root?.task||record.task||"");
-  const context=original.length>120000?original.slice(0,120000)+"\n[CONTEXT TRUNCATED BY RUNTIME]":original;
+  const context=buildWorkerTaskContext(original);
   return [
     "You are "+employee.name+" ("+employee.role+") inside AI-OFFICE.",
     "Use the original parent task/source dossier below. Do not ask the Chief to repeat it.",
@@ -2251,8 +2269,8 @@ app.get("/api/smoke/evidence", async (req,res)=>{
 });
 
 
-async function startOfficeAudit() {
-  const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js"];
+async function startOfficeAudit(runId=null) {
+  const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js","src/task-state.js","src/task-context.js","src/worker-watchdog.js","src/runtime-config.js","src/db.js","package.json",".github/workflows/office-live-test.yml"];
   try{
     const {readFile}=await import("node:fs/promises");
     const dossier=[];
@@ -2266,6 +2284,7 @@ async function startOfficeAudit() {
     dossier.push("\n===== RUNTIME BROWSER SNAPSHOT =====\n"+JSON.stringify(browser.summary()));
     const taskText=[
       "MASTER ENGINEERING AUDIT — AI-OFFICE.",
+      runId ? "AUDIT RUN ID: "+runId : "",
       "READ-ONLY. Do not modify code, infrastructure, GitHub, databases, deployments, external websites, or user data during the audit. Do not call tools, browser.request, GitHub, or external services: all source contents and the runtime browser snapshot are already supplied below. Inspect the supplied dossier only; the browser audit is a code/policy review, not a request to launch a browser workflow.",
       "Audit the CURRENT integrated runtime and source dossier as one system. Do not give generic advice. Every material conclusion must be FACT, INFERENCE, ASSUMPTION, or UNPROVEN and cite exact source path plus precise locator (function, endpoint, constant, event, workflow, or line range) or runtime event.",
       "Do not invent evidence. A worker claim is not proof. If a runtime behavior cannot be observed from supplied evidence, mark it UNPROVEN.",
@@ -2319,7 +2338,7 @@ async function startOfficeAudit() {
       "SOURCE DOSSIER: CURRENT AI-OFFICE SOURCE FILES ARE SUPPLIED BELOW.",
       "\n===== SOURCE DOSSIER =====\n"+dossier.join("")
     ].join("\n");
-    const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"root"});
+    const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:runId?"paid_model_audit":"root"});
     tasks.set(record.id,record);
     try {
       await saveTaskSnapshot(taskSnapshot(record));
@@ -2528,6 +2547,31 @@ app.get("/api/tasks/:id",(req,res)=>{
   res.json({ok:true,task:taskSnapshot(record)});
 });
 
+async function runPaidModelAuditOnStartup() {
+  const runId=String(process.env.OFFICE_PAID_MODEL_AUDIT_RUN_ID||"").trim();
+  if(!runId) return;
+  if(!paidTestEnabled() || paidTestModel()!=="deepseek/deepseek-v4.1-flash") {
+    emit("paid_model_audit.blocked",{runId,reason:"paid-test mode or approved DeepSeek model is not configured"});
+    return;
+  }
+  if(!freeOnly() || providerOrder().some(provider=>provider!=="openrouter")) {
+    emit("paid_model_audit.blocked",{runId,reason:"audit requires FREE_ONLY=true and provider order restricted to OpenRouter"});
+    return;
+  }
+  const marker="AUDIT RUN ID: "+runId;
+  const existing=[...tasks.values()].find(record=>record.kind==="paid_model_audit" && String(record.task||"").includes(marker));
+  if(existing) {
+    emit("paid_model_audit.already_recorded",{taskId:existing.id,runId,status:existing.status});
+    return;
+  }
+  try {
+    const record=await startOfficeAudit(runId);
+    emit("paid_model_audit.started",{taskId:record.id,runId,provider:"openrouter",model:paidTestModel(),budgetUsd:paidTestBudgetUsd(),readOnly:true});
+  } catch(error) {
+    emit("paid_model_audit.failed",{runId,error:error?.message||String(error)});
+  }
+}
+
 async function runFinalAuditOnStartup() {
   if (String(process.env.RUN_FINAL_AUDIT_ON_START || "false").toLowerCase() !== "true") return;
   await sleep(5000);
@@ -2720,7 +2764,7 @@ const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
     void refreshModelScout()
       .then(()=>emit("model_scout.refreshed",getModelScoutState()))
       .catch(error=>emit("model_scout.error",{error:error?.message||String(error)}))
-      .finally(()=>{ void runFreeModelTestOnStartup(); void runFreeModelTeamTestOnStartup(); });
+      .finally(()=>{ void runFreeModelTestOnStartup(); void runFreeModelTeamTestOnStartup(); void runPaidModelAuditOnStartup(); });
     modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
     void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
     resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));

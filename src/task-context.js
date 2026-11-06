@@ -1,3 +1,16 @@
+export const MAX_WORKER_CONTEXT_CHARS = 300000;
+
+export function buildWorkerTaskContext(task, maxChars = MAX_WORKER_CONTEXT_CHARS) {
+  const text = String(task || "");
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars)
+    + "\n[WORKER SOURCE CONTEXT TRUNCATED: supplied "
+    + text.length
+    + " characters; runtime included "
+    + maxChars
+    + ". Split the source dossier into smaller tasks before claiming a complete audit.]";
+}
+
 export function buildPlanningTaskBrief(task, maxChars = 12000) {
   const text = String(task || "");
   const dossierMarkers = [
