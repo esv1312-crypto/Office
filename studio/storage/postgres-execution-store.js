@@ -1,3 +1,4 @@
+import { insertOutboxEvent } from "./postgres-outbox-store.js";
 /**
  * PostgreSQL adapter for the independent Studio Worker Runtime.
  *
@@ -112,6 +113,8 @@ export function createPostgresExecutionStore({ pool, createId }) {
            VALUES ($1, $2, $3, $4, 'running', $5, $6)`,
           [executionId, id, specialist, worker, attempt, timestamp],
         );
+        const startedEventId = required(createId(), "generated eventId");
+        const startedPayload = { executionId, specialistId: specialist, workerId: worker, attempt };
         await client.query(
           `INSERT INTO studio.events
              (id, organization_id, project_id, aggregate_type, aggregate_id,
@@ -121,10 +124,13 @@ export function createPostgresExecutionStore({ pool, createId }) {
              FROM studio.tasks t
              JOIN studio.projects p ON p.id = t.project_id
             WHERE t.id = $4`,
-          [required(createId(), "generated eventId"),
-            JSON.stringify({ executionId, specialistId: specialist, workerId: worker, attempt }),
-            timestamp, id],
+          [startedEventId, JSON.stringify(startedPayload), timestamp, id],
         );
+        const startedScope = await client.query(
+          "SELECT p.organization_id, t.project_id FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id WHERE t.id = $1",
+          [id],
+        );
+        await insertOutboxEvent(client, { eventId: startedEventId, organizationId: startedScope.rows[0].organization_id, projectId: startedScope.rows[0].project_id, aggregateType: "task", aggregateId: id, eventType: "execution.started", payload: startedPayload, occurredAt: timestamp });
 
         return {
           executionId,
@@ -203,6 +209,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
             WHERE id = $1`,
           [taskRow.id, nextTask.version, JSON.stringify(nextTask), timestamp],
         );
+        const artifactPayload = { executionId: id, artifactId, specialistId: execution.specialist_id };
         await client.query(
           `INSERT INTO studio.events
              (id, organization_id, project_id, aggregate_type, aggregate_id,
@@ -212,8 +219,13 @@ export function createPostgresExecutionStore({ pool, createId }) {
              FROM studio.tasks t
              JOIN studio.projects p ON p.id = t.project_id
             WHERE t.id = $4`,
-          [eventId, JSON.stringify({ executionId: id, artifactId, specialistId: execution.specialist_id }), timestamp, taskRow.id],
+          [eventId, JSON.stringify(artifactPayload), timestamp, taskRow.id],
         );
+        const artifactScope = await client.query(
+          "SELECT p.organization_id, t.project_id FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id WHERE t.id = $1",
+          [taskRow.id],
+        );
+        await insertOutboxEvent(client, { eventId, organizationId: artifactScope.rows[0].organization_id, projectId: artifactScope.rows[0].project_id, aggregateType: "task", aggregateId: taskRow.id, eventType: "artifact.created", payload: artifactPayload, occurredAt: timestamp });
 
         return { task: nextTask, artifactId };
       });
@@ -262,6 +274,8 @@ export function createPostgresExecutionStore({ pool, createId }) {
           "UPDATE studio.tasks SET status = 'failed', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
           [taskRow.id, nextTask.version, JSON.stringify(nextTask), timestamp],
         );
+        const failedEventId = required(createId(), "generated eventId");
+        const failedPayload = { executionId: id, reason: failureReason };
         await client.query(
           `INSERT INTO studio.events
              (id, organization_id, project_id, aggregate_type, aggregate_id,
@@ -271,9 +285,13 @@ export function createPostgresExecutionStore({ pool, createId }) {
              FROM studio.tasks t
              JOIN studio.projects p ON p.id = t.project_id
             WHERE t.id = $4`,
-          [required(createId(), "generated eventId"),
-            JSON.stringify({ executionId: id, reason: failureReason }), timestamp, taskRow.id],
+          [failedEventId, JSON.stringify(failedPayload), timestamp, taskRow.id],
         );
+        const failedScope = await client.query(
+          "SELECT p.organization_id, t.project_id FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id WHERE t.id = $1",
+          [taskRow.id],
+        );
+        await insertOutboxEvent(client, { eventId: failedEventId, organizationId: failedScope.rows[0].organization_id, projectId: failedScope.rows[0].project_id, aggregateType: "task", aggregateId: taskRow.id, eventType: "execution.failed", payload: failedPayload, occurredAt: timestamp });
         return { task: nextTask, alreadyFailed: false };
       });
     },
