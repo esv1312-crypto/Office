@@ -128,3 +128,11 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - `createPlanWithTasks()` in `storage/postgres-domain-store.js` persists the plan, all draft tasks, and their events in one transaction.
 - A plan remains `proposed`: the Director does not approve it, assign specialists, or start Workers. Owner approval and a governed dispatch workflow are the next required controls.
 - Director runtime and plan-persistence tests are authored but have not been executed.
+
+## Owner approval gate
+
+- `governance/approve-plan.js` requires a separate authorization decision for `director.plan.approve`; the Director cannot approve its own proposal.
+- `approvePlan()` locks the proposed plan and all its draft tasks in one transaction, changes the plan to `approved`, moves its tasks to `planned`, and writes audit events.
+- A plan cannot be approved twice or if its tasks are no longer all in draft.
+- The approval gate and PostgreSQL transaction tests are authored but have not been executed.
+- Approval is implemented as a capability; no plan has actually been approved and no task has been dispatched.
