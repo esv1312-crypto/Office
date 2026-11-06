@@ -246,3 +246,12 @@ Before any live task:
 6. Run isolated PostgreSQL integration tests and a deliberately small, owner-approved end-to-end task before claiming autonomous execution.
 
 No Studio migration has been applied, no live model call has been made through this new adapter, no new Studio task has been executed, and no production service has been changed.
+
+
+## Express owner workflow adapter
+
+- `http/create-studio-express-router.js` adapts the framework-neutral owner handlers to Express routes for plan creation, owner approval, and approved-plan execution.
+- Every route requires injected authentication middleware and rate-limit middleware. The authenticated actor is passed through the secure project/plan lookup functions and governance checks.
+- Handler failures are forwarded to the host application's centralized Express error middleware; the adapter does not expose stack traces or invent an error response format.
+- The host application must still configure bounded JSON request bodies and a centralized safe error handler.
+- This router is not mounted in the legacy Express server. It has isolated adapter tests only; no database, model provider, production route, or deployment was touched.
