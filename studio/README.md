@@ -65,3 +65,14 @@ node --test studio/core/*.test.js
 The map generator must be run and visually inspected in Roblox Studio before the map can be called play-tested. It does not publish or change a live Roblox experience.
 
 This foundation is not yet connected to HTTP routes, PostgreSQL, model providers, or production workers.
+
+## Existing runtime integration
+
+- `gateways/office-runtime-client.js` is a thin, injectable HTTP client for the existing Office runtime.
+- It submits root tasks to `POST /api/tasks`, reads task status from `GET /api/tasks/:id`, and can inspect `GET /api/state`.
+- It sends the existing audit header but never stores or prints the token.
+- It deliberately does not retry task submission: the current API has no idempotency key, so retrying a POST could create duplicate work.
+- The adapter does not translate legacy runtime statuses into the new Studio task lifecycle. That mapping must be designed explicitly at the orchestration boundary.
+- The adapter is not yet wired into the production Express server and has not been tested against the live runtime. Its unit tests use an injected fake fetch implementation.
+
+This is the first integration seam. The next step is to add an isolated orchestration service that uses this client, validates permissions and project scope, and records the legacy runtime task ID without changing the production database or deployment.
