@@ -201,3 +201,5 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - `governance/recover-expired-executions.js` places recovery behind the separate `execution.recover` authorization action. The composition root exposes this as `runtime.recovery.recover()`.
 - Lease heartbeat is an explicit capability; a long-running Worker host must call it periodically while generation is in progress. No timer/worker host or periodic recovery scheduler is wired yet.
 - These changes are code and isolated tests only. Migration 005 has not been applied, no real Worker has claimed a task, and no database recovery has been exercised.
+
+- Worker Runtime now renews the lease while a model gateway call is in progress, passes an abort signal to gateways, and refuses to persist output if heartbeat reports a lost lease. The worker host still needs a separate governed maintenance invocation to recover expired tasks.
