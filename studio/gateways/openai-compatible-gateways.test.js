@@ -44,6 +44,31 @@ test("planner requests structured JSON and returns a provider/model snapshot", a
   assert.equal(result.modelSnapshot.instructionVersion, 2);
 });
 
+test("planner retries empty output without JSON mode and accepts fenced JSON", async () => {
+  const proposal = {
+    title: "Recovered plan",
+    objective: "Create a playable vertical slice",
+    summary: "A compact first milestone.",
+    acceptanceCriteria: ["A player can enter and complete the core loop."],
+    tasks: [{
+      title: "Build the greybox",
+      description: "Create the first testable district block.",
+      requiredCompetencies: ["roblox.worldbuilding"],
+      acceptanceCriteria: ["The block is navigable and has a spawn point."],
+    }],
+  };
+  const { gateways, calls } = fixture({
+    contents: ["", "```json\\n" + JSON.stringify(proposal) + "\\n```"],
+  });
+  const result = await gateways.planningGateway.generatePlan({
+    request: "Build the first Roblox district slice",
+    project: { id: "project-1" },
+  });
+  assert.equal(result.title, "Recovered plan");
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].request.response_format, { type: "json_object" });
+  assert.equal("response_format" in calls[1].request, false);
+});
 test("worker forwards abort signal and returns text with a model snapshot", async () => {
   const { gateways, calls } = fixture({ contents: ["Implemented the assigned change."] });
   const controller = new AbortController();
