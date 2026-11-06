@@ -35,12 +35,19 @@ The first end-to-end workflow is:
 - `governance/` — permissions and approvals (later phases).
 - `product-profiles/` — Roblox, web, mobile, SaaS, and future product domains.
 
+## Implemented in this foundation
+
+- Project creation with explicit organization and product-profile ownership.
+- Task creation in the initial `draft` state.
+- A deterministic task lifecycle state machine.
+- Versioned task status-change domain events.
+
 ## Local verification
 
-Run the initial domain tests from the repository root:
+Run all current domain tests from the repository root:
 
 ```sh
-node --test studio/core/task-state.test.js
+node --test studio/core/*.test.js
 ```
 
 This is a deliberately small first slice. It is not yet connected to HTTP routes, PostgreSQL, model providers, or production workers.
