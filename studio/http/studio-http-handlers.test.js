@@ -1,0 +1,86 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createStudioHttpHandlers } from "./studio-http-handlers.js";
+
+function fixture({ planStatus = "proposed" } = {}) {
+  const calls = { create: [], approve: [], execute: [], projectLookup: [], planLookup: [] };
+  const runtime = {
+    director: { plan: async value => {
+      calls.create.push(value);
+      return { plan: { id: "plan-1", status: "proposed" }, tasks: [], status: "proposed" };
+    } },
+    approval: { approve: async value => {
+      calls.approve.push(value);
+      return { plan: { ...value.plan, status: "approved" }, tasks: [] };
+    } },
+    workflow: { run: async value => {
+      calls.execute.push(value);
+      return { planId: value.planId, status: "completed", blocked: [] };
+    } },
+  };
+  const handlers = createStudioHttpHandlers({
+    runtime,
+    loadProject: async value => {
+      calls.projectLookup.push(value);
+      return { id: value.projectId, organizationId: "org-1", productProfileId: "roblox", status: "active" };
+    },
+    loadPlan: async value => {
+      calls.planLookup.push(value);
+      return { id: value.planId, status: planStatus };
+    },
+  });
+  return { handlers, calls };
+}
+
+const ownerRequest = { auth: { actor: { id: "owner-1" } } };
+
+test("creates a Director plan using the authenticated actor and server-loaded project", async () => {
+  const { handlers, calls } = fixture();
+  const result = await handlers.createPlan({
+    ...ownerRequest,
+    params: { projectId: "project-1" },
+    body: { request: "Create a small playable prototype", project: { id: "attacker-project" } },
+  });
+  assert.equal(result.status, 201);
+  assert.equal(calls.create[0].project.id, "project-1");
+  assert.equal(calls.create[0].actor.id, "owner-1");
+  assert.equal(calls.projectLookup.length, 1);
+});
+
+test("requires authenticated owner context", async () => {
+  const { handlers } = fixture();
+  await assert.rejects(
+    handlers.createPlan({ params: { projectId: "project-1" }, body: { request: "Build" } }),
+    error => error.code === "AUTHENTICATION_REQUIRED" && error.status === 401,
+  );
+});
+
+test("approves only the server-loaded persisted plan", async () => {
+  const { handlers, calls } = fixture();
+  const result = await handlers.approvePlan({
+    ...ownerRequest, params: { planId: "plan-1" },
+    body: { plan: { id: "forged-plan", status: "approved" } },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(calls.approve[0].plan.id, "plan-1");
+  assert.equal(calls.approve[0].actor.id, "owner-1");
+});
+
+test("does not execute a plan until the persisted plan is approved", async () => {
+  const { handlers, calls } = fixture({ planStatus: "proposed" });
+  await assert.rejects(
+    handlers.executeApprovedPlan({ ...ownerRequest, params: { planId: "plan-1" } }),
+    error => error.code === "PLAN_NOT_APPROVED" && error.status === 409,
+  );
+  assert.equal(calls.execute.length, 0);
+});
+
+test("executes an approved plan and returns the workflow report", async () => {
+  const { handlers, calls } = fixture({ planStatus: "approved" });
+  const result = await handlers.executeApprovedPlan({
+    ...ownerRequest, params: { planId: "plan-1" },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, "completed");
+  assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: ownerRequest.auth.actor }]);
+});
