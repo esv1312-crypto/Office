@@ -255,3 +255,13 @@ No Studio migration has been applied, no live model call has been made through t
 - Handler failures are forwarded to the host application's centralized Express error middleware; the adapter does not expose stack traces or invent an error response format.
 - The host application must still configure bounded JSON request bodies and a centralized safe error handler.
 - This router is not mounted in the legacy Express server. It has isolated adapter tests only; no database, model provider, production route, or deployment was touched.
+
+
+## Organization identity and access boundary
+
+- Migration `006_organizations_and_memberships.sql` adds organizations and explicit owner/admin/member/observer memberships. It adds organization foreign keys to projects and specialists.
+- `governance/postgres-access-control.js` provides membership-scoped project and plan lookup plus a deny-by-default authorization policy.
+- The identity provider remains an injected host responsibility. Its verified, stable subject must be mapped to `request.auth.actor.id`; the shared legacy audit token is not an end-user identity.
+- Plan approval, dispatch, and execution are owner-only. Plan creation is available to active members; task assignment and QA review are limited to owners/admins.
+- Global studio recovery is denied by this project-scoped policy until a separately scoped administrative recovery workflow exists.
+- Migration 006 has not been applied. No identity provider, credentials, production route, database, or deployment has been connected.
