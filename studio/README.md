@@ -174,3 +174,10 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - The composition root performs no connection, query, migration, provider call, or deployment by itself. This makes dependency wiring explicit and testable.
 - `application/create-studio-runtime.test.js` verifies all services are composed and construction does not connect to the database. Tests are authored but have not been executed.
 - The composition root is not yet exposed through an HTTP API or connected to the running legacy Office server. A real deployment still requires an approved dedicated database, configured gateways, route-level authentication, and isolated integration tests.
+
+## Isolated CI verification
+
+- `.github/workflows/studio-isolated-tests.yml` runs on pushes to `studio-v1-foundation` affecting Studio files, pull requests affecting Studio files, or manual dispatch.
+- It uses Node.js 22, checks JavaScript syntax under `studio/`, then runs `node --test studio`.
+- The workflow has read-only repository permissions and does not read secrets, connect to Neon/Render, invoke model providers, or touch the legacy Office runtime.
+- The workflow has been added but its execution result has not yet been confirmed in this session. Do not treat authored tests as passing until a completed Actions run is inspected.
