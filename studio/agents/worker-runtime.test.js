@@ -152,6 +152,7 @@ test("rejects a store response that did not claim the requested specialist", asy
   const { runtime, calls } = fixture({
     startResult: {
       executionId: "execution-1",
+      execution: { fencingToken: 1, leaseToken: "lease-1" },
       task: {
         id: "task-1",
         title: "Build a lobby",
