@@ -20,9 +20,9 @@ function parseBearer(header) {
 }
 
 /**
- * Verifies Neon Managed Auth RS256 bearer JWTs and attaches only verified
- * identity claims to request.auth.actor. Authorization remains a separate
- * database-backed Studio responsibility.
+ * Verifies Neon Managed Auth EdDSA (Ed25519) and RS256 bearer JWTs and
+ * attaches only verified identity claims to request.auth.actor. Authorization
+ * remains a separate database-backed Studio responsibility.
  */
 export function createNeonAuthBearerMiddleware({
   jwksUrl,
@@ -52,8 +52,9 @@ export function createNeonAuthBearerMiddleware({
       if (!Array.isArray(jwks?.keys)) throw Object.assign(new Error("Invalid identity provider JWKS"), {
         status: 503, code: "INVALID_IDENTITY_PROVIDER_KEYS",
       });
-      cachedKeys = jwks.keys.filter(key => key.kty === "RSA" && key.use !== "enc" &&
-        (!key.alg || key.alg === "RS256") && typeof key.kid === "string");
+      cachedKeys = jwks.keys.filter(key => key.use !== "enc" && typeof key.kid === "string" &&
+        ((key.kty === "OKP" && key.crv === "Ed25519" && (!key.alg || key.alg === "EdDSA")) ||
+         (key.kty === "RSA" && (!key.alg || key.alg === "RS256"))));
       cacheExpiresAt = now() + jwksCacheMs;
     }
     let jwk = cachedKeys.find(key => key.kid === kid);
@@ -68,13 +69,15 @@ export function createNeonAuthBearerMiddleware({
       if (!Array.isArray(jwks?.keys)) throw Object.assign(new Error("Invalid identity provider JWKS"), {
         status: 503, code: "INVALID_IDENTITY_PROVIDER_KEYS",
       });
-      cachedKeys = jwks.keys.filter(key => key.kty === "RSA" && key.use !== "enc" &&
-        (!key.alg || key.alg === "RS256") && typeof key.kid === "string");
+      cachedKeys = jwks.keys.filter(key => key.use !== "enc" && typeof key.kid === "string" &&
+        ((key.kty === "OKP" && key.crv === "Ed25519" && (!key.alg || key.alg === "EdDSA")) ||
+         (key.kty === "RSA" && (!key.alg || key.alg === "RS256"))));
       cacheExpiresAt = now() + jwksCacheMs;
       jwk = cachedKeys.find(key => key.kid === kid);
     }
     if (!jwk) throw unauthorized("Unknown signing key");
-    return createPublicKey({ key: jwk, format: "jwk" });
+    const algorithm = jwk.kty === "OKP" && jwk.crv === "Ed25519" ? "EdDSA" : "RS256";
+    return { key: createPublicKey({ key: jwk, format: "jwk" }), algorithm };
   }
 
   return async function neonAuthBearerMiddleware(request, response, next) {
@@ -84,13 +87,17 @@ export function createNeonAuthBearerMiddleware({
       if (parts.length !== 3) throw unauthorized("Malformed bearer token");
       const header = decodePart(parts[0], "header");
       const claims = decodePart(parts[1], "payload");
-      if (header.alg !== "RS256" || typeof header.kid !== "string") {
+      if (!["RS256", "EdDSA"].includes(header.alg) || typeof header.kid !== "string") {
         throw unauthorized("Unsupported bearer token signing algorithm");
       }
-      const key = await getSigningKey(header.kid);
+      const signing = await getSigningKey(header.kid);
+      if (signing.algorithm !== header.alg) throw unauthorized("JWT algorithm does not match signing key");
       const signed = Buffer.from(`${parts[0]}.${parts[1]}`);
       const signature = Buffer.from(parts[2], "base64url");
-      if (!verifySignature("RSA-SHA256", signed, key, signature)) throw unauthorized("Invalid bearer token signature");
+      const valid = header.alg === "EdDSA"
+        ? verifySignature(null, signed, signing.key, signature)
+        : verifySignature("RSA-SHA256", signed, signing.key, signature);
+      if (!valid) throw unauthorized("Invalid bearer token signature");
 
       const current = Math.floor(now() / 1000);
       if (claims.iss !== issuer) throw unauthorized("Invalid token issuer");
