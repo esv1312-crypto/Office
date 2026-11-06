@@ -15,6 +15,7 @@ function fakePool({ taskStatus = "assigned", assignedSpecialistId = "specialist-
             status: taskStatus,
             assignee_specialist_id: assignedSpecialistId,
             version: 3,
+            fencing_token: 4,
             payload: {
               id: "task-1",
               projectId: "project-1",
