@@ -20,6 +20,7 @@ export function createStudioControlPlane({
   createWorkerId,
   authenticate,
   rateLimit,
+  artifactWriter,
   now,
   workerConcurrency,
 }) {
@@ -32,6 +33,9 @@ export function createStudioControlPlane({
   if (typeof rateLimit !== "function") {
     throw new TypeError("A Studio rate-limit middleware is required");
   }
+  if (typeof artifactWriter?.writeTextArtifact !== "function") {
+    throw new TypeError("A scoped repository artifact writer is required");
+  }
 
   const access = createPostgresStudioAccessControl({ pool });
   const runtime = createConfiguredStudioRuntime({
@@ -42,6 +46,7 @@ export function createStudioControlPlane({
     createId,
     createWorkerId,
     authorize: access.authorize,
+    artifactWriter,
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
   });
