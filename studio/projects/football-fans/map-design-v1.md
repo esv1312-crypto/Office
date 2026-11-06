@@ -166,3 +166,16 @@ This is still a greybox. Verify collision, the café entrance, ball physics, sig
 - Each player has a short activation cooldown. The banner is session-only and is not persisted.
 
 **Prototype limits:** one live banner per meetup spot; the latest valid activation determines its colour and label. This is not a personal inventory or a saved group asset. Validate multiplayer replication, prompt accessibility, banner orientation, and visual readability in Roblox Studio.
+
+
+## 14. Supporter crews (implemented prototype)
+
+- Each meetup pad offers `Create / join fan crew` and `Leave fan crew` prompts.
+- Players must first select one of the five fan groups.
+- The first player of a fan group creates a crew for the current server; other players of that same group can join.
+- Each crew is limited to six members. The latest member does not replace the leader.
+- Player attributes expose `FanCrewName`, `FanCrewLeader`, and `FanCrewSize` for a future roster UI.
+- Members can leave at any meetup pad. If the leader leaves, leadership transfers to a remaining member.
+- Membership is server-session-only and is cleared on PlayerRemoving.
+
+**Prototype limits:** one active crew per fan group per server; no friend invitations, custom crew names, persistent membership, cross-server parties, chat channel, or progression rewards. Test multiplayer state consistency, capacity, leader handoff, and fan-group switching in Roblox Studio.
