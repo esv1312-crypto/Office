@@ -478,6 +478,21 @@ for _, spot in ipairs({
 end
 
 
+-- Shared crew banners: each meetup pad gets a server-visible banner interaction.
+for _, spotName in ipairs({"SquareMeetup", "PitchMeetup", "StadiumMeetup"}) do
+	local pad = meetups:FindFirstChild(spotName)
+	if pad then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "RaiseCrewBanner"
+		prompt.ActionText = "Raise crew banner"
+		prompt.ObjectText = "Shared supporter banner"
+		prompt.HoldDuration = 0.5
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = pad
+	end
+end
+
 -- Fan shop interactions: each scarf display is a proximity-based team choice.
 local fanGroupPalette = {
 	{name = "Blue Crew", brick = "Bright blue", color = C.blue, prompt = "Join Blue Crew"},
@@ -539,6 +554,8 @@ local palette = {
 	["White Crew"] = {brick = "Institutional white", color = Color3.fromRGB(238, 239, 232)},
 }
 local cooldowns = {}
+local bannerCooldowns = {}
+
 
 for teamName, data in pairs(palette) do
 	local team = Teams:FindFirstChild(teamName)
@@ -678,6 +695,65 @@ local function cheer(player)
 	end)
 end
 
+local function raiseCrewBanner(player, pad)
+	local groupName = player:GetAttribute("FanGroup")
+	local data = groupName and palette[groupName]
+	if not data then return end
+
+	local now = os.clock()
+	if bannerCooldowns[player] and now - bannerCooldowns[player] < 5 then return end
+	bannerCooldowns[player] = now
+
+	local parent = pad.Parent
+	local bannerModel = parent:FindFirstChild(pad.Name .. "LiveBanner")
+	if not bannerModel then
+		bannerModel = Instance.new("Model")
+		bannerModel.Name = pad.Name .. "LiveBanner"
+		bannerModel.Parent = parent
+
+		local pole = Instance.new("Part")
+		pole.Name = "BannerPole"
+		pole.Size = Vector3.new(1, 18, 1)
+		pole.Anchored = true
+		pole.CanCollide = false
+		pole.Material = Enum.Material.Metal
+		pole.Color = Color3.fromRGB(35, 39, 45)
+		pole.Position = pad.Position + Vector3.new(0, 10, 0)
+		pole.Parent = bannerModel
+
+		local cloth = Instance.new("Part")
+		cloth.Name = "BannerCloth"
+		cloth.Size = Vector3.new(1, 10, 16)
+		cloth.Anchored = true
+		cloth.CanCollide = false
+		cloth.Material = Enum.Material.Fabric
+		cloth.Position = pad.Position + Vector3.new(8, 13, 0)
+		cloth.Parent = bannerModel
+
+		local gui = Instance.new("SurfaceGui")
+		gui.Name = "CrewLabel"
+		gui.Face = Enum.NormalId.Right
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 35
+		gui.Parent = cloth
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.TextColor3 = Color3.fromRGB(255, 255, 255)
+		label.TextScaled = true
+		label.Font = Enum.Font.GothamBold
+		label.Parent = gui
+	end
+
+	local cloth = bannerModel:FindFirstChild("BannerCloth")
+	local label = cloth and cloth:FindFirstChild("CrewLabel", true)
+	local textLabel = label and label:FindFirstChildOfClass("TextLabel")
+	if cloth then cloth.Color = data.color end
+	if textLabel then textLabel.Text = string.upper(groupName) end
+	bannerModel:SetAttribute("RaisedByUserId", player.UserId)
+	bannerModel:SetAttribute("FanGroup", groupName)
+end
+
 local map = workspace:WaitForChild("FootballFansMap", 15)
 if not map then return end
 local merch = map:FindFirstChild("ScarvesAndFlags", true)
@@ -697,9 +773,15 @@ end
 local meetups = map:FindFirstChild("MeetupSpots", true)
 if meetups then
 	for _, pad in ipairs(meetups:GetChildren()) do
-		local prompt = pad:FindFirstChild("GroupCheer")
-		if prompt then
-			prompt.Triggered:Connect(cheer)
+		local cheerPrompt = pad:FindFirstChild("GroupCheer")
+		if cheerPrompt then
+			cheerPrompt.Triggered:Connect(cheer)
+		end
+		local bannerPrompt = pad:FindFirstChild("RaiseCrewBanner")
+		if bannerPrompt then
+			bannerPrompt.Triggered:Connect(function(player)
+				raiseCrewBanner(player, pad)
+			end)
 		end
 	end
 end
@@ -715,9 +797,12 @@ local function setupPlayer(player)
 end
 
 Players.PlayerAdded:Connect(setupPlayer)
-Players.PlayerRemoving:Connect(function(player) cooldowns[player] = nil end)
+Players.PlayerRemoving:Connect(function(player)
+	cooldowns[player] = nil
+	bannerCooldowns[player] = nil
+end)
 for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
 ]=]
 runtimeScript.Parent = ServerScriptService
 
-print("FootballFansMap generated. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
+print("FootballFansMap generated with supporter teams, meetup cheers, and shared crew banners. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
