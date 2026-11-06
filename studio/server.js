@@ -248,9 +248,39 @@ async function runConfiguredInitialBootstrap() {
   }
 }
 
+async function runConfiguredOwnerExecution() {
+  const planId = String(process.env.STUDIO_OWNER_EXECUTE_PLAN_ID || "").trim();
+  if (!planId) return;
+  const lockClient = await pool.connect();
+  let locked = false;
+  try {
+    await lockClient.query("SELECT pg_advisory_lock(741920262)");
+    locked = true;
+    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    let plan = await controlPlane.access.loadPlan({ planId, actor });
+    if (!plan) throw Object.assign(new Error("Owner execution plan was not found"), { code: "PLAN_NOT_FOUND" });
+    if (plan.status === "proposed") {
+      const approval = await controlPlane.runtime.approval.approve({ plan, actor });
+      plan = approval.plan;
+      console.log(`[studio] owner-approved plan=${planId}; tasks=${approval.tasks?.length || 0}`);
+    }
+    if (plan.status !== "approved") {
+      throw Object.assign(new Error("Plan is not in an executable state"), { code: "PLAN_NOT_APPROVED" });
+    }
+    const report = await controlPlane.runtime.workflow.run({ planId, actor });
+    console.log(`[studio] owner execution finished; plan=${planId}; status=${report.status}; assigned=${report.dispatch?.assigned?.length || 0}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
+  } catch (error) {
+    console.error("[studio] owner execution failed", error?.code || error?.status || "OWNER_EXECUTION_FAILED");
+  } finally {
+    if (locked) await lockClient.query("SELECT pg_advisory_unlock(741920262)").catch(() => {});
+    lockClient.release();
+  }
+}
+
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
   void runConfiguredInitialBootstrap();
+  void runConfiguredOwnerExecution();
 });
 
 async function shutdown(signal) {
