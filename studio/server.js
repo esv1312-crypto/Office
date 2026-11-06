@@ -1,0 +1,189 @@
+import express from "express";
+import OpenAI from "openai";
+import { Pool } from "pg";
+import { randomUUID } from "node:crypto";
+import { createStudioControlPlane } from "./application/create-studio-control-plane.js";
+import { createNeonAuthBearerMiddleware } from "./http/create-neon-auth-bearer-middleware.js";
+import { createGithubArtifactWriter } from "./artifacts/github-artifact-writer.js";
+import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.js";
+
+function requiredEnv(name) {
+  const value = String(process.env[name] || "").trim();
+  if (!value) throw new Error(`Missing required Studio configuration: ${name}`);
+  return value;
+}
+
+function positiveIntegerEnv(name, fallback, max) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1 || value > max) {
+    throw new Error(`${name} must be an integer between 1 and ${max}`);
+  }
+  return value;
+}
+
+function createRateLimiter({ windowMs = 60_000, max = 60 } = {}) {
+  const buckets = new Map();
+  return function studioRateLimit(request, response, next) {
+    const now = Date.now();
+    const key = String(request.ip || request.socket?.remoteAddress || "unknown");
+    let bucket = buckets.get(key);
+    if (!bucket || now >= bucket.resetAt) {
+      bucket = { count: 0, resetAt: now + windowMs };
+      buckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    response.setHeader("RateLimit-Limit", String(max));
+    response.setHeader("RateLimit-Remaining", String(Math.max(0, max - bucket.count)));
+    if (bucket.count > max) {
+      response.setHeader("Retry-After", String(Math.ceil((bucket.resetAt - now) / 1000)));
+      return response.status(429).json({ error: "RATE_LIMITED" });
+    }
+    if (buckets.size > 10_000) {
+      for (const [entry, value] of buckets) if (now >= value.resetAt) buckets.delete(entry);
+    }
+    return next();
+  };
+}
+
+function createSpecialistsForProfile({ productProfileId, organizationId, createId, at }) {
+  if (productProfileId === "roblox") {
+    return createRobloxStarterTeam({ organizationId, createId, at });
+  }
+
+  const roles = [
+    {
+      name: "Product Director",
+      role: "product_director",
+      competencies: ["product.strategy", "task.decomposition", "requirements"],
+      instructions: "Translate the product brief into clear requirements, milestones, risks, and measurable acceptance criteria. Do not claim implementation without evidence.",
+    },
+    {
+      name: "Solution Architect",
+      role: "solution_architect",
+      competencies: ["architecture", "system.design", "integration"],
+      instructions: "Design a maintainable solution for the assigned product. Define boundaries, interfaces, security assumptions, and implementation steps.",
+    },
+    {
+      name: "Implementation Specialist",
+      role: "implementation_specialist",
+      competencies: ["implementation", "coding", "documentation"],
+      instructions: "Produce the assigned implementation artifact. Follow the task acceptance criteria, explain assumptions, and never claim external changes that were not performed.",
+    },
+    {
+      name: "Quality Engineer",
+      role: "quality_engineer",
+      competencies: ["qa.review", "testing", "security.review", "acceptance.criteria"],
+      instructions: "Independently review the deliverable against every acceptance criterion. Require revision if evidence is incomplete, ambiguous, or incorrect.",
+    },
+  ];
+
+  return roles.map(role => ({
+    id: createId(),
+    organizationId,
+    ...role,
+    status: "active",
+    version: 1,
+    allowedTools: [],
+    modelProfile: { strategy: "gateway-default", requiresOwnerApprovalForPaidModels: true },
+    createdAt: at,
+    updatedAt: at,
+  }));
+}
+
+const port = positiveIntegerEnv("PORT", 10000, 65535);
+const pool = new Pool({ connectionString: requiredEnv("STUDIO_DATABASE_URL"), max: 5 });
+const client = new OpenAI({
+  apiKey: requiredEnv("STUDIO_MODEL_API_KEY"),
+  ...(process.env.STUDIO_MODEL_BASE_URL
+    ? { baseURL: process.env.STUDIO_MODEL_BASE_URL }
+    : {}),
+});
+const models = {
+  planner: {
+    model: requiredEnv("STUDIO_PLANNER_MODEL"),
+    temperature: 0.2,
+    maxTokens: 3000,
+    instructionVersion: "studio-v1",
+  },
+  worker: {
+    model: requiredEnv("STUDIO_WORKER_MODEL"),
+    temperature: 0.2,
+    maxTokens: 6000,
+    instructionVersion: "studio-v1",
+  },
+  qa: {
+    model: requiredEnv("STUDIO_QA_MODEL"),
+    temperature: 0.1,
+    maxTokens: 2500,
+    instructionVersion: "studio-v1",
+  },
+};
+const authenticate = createNeonAuthBearerMiddleware({
+  jwksUrl: requiredEnv("STUDIO_AUTH_JWKS_URL"),
+  issuer: requiredEnv("STUDIO_AUTH_ISSUER"),
+  audience: requiredEnv("STUDIO_AUTH_AUDIENCE"),
+});
+const artifactWriter = createGithubArtifactWriter({
+  owner: "esv1312-crypto",
+  repo: "Office",
+  branch: "studio-v1-foundation",
+  token: requiredEnv("STUDIO_GITHUB_TOKEN"),
+  allowedPrefixes: ["studio/projects/"],
+});
+const controlPlane = createStudioControlPlane({
+  express,
+  pool,
+  client,
+  models,
+  provider: process.env.STUDIO_MODEL_PROVIDER || "openai-compatible",
+  createId: randomUUID,
+  createWorkerId: randomUUID,
+  authenticate,
+  rateLimit: createRateLimiter({
+    windowMs: 60_000,
+    max: positiveIntegerEnv("STUDIO_RATE_LIMIT_PER_MINUTE", 60, 600),
+  }),
+  artifactWriter,
+  createSpecialistsForProfile,
+  workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
+});
+
+const app = express();
+app.disable("x-powered-by");
+app.use(express.json({ limit: "256kb" }));
+app.get("/health/live", (_request, response) => response.status(200).json({ status: "ok" }));
+app.get("/health/ready", async (_request, response) => {
+  try {
+    await pool.query("SELECT 1");
+    return response.status(200).json({ status: "ready", database: "connected" });
+  } catch {
+    return response.status(503).json({ status: "not_ready", database: "unavailable" });
+  }
+});
+app.use("/api/studio", controlPlane.router);
+app.use((error, _request, response, _next) => {
+  const status = Number.isInteger(error?.status) && error.status >= 400 && error.status < 600
+    ? error.status
+    : 500;
+  if (status >= 500) console.error("[studio] request failed", error?.code || "INTERNAL_ERROR");
+  return response.status(status).json({
+    error: status >= 500 ? "INTERNAL_ERROR" : (error?.code || "REQUEST_FAILED"),
+  });
+});
+
+const server = app.listen(port, "0.0.0.0", () => {
+  console.log(`[studio] isolated control plane listening on port ${port}`);
+});
+
+async function shutdown(signal) {
+  console.log(`[studio] received ${signal}; shutting down`);
+  server.close(async () => {
+    await pool.end().catch(() => {});
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
