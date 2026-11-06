@@ -210,6 +210,81 @@ export function createPostgresDomainStore({ pool, createId }) {
       });
     },
 
+    async loadApprovedPlanForDispatch({ planId }) {
+      const id = required(planId, "planId");
+      const client = await pool.connect();
+      try {
+        const planResult = await client.query(
+          `SELECT pl.id, pl.project_id, pl.status, pl.version, pl.payload,
+                  pr.organization_id, pr.status AS project_status
+             FROM studio.plans pl JOIN studio.projects pr ON pr.id = pl.project_id
+            WHERE pl.id = $1`, [id]);
+        const row = planResult.rows[0];
+        if (!row) throw Object.assign(new Error("Plan not found"), { code: "PLAN_NOT_FOUND" });
+        if (row.status !== "approved") throw Object.assign(new Error("Plan is not approved"), { code: "PLAN_NOT_APPROVED" });
+        if (row.project_status !== "active") throw Object.assign(new Error("Project is not active"), { code: "PROJECT_NOT_ACTIVE" });
+        const taskResult = await client.query(
+          "SELECT id, project_id, status, assignee_specialist_id, version, payload FROM studio.tasks WHERE plan_id = $1 ORDER BY id",
+          [id]);
+        return {
+          plan: { ...(row.payload || {}), id: row.id, projectId: row.project_id, status: row.status, version: Number(row.version) },
+          organizationId: row.organization_id,
+          tasks: taskResult.rows.map(task => ({
+            ...(task.payload || {}), id: task.id, projectId: task.project_id,
+            status: task.status, assigneeSpecialistId: task.assignee_specialist_id,
+            version: Number(task.version),
+          })),
+        };
+      } finally {
+        client.release();
+      }
+    },
+
+    async listActiveSpecialists({ organizationId }) {
+      const orgId = required(organizationId, "organizationId");
+      const result = await pool.query(
+        `SELECT id, organization_id, name, role, status, version, payload
+           FROM studio.specialists
+          WHERE organization_id = $1 AND status = 'active'
+          ORDER BY id`, [orgId]);
+      return result.rows.map(row => ({
+        ...(row.payload || {}), id: row.id, organizationId: row.organization_id,
+        name: row.name, role: row.role, status: row.status, version: Number(row.version),
+      }));
+    },
+
+    async markTaskReady({ taskId, expectedVersion, at, actorId = null }) {
+      const id = required(taskId, "taskId");
+      const readyAt = timestamp(at);
+      return transaction(pool, async client => {
+        const taskResult = await client.query(
+          `SELECT t.*, p.organization_id
+             FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id
+            WHERE t.id = $1 FOR UPDATE OF t`, [id]);
+        const row = taskResult.rows[0];
+        if (!row) throw Object.assign(new Error("Task not found"), { code: "TASK_NOT_FOUND" });
+        if (row.status !== "planned") throw Object.assign(new Error("Only planned tasks can become ready"), { code: "TASK_NOT_PLANNED" });
+        if (expectedVersion !== undefined && Number(row.version) !== expectedVersion) {
+          throw Object.assign(new Error("Task version conflict"), { code: "TASK_VERSION_CONFLICT" });
+        }
+        const payload = {
+          ...(row.payload || {}), status: "ready",
+          version: Number(row.version) + 1, updatedAt: readyAt,
+        };
+        await client.query(
+          "UPDATE studio.tasks SET status = 'ready', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
+          [id, payload.version, JSON.stringify(payload), readyAt]);
+        const idForEvent = eventId(createId);
+        await client.query(
+          `INSERT INTO studio.events
+             (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+           VALUES ($1,$2,$3,'task',$4,'task.status_changed',$5::jsonb,$6)`,
+          [idForEvent, row.organization_id, row.project_id, id,
+            JSON.stringify({ from: "planned", to: "ready", actorId }), readyAt]);
+        return { task: payload, eventId: idForEvent };
+      });
+    },
+
     async createTask(input) {
       const task = object(input, "task");
       const id = required(task.id, "task.id");
