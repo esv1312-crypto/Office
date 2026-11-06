@@ -21,8 +21,9 @@ export function createPlanExecutionWorkflow({
   if (!qa || typeof qa.review !== "function") throw new TypeError("QA Runtime is required");
   if (!directory || typeof directory.getTask !== "function" ||
       typeof directory.getSpecialist !== "function" ||
+      typeof directory.getLatestArtifactForTask !== "function" ||
       typeof directory.listActiveSpecialists !== "function") {
-    throw new TypeError("A task and specialist directory is required");
+    throw new TypeError("A task, artifact, and specialist directory is required");
   }
 
   return Object.freeze({
@@ -73,6 +74,34 @@ export function createPlanExecutionWorkflow({
           content: workerResult.output,
           specialistId: specialist.id,
         };
+        const qaResult = await qa.review({ task, artifact, reviewer, actor });
+        report.qaReviews.push(qaResult);
+      }
+
+      // Resume QA hand-offs left by a previous interrupted workflow run.
+      for (const skipped of dispatchReport.skipped.filter(item => item.status === "qa")) {
+        const task = await directory.getTask({ taskId: skipped.taskId });
+        if (!task || task.status !== "qa") continue;
+        const artifact = await directory.getLatestArtifactForTask({ taskId: task.id });
+        if (!artifact) {
+          report.blocked.push({ taskId: task.id, code: "QA_ARTIFACT_MISSING",
+            reason: "Task is awaiting QA but has no persisted artifact" });
+          continue;
+        }
+        const specialist = await directory.getSpecialist({ specialistId: task.assigneeSpecialistId });
+        if (!specialist) {
+          report.blocked.push({ taskId: task.id, code: "QA_PRODUCER_LOOKUP_FAILED" });
+          continue;
+        }
+        const specialists = await directory.listActiveSpecialists({ organizationId: task.organizationId });
+        const reviewer = specialists
+          .filter(candidate => eligibleReviewer(candidate, task, specialist.id))
+          .sort((a, b) => a.id.localeCompare(b.id))[0];
+        if (!reviewer) {
+          report.blocked.push({ taskId: task.id, code: "QA_REVIEWER_UNAVAILABLE",
+            reason: "No independent active QA specialist with project access and qa.review competency" });
+          continue;
+        }
         const qaResult = await qa.review({ task, artifact, reviewer, actor });
         report.qaReviews.push(qaResult);
       }
