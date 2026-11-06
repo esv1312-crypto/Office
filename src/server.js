@@ -746,7 +746,9 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
   const pool=allowModelFallback ? openRouterPool(employee, effectivePreferredModel) : [String(preferredModel||"")].filter(Boolean);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
-  const fallbackLimit=boundedIntegerSetting(process.env.OPENROUTER_MAX_MODEL_FALLBACKS,12,8,20);
+  const fallbackLimit=freeOnly()
+    ? boundedIntegerSetting(process.env.OPENROUTER_FREE_MAX_MODEL_FALLBACKS,3,1,5)
+    : boundedIntegerSetting(process.env.OPENROUTER_MAX_MODEL_FALLBACKS,12,8,20);
   const ordered=allowModelFallback
     ? orderPrimaryModelFirst(pool, effectivePreferredModel, cursor).slice(0,fallbackLimit)
     : pool.slice(0,1);
