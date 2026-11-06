@@ -46,7 +46,7 @@ function requireInternalOrAudit(req,res) {
   if(internal || (expected && supplied===expected)) return true;
   res.status(401).json({ok:false,error:"authentication required"}); return false;
 }
-const workerQueue = { active:0, pending:[], limit:boundedIntegerSetting(process.env.MAX_CONCURRENT_WORKERS,freeOnly()?1:3,1,100) };
+const workerQueue = { active:0, pending:[], limit:freeOnly()?1:boundedIntegerSetting(process.env.MAX_CONCURRENT_WORKERS,3,1,100) };
 async function acquireWorkerSlot(taskId) {
   if (workerQueue.active < workerQueue.limit) { workerQueue.active += 1; emit("worker.slot_acquired",{taskId,active:workerQueue.active,limit:workerQueue.limit}); return; }
   emit("worker.queued",{taskId,active:workerQueue.active,limit:workerQueue.limit});
@@ -488,6 +488,13 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
           const toolName=String(call?.function?.name||"").trim();
           let args={};
           try{args=JSON.parse(call?.function?.arguments||"{}");}catch(error){args={};}
+          const availableTools=toolSchemasForEmployee(getEmployee(employeeId||"executor"));
+          if(!availableTools.some(schema=>schema.function.name===toolName)){
+            const unavailable={ok:false,error:"Tool is not available to this employee; continue without it or explain the limitation.",code:"TOOL_NOT_AVAILABLE"};
+            messages.push({role:"tool",tool_call_id:call.id,name:toolName,content:JSON.stringify(unavailable)});
+            emit("ai.tool_call_completed",{taskId,employeeId,provider,model,round:round+1,tool:toolName,ok:false,code:"TOOL_NOT_AVAILABLE"});
+            continue;
+          }
           try{
             const result=await executeTool({employeeId:employeeId||"executor",toolName,args:{...args,taskId},taskId});
             messages.push({role:"tool",tool_call_id:call.id,name:toolName,content:JSON.stringify(result)});
