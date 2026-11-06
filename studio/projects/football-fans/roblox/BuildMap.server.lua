@@ -458,10 +458,7 @@ makeSupporter("StadiumSupporterTwo", 330, 300, C.blue, C.orange, "SEE YOU INSIDE
 
 -- A simple scarf rack and flag display outside the Fan Shop.
 part(fanMerch, "ScarfRack", Vector3.new(34, 3, 5), Vector3.new(-250, 5, -158), C.dark, Enum.Material.Metal)
-for i, color in ipairs({C.blue, C.orange, C.red, C.green, C.white}) do
-	local x = -266 + (i - 1) * 8
-	part(fanMerch, "HangingScarf", Vector3.new(5, 14, 1), Vector3.new(x, 13, -158), color, Enum.Material.Fabric)
-end
+-- Interactive scarf displays are created below with their team-selection prompts.
 for i, color in ipairs({C.blue, C.orange, C.red}) do
 	local x = -292 + (i - 1) * 42
 	part(fanMerch, "FlagPole", Vector3.new(1, 22, 1), Vector3.new(x, 11, -178), C.dark, Enum.Material.Metal)
