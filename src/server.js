@@ -592,7 +592,7 @@ async function preflightModel(provider, model, employee) {
       const cooldown=providerCooldownMs(provider,error?.status,message);
       suppressProvider(provider,message,cooldown);
     } else {
-      const roleScopedFailure=error?.status===400 || /empty response|unexpected response|invalid response|provider returned error/i.test(message);
+      const roleScopedFailure=error?.status===400 || error?.code==="EMPTY_RESPONSE" || (!error?.status && /empty response|unexpected response|invalid response|provider returned error/i.test(message));
       suppressModel(model,message,ttl,provider,roleScopedFailure ? employee?.role : null);
     }
     const failedAt=new Date().toISOString();
@@ -795,7 +795,7 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
         suppressProvider("openrouter",failureMessage || "OpenRouter authentication failed",cooldownMs);
         break;
       }
-      const roleScopedFailure=finalError?.status===400 || finalError?.code==="EMPTY_RESPONSE" || /empty response|invalid response|provider returned error/i.test(failureMessage);
+      const roleScopedFailure=finalError?.status===400 || finalError?.code==="EMPTY_RESPONSE" || (!finalError?.status && /empty response|invalid response|provider returned error/i.test(failureMessage));
       suppressModel(model,failureMessage || "model temporarily unavailable",cooldownMs,"openrouter",roleScopedFailure ? role : null);
       if (i<ordered.length-1) {
         emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:failureMessage});
@@ -850,7 +850,8 @@ async function generateWithHuggingFace(task, employee, preferredModel, allowMode
         suppressModel(model,failureMessage || "model unavailable",6*60*60*1000,"huggingface");
       } else if(error?.status===408 || (Number(error?.status)>=500 && Number(error?.status)<=599)
         || /timeout|timed out|abort|429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|overloaded|empty response|provider returned error/i.test(failureMessage)) {
-        suppressModel(model,failureMessage || "model temporarily unavailable",/empty response/i.test(failureMessage)?15*60*1000:5*60*1000,"huggingface",/empty response|provider returned error/i.test(failureMessage) ? employee?.role : null);
+        const roleScopedFailure=error?.status===400 || error?.code==="EMPTY_RESPONSE" || (!error?.status && /empty response|provider returned error/i.test(failureMessage));
+        suppressModel(model,failureMessage || "model temporarily unavailable",/empty response/i.test(failureMessage)?15*60*1000:5*60*1000,"huggingface",roleScopedFailure ? employee?.role : null);
       }
       if(error?.status===401 || error?.status===402 || error?.status===429) break;
       if(models.indexOf(model)<models.length-1) emit("gateway.model_fallback",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",from:model,to:models[models.indexOf(model)+1],reason:failureMessage||String(error)});
