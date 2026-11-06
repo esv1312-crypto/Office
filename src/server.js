@@ -12,7 +12,7 @@ import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, provider
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
 import { boundedIntegerSetting } from "./runtime-config.js";
 import { runWorkerWatchdogPass } from "./worker-watchdog.js";
-import { buildPlanningTaskBrief, buildWorkerTaskContext } from "./task-context.js";
+import { buildPlanningTaskBrief, buildRoleScopedWorkerContext } from "./task-context.js";
 import { getResourceScoutState, restoreResourceSnapshots, scanResourceSources, persistResourceSnapshots } from "./resource-scout.js";
 
 const app = express();
@@ -1221,7 +1221,7 @@ function rootTaskFor(record) {
 
 function buildWorkerPrompt(record,employee){
   const root=rootTaskFor(record), original=String(root?.task||record.task||"");
-  const context=buildWorkerTaskContext(original);
+  const context=buildRoleScopedWorkerContext(original,employee?.role);
   return [
     "You are "+employee.name+" ("+employee.role+") inside AI-OFFICE.",
     "Use the original parent task/source dossier below. Do not ask the Chief to repeat it.",
@@ -1232,8 +1232,9 @@ function buildWorkerPrompt(record,employee){
     "3) For every material FACT/INFERENCE cite exact file/path plus function, element, constant, workflow step, or line range when available.",
     "4) Never invent line numbers or evidence.",
     "5) If evidence cannot establish something, mark it UNPROVEN.",
-    "6) End with EVIDENCE INDEX: finding | label | source path | locator | why it proves the finding.",
-    "7) Never claim an external action occurred without explicit runtime evidence.",
+    "6) End with EVIDENCE INDEX. Use one compact pipe-delimited row per finding: finding | FACT/INFERENCE/ASSUMPTION/UNPROVEN | exact source path | function/constant/event locator | why it supports the finding.",
+    "7) Keep the report to 700 words maximum and the evidence index to 5–8 strongest rows. Do not repeat the source dossier or reproduce code.",
+    "8) Never claim an external action occurred without explicit runtime evidence.",
     "\n===== ORIGINAL PARENT TASK / SOURCE DOSSIER =====\n"+context,
     "\n===== YOUR ASSIGNED SUBTASK =====\n"+String(record.task||""),
     "\nReturn an evidence-rich report for the Chief."
@@ -2275,7 +2276,7 @@ app.get("/api/smoke/evidence", async (req,res)=>{
 
 
 async function startOfficeAudit(runId=null, direct=false) {
-  const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js","src/task-state.js","src/task-context.js","src/worker-watchdog.js","src/runtime-config.js","src/db.js","package.json",".github/workflows/office-live-test.yml"];
+  const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js","src/task-state.js","src/task-context.js","src/worker-watchdog.js","src/runtime-config.js","src/database.js","src/evidence-index.js","src/verification.js","src/provider-response.js","src/provider-candidate-order.js","src/provider-retry-policy.js","package.json",".github/workflows/office-live-test.yml"];
   try{
     const {readFile}=await import("node:fs/promises");
     const dossier=[];
