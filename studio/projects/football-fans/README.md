@@ -78,3 +78,10 @@ The banner is a simple anchored primitive model and exists only for the current 
 Players who have selected one of the five fan groups can use any meetup pad to create or join that group's supporter crew. The first player creates a session crew; later players from the same fan group join it. Crews are limited to six members. The crew name and membership/leader/size are exposed as Player attributes for later UI integration. Players can leave at any meetup pad; if the leader leaves, leadership transfers to a remaining member. Membership is session-only and is cleared when players leave the server.
 
 This is a lightweight server-side party prototype, not a persistent clan system: there are no friend invitations, custom names, saved membership, chat channels, rewards, or cross-server crews yet. Validate multiplayer join/leave, leader handoff, crew capacity, and switching fan groups in Roblox Studio.
+
+
+## Player-to-player crew invitations (prototype)
+
+A crew leader can approach another player and use the `Invite to crew` proximity prompt attached to that player's character. The target receives an on-screen invitation with Accept and Decline buttons. Invitations expire after 30 seconds and are validated again on the server when accepted: the inviter must still lead the same crew, the target must still be without a crew and belong to the same fan group, and the crew must have an open slot (maximum six). A short inviter cooldown limits spam. Changing fan groups automatically leaves the previous crew. This is limited to players in the same server; invitations and crew membership are not persisted.
+
+The generator installs a server runtime and a small client LocalScript for the invitation dialog. Validate prompt visibility, GUI behaviour on desktop/mobile, invitation expiry, leader departure, crew capacity, and exploit-resistant server checks in a disposable Roblox Studio multiplayer test.
