@@ -209,7 +209,8 @@ export function createPostgresExecutionStore({ pool, createId }) {
         );
         await client.query(
           `UPDATE studio.executions
-              SET status = 'qa', output = $2, model_snapshot = $3::jsonb, finished_at = $4
+              SET status = 'qa', output = $2, model_snapshot = $3::jsonb, finished_at = $4,
+                  lease_token = NULL, lease_expires_at = NULL
             WHERE id = $1`,
           [id, text, JSON.stringify(snapshot), timestamp],
         );
@@ -281,7 +282,8 @@ export function createPostgresExecutionStore({ pool, createId }) {
           failureReason,
         };
         await client.query(
-          "UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3 WHERE id = $1",
+          "UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3,
+                  lease_token = NULL, lease_expires_at = NULL WHERE id = $1",
           [id, failureReason, timestamp],
         );
         await client.query(
@@ -350,7 +352,8 @@ export function createPostgresExecutionStore({ pool, createId }) {
           const nextTask = { ...taskFromRow(row), status: "assigned",
             version: Number(row.version) + 1, updatedAt: timestamp };
           await client.query(
-            "UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3 WHERE id = $1 AND status = 'running'",
+            "UPDATE studio.executions SET status = 'failed', error = $2, finished_at = $3,
+                  lease_token = NULL, lease_expires_at = NULL WHERE id = $1 AND status = 'running'",
             [row.execution_id, "Worker lease expired; execution recovered", timestamp],
           );
           await client.query(
@@ -358,7 +361,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
             [row.task_id, nextTask.version, JSON.stringify(nextTask), timestamp],
           );
           const eventId = required(createId(), "generated eventId");
-          const payload = { executionId: row.execution_id, reason: "lease_expired", previousFencingToken: Number(row.fencing_token) };
+          const payload = { executionId: row.execution_id, reason: "lease_expired", fromStatus: "running", toStatus: "assigned", previousFencingToken: Number(row.fencing_token) };
           await client.query(
             `INSERT INTO studio.events
                (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
