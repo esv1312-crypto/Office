@@ -480,4 +480,222 @@ for _, spot in ipairs({
 	sign(meetups, spot.name .. "Sign", spot.label, Vector3.new(spot.x, 10, spot.z - 17), Vector3.new(32, 7, 1), spot.color)
 end
 
+
+-- Fan shop interactions: each scarf display is a proximity-based team choice.
+local fanGroupPalette = {
+	{name = "Blue Crew", brick = "Bright blue", color = C.blue, prompt = "Join Blue Crew"},
+	{name = "Orange Crew", brick = "Bright orange", color = C.orange, prompt = "Join Orange Crew"},
+	{name = "Red Crew", brick = "Bright red", color = C.red, prompt = "Join Red Crew"},
+	{name = "Green Crew", brick = "Bright green", color = C.green, prompt = "Join Green Crew"},
+	{name = "White Crew", brick = "Institutional white", color = C.white, prompt = "Join White Crew"},
+}
+local scarfDisplays = {}
+for _, item in ipairs(fanGroupPalette) do
+	local display = part(fanMerch, "HangingScarf", Vector3.new(5, 14, 1), Vector3.new(-266 + (#scarfDisplays) * 8, 13, -158), item.color, Enum.Material.Fabric)
+	display:SetAttribute("FanGroupName", item.name)
+	display:SetAttribute("FanGroupBrickColor", item.brick)
+	display:SetAttribute("FanGroupColor", item.color)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ChooseFanGroup"
+	prompt.ActionText = item.prompt
+	prompt.ObjectText = "Supporter scarf"
+	prompt.HoldDuration = 0.35
+	prompt.MaxActivationDistance = 11
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = display
+	table.insert(scarfDisplays, display)
+end
+
+-- Meetup pads get a simple cheer interaction. The runtime script below handles
+-- the animation so the generated map remains a self-contained prototype.
+for _, padName in ipairs({"SquareMeetup", "PitchMeetup", "StadiumMeetup"}) do
+	local pad = meetups:FindFirstChild(padName)
+	if pad then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "GroupCheer"
+		prompt.ActionText = "Cheer together"
+		prompt.ObjectText = "Supporters meetup"
+		prompt.HoldDuration = 0.25
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = pad
+	end
+end
+
+-- Install one small server runtime. It only manages this map's team choice,
+-- wearable scarf visuals and meetup cheer prompts.
+local ServerScriptService = game:GetService("ServerScriptService")
+local previousRuntime = ServerScriptService:FindFirstChild("FootballFansSocialRuntime")
+if previousRuntime then previousRuntime:Destroy() end
+local runtimeScript = Instance.new("Script")
+runtimeScript.Name = "FootballFansSocialRuntime"
+runtimeScript.Source = [=[
+local Players = game:GetService("Players")
+local Teams = game:GetService("Teams")
+local TweenService = game:GetService("TweenService")
+
+local palette = {
+	["Blue Crew"] = {brick = "Bright blue", color = Color3.fromRGB(48, 112, 176)},
+	["Orange Crew"] = {brick = "Bright orange", color = Color3.fromRGB(225, 122, 48)},
+	["Red Crew"] = {brick = "Bright red", color = Color3.fromRGB(184, 61, 61)},
+	["Green Crew"] = {brick = "Bright green", color = Color3.fromRGB(48, 133, 75)},
+	["White Crew"] = {brick = "Institutional white", color = Color3.fromRGB(238, 239, 232)},
+}
+local cooldowns = {}
+
+for teamName, data in pairs(palette) do
+	local team = Teams:FindFirstChild(teamName)
+	if not team then
+		team = Instance.new("Team")
+		team.Name = teamName
+		team.Parent = Teams
+	end
+	team.TeamColor = BrickColor.new(data.brick)
+	team.AutoAssignable = false
+end
+
+local function applyScarf(player, character)
+	local groupName = player:GetAttribute("FanGroup")
+	local data = groupName and palette[groupName]
+	if not data then return end
+
+	local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+	if not torso then
+		torso = character:WaitForChild("HumanoidRootPart", 5)
+	end
+	if not torso then return end
+
+	local old = character:FindFirstChild("FanScarfVisual")
+	if old then old:Destroy() end
+	local visual = Instance.new("Folder")
+	visual.Name = "FanScarfVisual"
+	visual.Parent = character
+
+	local band = Instance.new("Part")
+	band.Name = "ScarfBand"
+	band.Size = Vector3.new(2.5, 0.32, 0.28)
+	band.Color = data.color
+	band.Material = Enum.Material.Fabric
+	band.CanCollide = false
+	band.CanTouch = false
+	band.CanQuery = false
+	band.Massless = true
+	band.Anchored = false
+	band.CFrame = torso.CFrame * CFrame.new(0, 0.28, -0.52)
+	band.Parent = visual
+	local bandWeld = Instance.new("WeldConstraint")
+	bandWeld.Part0 = torso
+	bandWeld.Part1 = band
+	bandWeld.Parent = band
+
+	local tail = Instance.new("Part")
+	tail.Name = "ScarfTail"
+	tail.Size = Vector3.new(0.32, 1.25, 0.2)
+	tail.Color = data.color
+	tail.Material = Enum.Material.Fabric
+	tail.CanCollide = false
+	tail.CanTouch = false
+	tail.CanQuery = false
+	tail.Massless = true
+	tail.Anchored = false
+	tail.CFrame = torso.CFrame * CFrame.new(0.78, -0.48, -0.54)
+	tail.Parent = visual
+	local tailWeld = Instance.new("WeldConstraint")
+	tailWeld.Part0 = torso
+	tailWeld.Part1 = tail
+	tailWeld.Parent = tail
+end
+
+local function selectFanGroup(player, display)
+	local groupName = display:GetAttribute("FanGroupName")
+	local data = groupName and palette[groupName]
+	if not data then return end
+	local team = Teams:FindFirstChild(groupName)
+	if not team then return end
+
+	player:SetAttribute("FanGroup", groupName)
+	player.Team = team
+	player.Neutral = false
+	if player.Character then
+		applyScarf(player, player.Character)
+	end
+end
+
+local function cheer(player)
+	local now = os.clock()
+	if cooldowns[player] and now - cooldowns[player] < 3 then return end
+	cooldowns[player] = now
+
+	local character = player.Character
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
+
+	local joints = {}
+	for _, joint in ipairs(character:GetDescendants()) do
+		if joint:IsA("Motor6D") and (joint.Name == "RightShoulder" or joint.Name == "Right Shoulder" or joint.Name == "LeftShoulder" or joint.Name == "Left Shoulder") then
+			table.insert(joints, {joint = joint, original = joint.C0})
+		end
+	end
+	if #joints == 0 then return end
+
+	local tweens = {}
+	for _, item in ipairs(joints) do
+		local direction = (string.find(item.joint.Name, "Left") and -1) or 1
+		local target = item.original * CFrame.Angles(0, 0, math.rad(135 * direction))
+		local tween = TweenService:Create(item.joint, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {C0 = target})
+		table.insert(tweens, {tween = tween, joint = item.joint, original = item.original})
+		tween:Play()
+	end
+	task.delay(0.65, function()
+		for _, item in ipairs(tweens) do
+			if item.joint and item.joint.Parent then
+				TweenService:Create(item.joint, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {C0 = item.original}):Play()
+			end
+		end
+	end)
+end
+
+local map = workspace:WaitForChild("FootballFansMap", 15)
+if not map then return end
+local merch = map:FindFirstChild("ScarvesAndFlags", true)
+if merch then
+	for _, display in ipairs(merch:GetChildren()) do
+		if display:IsA("BasePart") and display.Name == "HangingScarf" then
+			local prompt = display:FindFirstChild("ChooseFanGroup")
+			if prompt then
+				prompt.Triggered:Connect(function(player)
+					selectFanGroup(player, display)
+				end)
+			end
+		end
+	end
+end
+
+local meetups = map:FindFirstChild("MeetupSpots", true)
+if meetups then
+	for _, pad in ipairs(meetups:GetChildren()) do
+		local prompt = pad:FindFirstChild("GroupCheer")
+		if prompt then
+			prompt.Triggered:Connect(cheer)
+		end
+	end
+end
+
+local function setupPlayer(player)
+	player.CharacterAdded:Connect(function(character)
+		task.wait(0.25)
+		applyScarf(player, character)
+	end)
+	if player.Character then
+		task.spawn(applyScarf, player, player.Character)
+	end
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+Players.PlayerRemoving:Connect(function(player) cooldowns[player] = nil end)
+for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
+]=]
+runtimeScript.Parent = ServerScriptService
+
 print("FootballFansMap generated. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
