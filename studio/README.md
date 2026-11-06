@@ -110,3 +110,12 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - `storage/postgres-assignment-store.js` performs assignment in a PostgreSQL transaction, locks the task and specialist rows, checks the task version and organization boundary, validates competencies again at the persistence boundary, and records `task.assigned`.
 - Tests have been added for specialist creation and assignment policy. They have not been executed in this branch.
 - Specialist records and task records still need creation/repository adapters; no database has been provisioned or changed.
+
+## Durable domain repositories
+
+- `storage/postgres-domain-store.js` persists projects, specialists, and draft tasks using an injected PostgreSQL pool.
+- Each creation operation writes its corresponding `*.created` event in the same transaction.
+- Task creation verifies that its parent project exists and is active; specialist competencies and allowed tools are stored in the specialist JSONB payload.
+- Tasks can declare `requiredCompetencies`; assignment checks these requirements both in the orchestration policy and again in the database adapter.
+- `storage/postgres-domain-store.test.js` covers transactional creation and rejection when the parent project is missing. Tests are authored, not yet executed.
+- This is a repository adapter, not a connected database: no Neon schema, Render service, production runtime, or live AI provider has been touched.
