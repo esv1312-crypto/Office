@@ -21,6 +21,8 @@ test("composes Director, approval, dispatch, Worker, QA, and workflow without co
   assert.equal(typeof runtime.approval.approve, "function");
   assert.equal(typeof runtime.dispatch.dispatch, "function");
   assert.equal(typeof runtime.worker.execute, "function");
+  assert.equal(typeof runtime.workerPool.executeAssignments, "function");
+  assert.equal(runtime.workerPool.concurrency, 2);
   assert.equal(typeof runtime.qa.review, "function");
   assert.equal(typeof runtime.recovery.recover, "function");
   assert.equal(typeof runtime.workflow.run, "function");
