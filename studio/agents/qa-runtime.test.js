@@ -39,9 +39,9 @@ test("revision-required verdict returns task to ready for rework", async () => {
   assert.deepEqual(calls.stored[0].findings, ["Spawn fails on mobile"]);
 });
 test("producer cannot review their own artifact", async () => {
-  const { runtime, calls } = fixture({ reviewerOverride: { ...reviewer, id: artifact.specialistId } });
+  const { runtime, calls, reviewer: producerAsReviewer } = fixture({ reviewerOverride: { ...reviewer, id: artifact.specialistId } });
   await assert.rejects(
-    runtime.review({ task, artifact, reviewer: calls.reviewer || { ...reviewer, id: artifact.specialistId } }),
+    runtime.review({ task, artifact, reviewer: producerAsReviewer }),
     error => error.code === "QA_REVIEWER_MUST_BE_INDEPENDENT",
   );
   assert.equal(calls.gateway.length, 0);
