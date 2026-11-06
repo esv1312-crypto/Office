@@ -204,29 +204,44 @@ async function runConfiguredInitialBootstrap() {
   try {
     await lockClient.query("SELECT pg_advisory_lock(741920261)");
     locked = true;
+    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    const brief = [
+      "Create the first pilot product for Universal AI Studio: a Roblox experience about a football fans district.",
+      "Prepare a production-minded MVP plan, not a claim that a published Roblox place already exists.",
+      "Design a lively explorable fan district with a central plaza, club supporter zones, a stadium exterior and gathering points.",
+      "Specify the core player loop, social interactions, safe chat/community rules, progression, repeat-play activities, and fair Robux monetization that does not make competitive advantages pay-to-win.",
+      "Break implementation into verifiable Roblox Studio deliverables: greybox map, navigation, spawn flow, interaction systems, minigames, UI, art pass, QA and release checklist.",
+      "For every milestone provide concrete artifacts, acceptance criteria, dependencies, risks and a test plan. Prefer a small playable vertical slice first.",
+      "Do not invent completed assets, external access, Roblox publishing, or test results. Mark anything requiring Roblox Studio credentials or a human action."
+    ].join("\\n");
     const existing = await lockClient.query("SELECT COUNT(*)::int AS count FROM studio.organizations");
-    if (Number(existing.rows?.[0]?.count || 0) > 0) {
-      console.log("[studio] initial bootstrap skipped; workspace already exists");
+    if (Number(existing.rows?.[0]?.count || 0) === 0) {
+      const result = await controlPlane.runtime.bootstrap.bootstrap({
+        organizationName: process.env.STUDIO_BOOTSTRAP_ORGANIZATION || "Universal AI Studio",
+        projectName: process.env.STUDIO_BOOTSTRAP_PROJECT || "Roblox Football Fans District",
+        productProfileId: "roblox",
+        brief,
+        actor,
+      });
+      console.log(`[studio] initial bootstrap finished; status=${result.status}; project=${result.workspace?.project?.id || "created"}; plan=${result.plan?.id || "not-created"}`);
       return;
     }
-    const result = await controlPlane.runtime.bootstrap.bootstrap({
-      organizationName: process.env.STUDIO_BOOTSTRAP_ORGANIZATION || "Universal AI Studio",
-      projectName: process.env.STUDIO_BOOTSTRAP_PROJECT || "Roblox Football Fans District",
-      productProfileId: "roblox",
-      brief: [
-        "Create the first pilot product for Universal AI Studio: a Roblox experience about a football fans district.",
-        "Prepare a production-minded MVP plan, not a claim that a published Roblox place already exists.",
-        "Design a lively explorable fan district with a central plaza, club supporter zones, a stadium exterior and gathering points.",
-        "Specify the core player loop, social interactions, safe chat/community rules, progression, repeat-play activities, and fair Robux monetization that does not make competitive advantages pay-to-win.",
-        "Break implementation into verifiable Roblox Studio deliverables: greybox map, navigation, spawn flow, interaction systems, minigames, UI, art pass, QA and release checklist.",
-        "For every milestone provide concrete artifacts, acceptance criteria, dependencies, risks and a test plan. Prefer a small playable vertical slice first.",
-        "Do not invent completed assets, external access, Roblox publishing, or test results. Mark anything requiring Roblox Studio credentials or a human action."
-      ].join("\\n"),
-      actor: { id: "legacy-office-owner", name: "AI-OFFICE owner" },
-    });
-    console.log(`[studio] initial bootstrap finished; status=${result.status}; project=${result.workspace?.project?.id || "created"}; plan=${result.plan?.id || "not-created"}`);
+    const planCount = await lockClient.query("SELECT COUNT(*)::int AS count FROM studio.plans");
+    if (Number(planCount.rows?.[0]?.count || 0) > 0) {
+      console.log("[studio] initial bootstrap skipped; workspace and plan already exist");
+      return;
+    }
+    const projectResult = await lockClient.query("SELECT id FROM studio.projects ORDER BY created_at ASC LIMIT 1");
+    const projectId = projectResult.rows?.[0]?.id;
+    if (!projectId) {
+      console.log("[studio] initial planning skipped; no project exists");
+      return;
+    }
+    const project = await controlPlane.access.loadProject({ projectId, actor });
+    const plan = await controlPlane.runtime.director.plan({ request: brief, project, actor });
+    console.log(`[studio] initial plan created; project=${projectId}; plan=${plan?.id || "created"}; status=${plan?.status || "proposed"}`);
   } catch (error) {
-    console.error("[studio] initial bootstrap failed", error?.code || "BOOTSTRAP_FAILED");
+    console.error("[studio] initial bootstrap failed", error?.code || error?.status || error?.message || "BOOTSTRAP_FAILED");
   } finally {
     if (locked) await lockClient.query("SELECT pg_advisory_unlock(741920261)").catch(() => {});
     lockClient.release();
