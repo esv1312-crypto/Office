@@ -17,24 +17,25 @@ function fixture({ workerStatus = "qa", verdict = "accepted", reviewerList = [bu
     planId: "plan-1", status: "dispatched", assigned: [{ taskId: task.id, specialistId: builder.id }],
     blocked: [], skipped: [],
   }) };
-  const worker = { execute: async input => {
+  const workerPool = { executeAssignments: async assignments => {
+    const input = assignments[0];
     calls.worker.push(input);
-    return { executionId: "exec-1", taskId: task.id, status: workerStatus,
+    return [{ executionId: "exec-1", taskId: task.id, specialistId: builder.id, status: workerStatus,
       artifactId: workerStatus === "qa" ? "artifact-1" : undefined,
       output: workerStatus === "qa" ? "Build result" : undefined,
-      errorCode: workerStatus === "failed" ? "MODEL_FAILED" : undefined };
+      errorCode: workerStatus === "failed" ? "MODEL_FAILED" : undefined }];
   } };
   const qa = { review: async input => {
     calls.qa.push(input);
     return { taskId: task.id, verdict, taskStatus: verdict === "accepted" ? "completed" : "ready" };
   } };
   const directory = {
-    getTask: async () => ({ ...task, status: "qa" }),
+    getTask: async () => ({ ...task, status: "assigned", assigneeSpecialistId: builder.id }),
     getSpecialist: async () => builder,
     listActiveSpecialists: async () => reviewerList,
   };
   const workflow = createPlanExecutionWorkflow({
-    dispatch, worker, qa, directory, createWorkerId: () => "worker-1",
+    dispatch, workerPool, qa, directory,
   });
   return { workflow, calls };
 }
@@ -45,7 +46,7 @@ test("runs an assigned task through Worker and independent QA", async () => {
   assert.equal(result.status, "completed");
   assert.equal(result.executions[0].status, "qa");
   assert.equal(result.qaReviews[0].verdict, "accepted");
-  assert.equal(calls.worker[0].specialist.id, builder.id);
+  assert.equal(calls.worker[0].specialistId, builder.id);
   assert.equal(calls.qa[0].reviewer.id, qaSpecialist.id);
   assert.equal(calls.qa[0].artifact.specialistId, builder.id);
 });
