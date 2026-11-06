@@ -357,7 +357,7 @@ function recordPaidTestUsage(data){
   if(!paidTestEnabled()) return;
   const input=Number(data?.usage?.prompt_tokens||data?.usage?.input_tokens||0);
   const output=Number(data?.usage?.completion_tokens||data?.usage?.output_tokens||0);
-  const cost=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.035)+output*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.29))/1e6;
+  const cost=(input*Number(process.env.AI_PAID_TEST_INPUT_USD_PER_MILLION||0.15)+output*Number(process.env.AI_PAID_TEST_OUTPUT_USD_PER_MILLION||0.60))/1e6;
   paidTestUsage.calls++; paidTestUsage.estimatedUsd+=cost;
   emit("paid_test.usage",{calls:paidTestUsage.calls,estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd()});
 }
@@ -426,7 +426,7 @@ function aiRequestTimeoutMs() {
 
 async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers={},employeeId=null,taskId=null,enableTools=false,timeoutMs=null}) {
   const paidReservation=provider==="openrouter"&&paidTestEnabled()?paidTestReserve(task):0;
-  let paidUsageUnmetered=false;
+  let paidUsageMetered=false;
   emit("ai.start",{provider,model});
   const controller=new AbortController();
   const requestedTimeout=timeoutMs===null || timeoutMs===undefined ? aiRequestTimeoutMs() : Number(timeoutMs);
@@ -457,7 +457,9 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       const data=await response.json().catch(()=>({}));
       if(provider==="openrouter"&&paidTestEnabled()){
         const usage=data?.usage;
-        if(!usage || (usage.prompt_tokens==null && usage.input_tokens==null) || (usage.completion_tokens==null && usage.output_tokens==null)) paidUsageUnmetered=true;
+        const hasInputTokens=Boolean(usage) && (usage.prompt_tokens!=null || usage.input_tokens!=null);
+        const hasOutputTokens=Boolean(usage) && (usage.completion_tokens!=null || usage.output_tokens!=null);
+        paidUsageMetered=hasInputTokens && hasOutputTokens;
         recordPaidTestUsage(data);
       }
       if(!response.ok){
@@ -507,8 +509,8 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
     clearTimeout(timeout);
     if(paidReservation>0){
       paidTestUsage.reservedUsd=Math.max(0,paidTestUsage.reservedUsd-paidReservation);
-      if(paidUsageUnmetered) paidTestUsage.estimatedUsd+=paidReservation;
-      emit("paid_test.budget_settled",{estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd(),usageMissing:paidUsageUnmetered});
+      if(!paidUsageMetered) paidTestUsage.estimatedUsd+=paidReservation;
+      emit("paid_test.budget_settled",{estimatedUsd:Number(paidTestUsage.estimatedUsd.toFixed(6)),reservedUsd:Number(paidTestUsage.reservedUsd.toFixed(6)),budgetUsd:paidTestBudgetUsd(),usageMissing:!paidUsageMetered});
     }
   }
 }
