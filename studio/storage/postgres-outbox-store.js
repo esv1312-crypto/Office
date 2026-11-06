@@ -68,8 +68,8 @@ export function createPostgresOutboxStore({ pool, createId, now = () => new Date
                 AND available_at <= $1
                 AND (locked_until IS NULL OR locked_until <= $1)
               ORDER BY occurred_at, event_id
-              FOR UPDATE SKIP LOCKED
               LIMIT $2
+              FOR UPDATE SKIP LOCKED
            )
            UPDATE studio.outbox_events AS outbox
               SET lock_token = $3, locked_until = $4, attempts = attempts + 1
