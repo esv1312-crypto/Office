@@ -1,0 +1,84 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createDirectorDispatch } from "./director-dispatch.js";
+
+const plan = { id: "plan-1", status: "approved" };
+const specialists = [
+  { id: "z-dev", organizationId: "org-1", status: "active", competencies: ["lua", "roblox", "ui"] },
+  { id: "a-dev", organizationId: "org-1", status: "active", competencies: ["lua", "roblox"] },
+  { id: "wrong-org", organizationId: "org-2", status: "active", competencies: ["lua", "roblox"] },
+];
+function setup(tasks) {
+  const calls = [];
+  const store = {
+    loadApprovedPlanForDispatch: async () => ({ plan, organizationId: "org-1", tasks }),
+    listActiveSpecialists: async () => specialists,
+    markTaskReady: async ({ taskId, expectedVersion }) => {
+      calls.push(["ready", taskId, expectedVersion]);
+      const task = tasks.find(item => item.id === taskId);
+      return { task: { ...task, status: "ready", version: task.version + 1 } };
+    },
+  };
+  const assignment = {
+    assign: async ({ task, specialist, expectedVersion }) => {
+      calls.push(["assign", task.id, specialist.id, expectedVersion]);
+      return { task: { ...task, status: "assigned" } };
+    },
+  };
+  const dispatch = createDirectorDispatch({
+    store, assignment, authorize: async () => true,
+    now: () => "2026-11-07T10:00:00.000Z",
+  });
+  return { dispatch, calls };
+}
+
+test("selects the closest compatible specialist and assigns planned tasks", async () => {
+  const { dispatch, calls } = setup([{
+    id: "task-1", projectId: "project-1", status: "planned", version: 2,
+    requiredCompetencies: ["lua", "roblox"],
+  }]);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.status, "dispatched");
+  assert.deepEqual(result.assigned, [{ taskId: "task-1", specialistId: "a-dev", taskStatus: "assigned" }]);
+  assert.deepEqual(calls[0], ["ready", "task-1", 2]);
+  assert.deepEqual(calls[1], ["assign", "task-1", "a-dev", 3]);
+});
+
+test("reports tasks with no compatible specialist without assigning them", async () => {
+  const { dispatch, calls } = setup([{
+    id: "task-2", projectId: "project-1", status: "planned", version: 1,
+    requiredCompetencies: ["sound-design"],
+  }]);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.blocked[0].taskId, "task-2");
+  assert.equal(calls.length, 0);
+});
+
+test("does not dispatch without authorization", async () => {
+  const { dispatch, calls } = setup([]);
+  const secured = createDirectorDispatch({
+    store: {
+      loadApprovedPlanForDispatch: async () => ({ plan, organizationId: "org-1", tasks: [] }),
+      listActiveSpecialists: async () => [],
+      markTaskReady: async () => assert.fail("must not prepare"),
+    },
+    assignment: { assign: async () => assert.fail("must not assign") },
+    authorize: async () => false,
+  });
+  await assert.rejects(
+    secured.dispatch({ planId: "plan-1", actor: { id: "guest" } }),
+    error => error.code === "PLAN_DISPATCH_FORBIDDEN",
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("skips tasks already assigned or in execution", async () => {
+  const { dispatch } = setup([
+    { id: "task-3", status: "assigned", version: 4 },
+    { id: "task-4", status: "qa", version: 5 },
+  ]);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.skipped.length, 2);
+  assert.equal(result.assigned.length, 0);
+});
