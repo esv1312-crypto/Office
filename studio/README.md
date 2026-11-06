@@ -276,3 +276,17 @@ No Studio migration has been applied, no live model call has been made through t
 - The returned router is not mounted automatically. The caller must mount it only in an approved isolated host after migrations 001-006 have been applied to a dedicated database and initial organization/owner membership have been provisioned.
 - Composition performs no database query, migration, model request, server mount, or deployment. The provider client and pool are injected by the host.
 - This completes code-level dependency composition, not live deployment or autonomous execution.
+
+
+## Repository-backed worker artifacts
+
+- `artifacts/github-artifact-writer.js` writes generated text artifacts through the GitHub Contents API using an injected credential and fetch implementation.
+- The writer is limited to one configured branch and allowlisted `studio/projects/` paths. It rejects absolute paths, traversal, encoded paths, binary/non-text payloads, and oversized artifacts.
+- Each write returns a SHA-256 checksum, Git blob/commit identifiers, repository URL, and task/execution/specialist provenance.
+- Worker Runtime accepts this writer as an injected dependency. When configured, it writes the artifact to the project workspace before moving the durable task into QA. A failed repository write fails the execution instead of handing incomplete work to QA.
+- Repository credentials are never read from the environment by the writer; the host must explicitly inject the credential. No GitHub token was read or configured in this branch.
+- The isolated tests use a fake GitHub API. They do not write real artifacts to GitHub or prove the hosted Studio has credentials.
+  
+## Universal product scope
+
+The execution core is product-neutral. Product-specific requirements belong in independently registered product profiles and specialist competencies. Roblox is the first pilot only; the same Director, Worker Pool, artifact, governance, and QA workflow is intended to support web/mobile applications, SaaS, AI systems, 3D products, automation, data products, and other digital deliverables without changing the core.
