@@ -219,6 +219,23 @@ test("persists worker output to the approved repository workspace before databas
   assert.equal(result.externalArtifact.sha256, "checksum");
 });
 
+test("keeps the execution lease renewed during a slow artifact repository write", async () => {
+  const { runtime, calls } = fixture({
+    heartbeatIntervalMs: 100,
+    artifactWriter: async value => {
+      await new Promise(resolve => setTimeout(resolve, 240));
+      return {
+        path: value.path, branch: "studio-v1-foundation", sha256: "checksum",
+        commitSha: "commit-slow", provenance: value.provenance,
+      };
+    },
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "qa");
+  assert.ok(calls.heartbeats.length >= 1);
+  assert.equal(calls.completed.length, 1);
+});
+
 test("fails the execution instead of handing off to QA when repository artifact writing fails", async () => {
   const { runtime, calls } = fixture({
     artifactWriter: async () => {
