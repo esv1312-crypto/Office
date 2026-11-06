@@ -9,7 +9,7 @@ test("worker evidence prompts adapt to domain tasks without inventing source pat
   assert.notEqual(start, -1, "buildWorkerPrompt must exist");
   assert.notEqual(end, -1, "worker prompt boundary must exist");
   const prompt = source.slice(start, end);
-  assert.match(prompt, /const codeEvidenceTask=\/\\\\b\(code\|coding\|repository/);
+  assert.match(prompt, /const codeEvidenceTask=\/\\b\(code\|coding\|repository/);
   assert.match(prompt, /exact source path/);
   assert.match(prompt, /provided task brief, general domain knowledge, or an inference/);
   assert.match(prompt, /Never invent URLs, source documents, statistics, prices, market shares, companies, or evidence/);
