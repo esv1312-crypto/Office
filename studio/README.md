@@ -136,3 +136,13 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - A plan cannot be approved twice or if its tasks are no longer all in draft.
 - The approval gate and PostgreSQL transaction tests are authored but have not been executed.
 - Approval is implemented as a capability; no plan has actually been approved and no task has been dispatched.
+
+## Director dispatch
+
+- `director/director-dispatch.js` loads only approved plans in active projects, checks a separate `director.plan.dispatch` authorization decision, and retrieves active specialists from the same organization.
+- Specialist selection is deterministic: all required competencies and project scope must match; ties prefer the specialist with fewer unrelated competencies, then stable ID order.
+- Tasks without a compatible specialist remain planned and are reported as blocked. Already assigned or later-stage tasks are skipped.
+- A selected task is transactionally moved from `planned` to `ready`, then passed through the governed assignment service; the PostgreSQL assignment adapter performs final organization, project, competency, and version checks before assigning it.
+- If assignment fails after readiness, the task remains `ready` for safe retry; dispatch reports the failure rather than pretending it was assigned.
+- Dispatch does not start Workers or call model providers. Worker execution and independent QA remain separate steps.
+- `director/director-dispatch.test.js` covers deterministic matching, missing skills, denied authorization, and idempotent skipping behavior. Tests are authored but have not been executed.
