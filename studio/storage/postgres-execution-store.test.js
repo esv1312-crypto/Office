@@ -11,6 +11,7 @@ function fakePool({ taskStatus = "assigned", assignedSpecialistId = "specialist-
         return {
           rows: [{
             id: "task-1",
+            project_id: "project-1",
             status: taskStatus,
             assignee_specialist_id: assignedSpecialistId,
             version: 3,
