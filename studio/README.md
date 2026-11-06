@@ -290,3 +290,28 @@ No Studio migration has been applied, no live model call has been made through t
 ## Universal product scope
 
 The execution core is product-neutral. Product-specific requirements belong in independently registered product profiles and specialist competencies. Roblox is the first pilot only; the same Director, Worker Pool, artifact, governance, and QA workflow is intended to support web/mobile applications, SaaS, AI systems, 3D products, automation, data products, and other digital deliverables without changing the core.
+
+
+## One-command owner bootstrap
+
+The control plane exposes `POST /bootstrap` behind the injected authentication and rate-limit middleware. The authenticated actor is always taken from the verified request context; owner IDs in the request body are ignored.
+
+The bootstrap operation:
+
+1. Creates an organization and grants its verified creator the owner membership.
+2. Creates the project with the requested product-profile ID.
+3. Creates the initial specialist team through an injected product-profile factory.
+4. Persists the organization, membership, project, specialists, audit events, and outbox events in one PostgreSQL transaction.
+5. Asks the Director to produce and persist a proposed plan.
+
+The plan is not auto-approved. The owner must approve it through the existing approval route before execution. If planning fails after workspace creation, the API returns the created workspace and an explicit planning failure status so the owner can retry without creating a duplicate workspace.
+
+The bootstrap core does not hard-code Roblox or any other product type. A host registers specialist-team factories for product profiles it supports; the same workflow can be used for web/mobile applications, SaaS, AI, 3D, automation, data, content, and other digital products.
+
+## Real PostgreSQL vertical-slice test
+
+The isolated CI workflow starts a disposable PostgreSQL 17 service, applies all six Studio migrations, then executes the real PostgreSQL-backed path:
+
+`owner bootstrap -> Director plan -> owner approval -> specialist dispatch -> Worker -> repository artifact adapter -> independent QA -> completed task`.
+
+Model gateways and the repository writer are deterministic test doubles in this test. It proves database transactions, authorization, task transitions, artifact metadata, and audit events; it does not call a paid model, write to the real GitHub repository, or touch Neon/Render production.
