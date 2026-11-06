@@ -150,7 +150,7 @@ This is still a greybox. Verify collision, the café entrance, ball physics, sig
 
 - Five interactive scarf displays use ProximityPrompt: Blue Crew, Orange Crew, Red Crew, Green Crew, and White Crew.
 - Selecting a display assigns the matching Roblox Team and sets the player's `FanGroup` attribute.
-- A simple two-part scarf visual is welded to the player's torso and reapplied after respawn.
+- A simple two-part scarf visual is welded to the player's torso, and a colour-coded crew label appears above the character. Both are reapplied after respawn.
 - Three meetup pads expose a `Cheer together` prompt. The server runtime briefly tweens the player's shoulder joints into a raised-arm cheer and restores the original joint offsets.
 - A single `ServerScriptService.FootballFansSocialRuntime` script owns these interactions and is replaced safely when the map generator is rerun.
 
