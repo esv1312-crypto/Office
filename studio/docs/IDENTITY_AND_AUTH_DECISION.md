@@ -4,8 +4,9 @@ Status: Neon Managed Auth provisioned on the isolated Studio database; host inte
 
 ## Decision
 
-Use Neon Managed Auth (Better Auth) as the candidate identity provider for the
-Studio control plane, subject to an explicit owner-approved enablement step.
+Use Neon Managed Auth (Better Auth) as the identity provider for the
+Studio control plane. It is provisioned on the isolated Studio database, while
+the host integration and owner account remain pending.
 Keep Studio organization membership, project scope, and action permissions in
 the dedicated `studio` application schema.
 
@@ -15,21 +16,20 @@ the legacy Office audit token as permission to access a Studio project.
 
 ## Evidence checked
 
-Read-only inspection of the existing Neon `ai-office` project found:
-
-- AWS platform, region `aws-eu-central-1` (Frankfurt).
-- Project-level allowed IP list is empty.
-- No Neon Auth enablement or configuration was performed during this review.
-
-These characteristics are compatible with the documented Managed Auth
-availability requirements checked for this decision. Re-check current Neon
-requirements immediately before enablement.
+The dedicated Neon project `universal-ai-studio` is on AWS in
+`aws-eu-central-1` (Frankfurt), with an empty project-level allowed IP list
+and no private-network restriction. Managed Auth was provisioned on its
+`main` branch and `studio_db` database. The branch-specific Auth URL is
+`https://ep-dark-snow-bavufmug.neonauth.c-8.eu-central-1.aws.neon.tech/studio_db/auth`;
+the JWKS endpoint is that URL plus
+`/.well-known/jwks.json`. Better Auth's JWT issuer and audience default to
+the Auth base URL.
 
 ## Integration contract
 
-1. The host verifies a Neon Auth bearer JWT using the branch's published JWKS
-   and validates signature, issuer, expiry, and expected audience where
-   applicable.
+1. The host verifies a Neon Auth EdDSA (Ed25519) or RS256 bearer JWT using the
+   branch's published JWKS and validates signature, issuer, audience, expiry,
+   and not-before.
 2. Only verified claims may populate `request.auth.actor.id`; use the stable
    identity-provider subject, never a request-body actor ID.
 3. The existing Studio PostgreSQL access-control adapter resolves active
