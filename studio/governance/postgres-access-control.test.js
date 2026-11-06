@@ -107,3 +107,26 @@ test("observers cannot create plans and administrators cannot approve or execute
   assert.equal(await administrator.access.authorize({ actor, action: "director.plan.approve", plan }), false);
   assert.equal(await administrator.access.authorize({ actor, action: "director.plan.execute", plan }), false);
 });
+
+
+test("allows QA review only for an authorized owner or administrator with a reviewer identity", async () => {
+  const task = { projectId: "project-1" };
+  const reviewer = { id: "qa-specialist-1" };
+  const { access: ownerAccess } = fixture({ role: "owner" });
+  assert.equal(await ownerAccess.authorize({
+    actor, action: "task.qa.review", task, reviewer,
+  }), true);
+  assert.equal(await ownerAccess.authorize({
+    actor, action: "task.qa.review", task,
+  }), false);
+
+  const { access: adminAccess } = fixture({ role: "admin" });
+  assert.equal(await adminAccess.authorize({
+    actor, action: "task.qa.review", task, reviewer,
+  }), true);
+
+  const { access: memberAccess } = fixture({ role: "member" });
+  assert.equal(await memberAccess.authorize({
+    actor, action: "task.qa.review", task, reviewer,
+  }), false);
+});
