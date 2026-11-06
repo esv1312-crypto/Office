@@ -189,3 +189,15 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - The pending-event index supports a future dispatcher using PostgreSQL `FOR UPDATE SKIP LOCKED`; expired claims can be safely reclaimed by a lease-aware dispatcher.
 - Event producers must insert the domain journal event and matching outbox row in the same database transaction. Consumers must deduplicate by `event_id`; delivery is at-least-once, not exactly-once.
 - Migration 004 depends on migrations 001-003 and has not been applied to any database. No dispatcher is wired yet, and no live event has been published.
+
+
+## Worker leases, fencing, and recovery — foundation v1
+
+- `storage/migrations/005_worker_leases_and_fencing.sql` adds a monotonic task fencing token and execution lease metadata. Apply it only after migrations 001-004 to a dedicated Studio database; it has not been applied anywhere.
+- Starting an execution increments the task fencing token and creates a unique lease token with an expiry. The Worker receives both credentials.
+- `heartbeatExecution()` renews a lease only while the same execution/token is current and the previous lease has not expired.
+- Completion and failure require the matching fencing token and lease token and reject expired or superseded executions. This prevents a stale Worker from committing after recovery or reassignment.
+- `recoverExpiredExecutions()` locks expired executions/tasks with `FOR UPDATE SKIP LOCKED`, marks the old execution failed, returns its task to `assigned`, and writes an audit event plus outbox event in the same transaction.
+- `governance/recover-expired-executions.js` places recovery behind the separate `execution.recover` authorization action. The composition root exposes this as `runtime.recovery.recover()`.
+- Lease heartbeat is an explicit capability; a long-running Worker host must call it periodically while generation is in progress. No timer/worker host or periodic recovery scheduler is wired yet.
+- These changes are code and isolated tests only. Migration 005 has not been applied, no real Worker has claimed a task, and no database recovery has been exercised.
