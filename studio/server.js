@@ -271,8 +271,14 @@ async function runConfiguredOwnerExecution() {
     if (plan.status !== "approved") {
       throw Object.assign(new Error("Plan is not in an executable state"), { code: "PLAN_NOT_APPROVED" });
     }
-    const report = await controlPlane.runtime.workflow.run({ planId, actor });
-    console.log(`[studio] owner execution finished; plan=${planId}; status=${report.status}; assigned=${report.dispatch?.assigned?.length || 0}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
+    let report = null;
+    for (let round = 1; round <= 3; round += 1) {
+      report = await controlPlane.runtime.workflow.run({ planId, actor });
+      console.log(`[studio] owner execution round=${round}; plan=${planId}; status=${report.status}; assigned=${report.dispatch?.assigned?.length || 0}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
+      const revisionsRequired = report.qaReviews?.some(review => review.verdict === "revision_required");
+      if (report.status === "completed" || !revisionsRequired || round === 3) break;
+    }
+    console.log(`[studio] owner execution finished; plan=${planId}; status=${report?.status || "unknown"}`);
   } catch (error) {
     console.error("[studio] owner execution failed", error?.code || error?.status || "OWNER_EXECUTION_FAILED");
   } finally {
