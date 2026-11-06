@@ -156,3 +156,13 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - An accepted result moves the task from `qa` to `completed`. A revision request moves it back to `ready`, clears the assignee, and preserves findings so it can be assigned for another attempt.
 - QA runtime tests cover approval, revision, self-review prevention, authorization denial, and invalid verdicts. They are authored but have not been executed.
 - The QA gateway and database adapter are not wired to a live model, HTTP endpoint, or database. The end-to-end workflow is not yet running.
+
+## Approved-plan execution coordinator
+
+- `orchestration/run-approved-plan.js` coordinates the existing Director Dispatch, Worker Runtime, and independent QA Runtime in sequence for each assigned task.
+- It loads the assigned task and specialist from the domain directory, starts the Worker, and only hands successful artifacts to QA.
+- QA reviewer selection is deterministic and requires an active specialist in the same organization, with project access, the `qa.review` competency, and an ID different from the producer.
+- Missing reviewers, failed Workers, and revision-required QA verdicts are reported as `needs_attention`; the coordinator does not falsely mark the plan complete.
+- `storage/postgres-domain-store.js` now exposes task and specialist read methods used by this coordinator.
+- Tests cover a successful Worker-to-QA pass, Worker failure, missing QA reviewer, and QA-requested revision. Tests are authored but have not been executed.
+- This is an orchestration component, not a live service: no API endpoint, model gateway implementation, worker process, or database connection has been wired. It still requires an application composition root and a safe integration test environment.
