@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import { createStudioControlPlane } from "./application/create-studio-control-plane.js";
 import { createNeonAuthBearerMiddleware } from "./http/create-neon-auth-bearer-middleware.js";
+import { createLegacyOfficeTokenMiddleware } from "./http/create-legacy-office-token-middleware.js";
 import { createGithubArtifactWriter } from "./artifacts/github-artifact-writer.js";
 import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.js";
 
@@ -93,51 +94,67 @@ function createSpecialistsForProfile({ productProfileId, organizationId, createI
 }
 
 const port = positiveIntegerEnv("PORT", 10000, 65535);
-const pool = new Pool({ connectionString: requiredEnv("STUDIO_DATABASE_URL"), max: 5 });
+const databaseUrl = String(process.env.STUDIO_DATABASE_URL || process.env.DATABASE_URL || "").trim();
+if (!databaseUrl) throw new Error("Missing Studio database: set STUDIO_DATABASE_URL or reuse DATABASE_URL");
+const modelApiKey = String(
+  process.env.STUDIO_MODEL_API_KEY ||
+  process.env.OPENROUTER_API_KEY ||
+  (/^(sk-or-|or-)/i.test(String(process.env.OPENROUTER_MODEL || "")) ? process.env.OPENROUTER_MODEL : "") ||
+  "",
+).trim();
+if (!modelApiKey) throw new Error("Missing Studio model key: set STUDIO_MODEL_API_KEY or reuse the existing OpenRouter key");
+const configuredLegacyModel = String(process.env.OPENROUTER_MODEL || "").trim();
+const defaultModel = process.env.STUDIO_DEFAULT_MODEL ||
+  (/^(sk-or-|or-)/i.test(configuredLegacyModel) || !configuredLegacyModel ? "openrouter/free" : configuredLegacyModel);
+const pool = new Pool({ connectionString: databaseUrl, max: 5 });
 const client = new OpenAI({
-  apiKey: requiredEnv("STUDIO_MODEL_API_KEY"),
-  ...(process.env.STUDIO_MODEL_BASE_URL
-    ? { baseURL: process.env.STUDIO_MODEL_BASE_URL }
-    : {}),
+  apiKey: modelApiKey,
+  baseURL: process.env.STUDIO_MODEL_BASE_URL || "https://openrouter.ai/api/v1",
 });
 const models = {
   planner: {
-    model: requiredEnv("STUDIO_PLANNER_MODEL"),
+    model: process.env.STUDIO_PLANNER_MODEL || defaultModel,
     temperature: 0.2,
     maxTokens: 3000,
     instructionVersion: "studio-v1",
   },
   worker: {
-    model: requiredEnv("STUDIO_WORKER_MODEL"),
+    model: process.env.STUDIO_WORKER_MODEL || defaultModel,
     temperature: 0.2,
     maxTokens: 6000,
     instructionVersion: "studio-v1",
   },
   qa: {
-    model: requiredEnv("STUDIO_QA_MODEL"),
+    model: process.env.STUDIO_QA_MODEL || defaultModel,
     temperature: 0.1,
     maxTokens: 2500,
     instructionVersion: "studio-v1",
   },
 };
-const authenticate = createNeonAuthBearerMiddleware({
-  jwksUrl: requiredEnv("STUDIO_AUTH_JWKS_URL"),
-  issuer: requiredEnv("STUDIO_AUTH_ISSUER"),
-  audience: requiredEnv("STUDIO_AUTH_AUDIENCE"),
-});
-const artifactWriter = createGithubArtifactWriter({
-  owner: "esv1312-crypto",
-  repo: "Office",
-  branch: "studio-v1-foundation",
-  token: requiredEnv("STUDIO_GITHUB_TOKEN"),
-  allowedPrefixes: ["studio/projects/"],
-});
+const legacyOwnerToken = String(process.env.OFFICE_AUDIT_TOKEN || "").trim();
+const authenticate = legacyOwnerToken
+  ? createLegacyOfficeTokenMiddleware({ token: legacyOwnerToken })
+  : createNeonAuthBearerMiddleware({
+      jwksUrl: requiredEnv("STUDIO_AUTH_JWKS_URL"),
+      issuer: requiredEnv("STUDIO_AUTH_ISSUER"),
+      audience: requiredEnv("STUDIO_AUTH_AUDIENCE"),
+    });
+const githubToken = String(process.env.STUDIO_GITHUB_TOKEN || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "").trim();
+const artifactWriter = githubToken
+  ? createGithubArtifactWriter({
+      owner: "esv1312-crypto",
+      repo: "Office",
+      branch: "studio-v1-foundation",
+      token: githubToken,
+      allowedPrefixes: ["studio/projects/"],
+    })
+  : null;
 const controlPlane = createStudioControlPlane({
   express,
   pool,
   client,
   models,
-  provider: process.env.STUDIO_MODEL_PROVIDER || "openai-compatible",
+  provider: process.env.STUDIO_MODEL_PROVIDER || "openrouter",
   createId: randomUUID,
   createWorkerId: randomUUID,
   authenticate,
