@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: ai-office-runtime
+    runtime: node
+    plan: free
+    region: frankfurt
+    repo: https://github.com/esv1312-crypto/Office
+    branch: studio-v1-foundation
+    buildCommand: npm install
+    startCommand: node studio/server.js
+    autoDeployTrigger: checksPass
+    healthCheckPath: /health/ready
