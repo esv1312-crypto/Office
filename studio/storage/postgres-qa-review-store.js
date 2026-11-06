@@ -1,3 +1,4 @@
+import { insertOutboxEvent } from "./postgres-outbox-store.js";
 /**
  * Transactional persistence for independent QA decisions.
  * Requires migrations 001, 002, and 003. No connection or migration side effects.
@@ -102,6 +103,12 @@ export function createPostgresQaReviewStore({ pool, createId }) {
             verdict === "accepted" ? "qa.passed" : "qa.revision_requested",
             JSON.stringify({ reviewId, artifactId, reviewerId, producerId, verdict, findings: input.findings }),
             at]);
+        await insertOutboxEvent(client, {
+          eventId, organizationId: task.organization_id, projectId: task.project_id,
+          aggregateType: "task", aggregateId: taskId,
+          eventType: verdict === "accepted" ? "qa.passed" : "qa.revision_requested",
+          payload: { reviewId, artifactId, reviewerId, producerId, verdict, findings: input.findings }, occurredAt: at,
+        });
         await client.query("COMMIT");
         return { task: nextTask, reviewId, eventId };
       } catch (error) {
