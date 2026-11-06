@@ -77,3 +77,57 @@ test("rolls back task creation if project is absent or inactive", async () => {
   assert.ok(calls.some(call => call.sql === "ROLLBACK"));
   assert.equal(calls.some(call => call.sql.includes("INSERT INTO studio.tasks")), false);
 });
+
+
+test("approval transaction locks only a plan owned by the authenticated active organization owner", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("FROM studio.plans pl") && sql.includes("m.role = 'owner'")) {
+        return { rows: [{
+          id: "plan-1", project_id: "project-1", organization_id: "org-1",
+          status: "proposed", version: 1, payload: { id: "plan-1", title: "Pilot" },
+        }] };
+      }
+      if (sql.includes("SELECT id, status, version, payload FROM studio.tasks")) {
+        return { rows: [{
+          id: "task-1", status: "draft", version: 1,
+          payload: { id: "task-1", title: "Build lobby" },
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    release() {},
+  };
+  let id = 0;
+  const store = createPostgresDomainStore({
+    pool: { async connect() { return client; } },
+    createId: () => `event-${++id}`,
+  });
+  const result = await store.approvePlan({
+    planId: "plan-1", actorId: "verified-owner-subject", at,
+  });
+  const lock = calls.find(call => call.sql.includes("FROM studio.plans pl") && call.sql.includes("m.role = 'owner'"));
+  assert.ok(lock);
+  assert.deepEqual(lock.params, ["plan-1", "verified-owner-subject"]);
+  assert.match(lock.sql, /m\.status = 'active'/);
+  assert.match(lock.sql, /o\.status = 'active'/);
+  assert.equal(result.plan.status, "approved");
+  assert.equal(result.tasks[0].status, "planned");
+  assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.outbox_events")));
+  assert.equal(calls.at(-2).sql, "COMMIT");
+});
+
+test("approval refuses a missing verified owner identity before opening a transaction", async () => {
+  let connected = false;
+  const store = createPostgresDomainStore({
+    pool: { async connect() { connected = true; throw new Error("should not connect"); } },
+    createId: () => "event-1",
+  });
+  await assert.rejects(
+    store.approvePlan({ planId: "plan-1", actorId: null, at }),
+    /actorId is required/,
+  );
+  assert.equal(connected, false);
+});
