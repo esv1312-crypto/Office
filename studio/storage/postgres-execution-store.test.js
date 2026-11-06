@@ -196,3 +196,50 @@ test("recovers an expired execution and writes its audit and outbox events atomi
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.outbox_events")));
   assert.equal(calls.at(-2).sql, "COMMIT");
 });
+
+
+test("completion reads the task fencing token before validating and persisting the artifact", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT * FROM studio.executions WHERE id = $1 FOR UPDATE")) {
+        return { rows: [{
+          id: "execution-1", task_id: "task-1", specialist_id: "specialist-1",
+          status: "running", fencing_token: 5, lease_token: "lease-5",
+          lease_expires_at: "2026-11-07T12:10:00.000Z",
+        }] };
+      }
+      if (sql.includes("SELECT id FROM studio.artifacts WHERE execution_id = $1")) {
+        return { rows: [] };
+      }
+      if (sql.includes("FROM studio.tasks t JOIN studio.projects p") && sql.includes("FOR UPDATE OF t")) {
+        return { rows: [{
+          id: "task-1", project_id: "project-1", status: "running", version: 4,
+          fencing_token: 5, payload: { id: "task-1", title: "Build lobby", status: "running" },
+          organization_id: "org-1",
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    release() { calls.push({ sql: "RELEASE", params: [] }); },
+  };
+  let nextId = 0;
+  const store = createPostgresExecutionStore({
+    pool: { async connect() { return client; } },
+    createId: () => `generated-${++nextId}`,
+  });
+  const result = await store.completeExecution({
+    executionId: "execution-1", output: "Lobby built",
+    modelSnapshot: { provider: "test", model: "test-model" },
+    artifact: { type: "text", name: "Lobby result", createdByWorkerId: "worker-1", specialistId: "specialist-1" },
+    at: "2026-11-07T12:00:00.000Z", fencingToken: 5, leaseToken: "lease-5",
+  });
+  assert.equal(result.task.status, "qa");
+  assert.equal(result.artifactId, "generated-1");
+  const taskLockQuery = calls.find(call => call.sql.includes("FROM studio.tasks t JOIN studio.projects p") && call.sql.includes("FOR UPDATE OF t"));
+  assert.match(taskLockQuery.sql, /t\.fencing_token/);
+  assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.artifacts")));
+  assert.ok(calls.some(call => call.sql.includes("UPDATE studio.tasks SET status = 'qa'")));
+  assert.equal(calls.at(-2).sql, "COMMIT");
+});
