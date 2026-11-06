@@ -198,6 +198,7 @@ export function createPostgresDomainStore({ pool, createId }) {
             "UPDATE studio.tasks SET status = 'planned', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
             [row.id, nextTask.version, JSON.stringify(nextTask), approvedAt]);
           approvedTasks.push(nextTask);
+          const taskEventId = eventId(createId);
           await client.query(
             `INSERT INTO studio.events
                (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
