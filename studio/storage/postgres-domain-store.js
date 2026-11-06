@@ -155,6 +155,7 @@ export function createPostgresDomainStore({ pool, createId }) {
 
     async approvePlan({ planId, actorId = null, at }) {
       const id = required(planId, "planId");
+      const ownerActorId = required(actorId, "actorId");
       const approvedAt = timestamp(at);
       return transaction(pool, async client => {
         const planResult = await client.query(
@@ -168,7 +169,7 @@ export function createPostgresDomainStore({ pool, createId }) {
             WHERE pl.id = $1 AND m.actor_id = $2 AND m.role = 'owner'
               AND m.status = 'active' AND o.status = 'active'
             FOR UPDATE OF pl`,
-          [id, required(actorId, "actorId")]);
+          [id, ownerActorId]);
         const planRow = planResult.rows[0];
         if (!planRow) throw Object.assign(new Error("Plan not found"), { code: "PLAN_NOT_FOUND" });
         if (planRow.status !== "proposed") {
