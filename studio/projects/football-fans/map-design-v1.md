@@ -103,7 +103,20 @@ The map should create several short loops rather than one long corridor. Players
 - Static geometry is anchored and organised.
 - A human playtest can walk the full loop without jumping over intended barriers.
 
-## 7. Next production tasks
+
+## 8. Stadium detail pass (implemented in generator)
+
+The current Roblox blockout generator now also includes:
+- Repeated coloured seat blocks on all four stands, positioned on the pitch-facing side so they remain visible.
+- A central scoreboard facing the field.
+- Main-pitch goal frames and nets.
+- Four exterior floodlight masts.
+- Five forecourt gate arches with turnstile blocks.
+- Planted islands and trees around Supporters' Square.
+
+These are still primitive Parts, not final stadium assets. During the first Roblox Studio playtest, inspect whether the stand seating reads clearly from ground level and whether the entrance route feels wide enough for groups.
+
+## 9. Next production tasks
 
 1. Run the generator in a disposable Roblox Studio place.
 2. Inspect scale, camera readability, collisions, and mobile navigation.
