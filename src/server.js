@@ -717,7 +717,7 @@ function openRouterPool(employee, preferredModel = null) {
 
   const configured=String(process.env.OPENROUTER_MODEL || "").trim();
   if (!preferredModel && configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool.unshift(configured);
-  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter") && (!freeOnly() || String(model).endsWith(":free"))) )];
+  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter") && (!freeOnly() || isLoopbackAiTestMode() || String(model).endsWith(":free"))) )];
 }
 
 async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
