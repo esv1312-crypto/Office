@@ -42,7 +42,22 @@ The first end-to-end workflow is:
 - Task creation in the initial `draft` state.
 - A deterministic task lifecycle state machine.
 - Versioned task status-change domain events.
+- A provider-neutral Worker Runtime contract with injected durable-store and model-gateway dependencies.
+- Worker Runtime tests for successful QA hand-off, model failures, empty output, persistence failures, and assignment validation.
 - First product project: `projects/football-fans/`, with a map design brief and a Roblox Studio blockout generator.
+
+## Worker Runtime boundary
+
+`agents/worker-runtime.js` is the first independent execution component of the new Studio. It:
+
+1. Requires the durable store to atomically claim an already-assigned task and create an execution.
+2. Calls an injected `modelGateway.generate()`; it does not depend on OpenAI, OpenRouter, or another vendor SDK.
+3. Rejects empty model output.
+4. Sends successful output and a text artifact to the durable store.
+5. Requires the store to confirm that the task entered `qa` and the artifact was persisted.
+6. Records model execution failures through the store.
+
+The runtime deliberately does not include an in-memory persistence fallback, a concrete database adapter, a model-provider adapter, retries, or tool execution. Those must be added as separate, testable infrastructure components. A failed artifact persistence leaves recovery to the durable store/lease reconciler; it is not misreported as a model failure.
 
 ## First product assignment: Football Fans
 
@@ -56,32 +71,23 @@ See:
 
 ## Local verification
 
-Run all current domain tests from the repository root:
+Run the current domain, orchestration, and agent tests from the repository root:
 
 ```sh
-node --test studio/core/*.test.js
+node --test studio/**/*.test.js
 ```
+
+Tests have been authored but are not yet confirmed as executed in this branch. Do not describe them as passing until they have actually run.
 
 The map generator must be run and visually inspected in Roblox Studio before the map can be called play-tested. It does not publish or change a live Roblox experience.
 
-This foundation is not yet connected to HTTP routes, PostgreSQL, model providers, or production workers.
+The new foundation is not yet connected to HTTP routes, PostgreSQL, live model providers, or production workers.
 
-## Existing runtime integration
+## Legacy Office adapter — isolated and optional
 
-- `gateways/office-runtime-client.js` is a thin, injectable HTTP client for the existing Office runtime.
-- It submits root tasks to `POST /api/tasks`, reads task status from `GET /api/tasks/:id`, and can inspect `GET /api/state`.
-- It sends the existing audit header but never stores or prints the token.
-- It deliberately does not retry task submission: the current API has no idempotency key, so retrying a POST could create duplicate work.
-- The adapter does not translate legacy runtime statuses into the new Studio task lifecycle. That mapping must be designed explicitly at the orchestration boundary.
-- The adapter is not yet wired into the production Express server and has not been tested against the live runtime. Its unit tests use an injected fake fetch implementation.
+The following files are retained as an experimental integration seam, not as the foundation of the new execution architecture:
 
-This is the first integration seam. The next step is to add an isolated orchestration service that uses this client, validates permissions and project scope, and records the legacy runtime task ID without changing the production database or deployment.
+- `gateways/office-runtime-client.js` — HTTP client for the existing Office runtime.
+- `orchestration/submit-office-task.js` — governed hand-off to the legacy Chief/root-task endpoint.
 
-## Governed task hand-off
-
-- `orchestration/submit-office-task.js` is the application-layer hand-off from a Universal AI Studio project to the existing Chief/root-task endpoint.
-- Only an authenticated actor with role `owner` can submit; the project must be active and the injected authorization policy must explicitly allow `task.submit`.
-- A durable store is mandatory and must persist a `submitting` intent before the runtime POST. The module intentionally has no in-memory persistence fallback.
-- On confirmed runtime acceptance, the store records the legacy task ID. On an ambiguous network/invalid-response failure, the submission is marked `unknown`; it is never automatically retried because the legacy API has no idempotency key.
-- Store operations, authentication, HTTP route wiring, task-status reconciliation, and the UI remain application/infrastructure responsibilities.
-- Unit tests use fakes. No live runtime task has been submitted, and no Neon or Render resources have been changed.
+They are not wired into the new Worker Runtime, production Express server, Neon, or Render. No live legacy task has been submitted. The new Studio must be able to execute independently; the legacy adapter may be removed or used only for a separately approved migration.
