@@ -56,3 +56,11 @@ The generator now adds a small commercial street, three additional storefronts, 
 The map generator now places eight lightweight, anchored supporter character stand-ins around the square, mini pitch, and stadium approach. They have fictional colour combinations, scarves, caps, and short greeting labels. A scarf rack, three supporter flags, and marked meetup pads establish the first social gathering points.
 
 These are visual prototypes, not yet fully interactive Roblox NPCs: they do not have Humanoids, pathfinding, dialogue systems, or animated emotes. Player-controlled fan-colour selection and wearable accessories remain a separate gameplay task.
+
+## First social gameplay interactions
+
+The generated map now adds five proximity-prompt scarf choices: Blue, Orange, Red, Green, and White Crew. A server runtime assigns the corresponding Roblox Team, stores the selection on the Player, and attaches a simple colour-matched scarf visual to the character. The choice is reapplied when the character respawns.
+
+Each of the three meetup pads also has a proximity prompt that triggers a short two-arm cheer motion by tweening the character's shoulder joints. Prompts support Roblox's built-in interaction UI across supported input methods.
+
+This remains an early prototype. Validate Script.Source installation from the Studio Command Bar, team assignment, R6/R15 scarf placement, respawn persistence, and cheer joint behaviour in a disposable Roblox Studio place. No persistent account save or external asset dependency is included.
