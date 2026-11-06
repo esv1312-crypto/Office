@@ -1,3 +1,4 @@
+import { insertOutboxEvent } from "./postgres-outbox-store.js";
 /**
  * Atomic PostgreSQL assignment adapter for the independent Studio schema.
  * Accepts an injected pg-compatible pool; never connects or migrates by itself.
@@ -70,6 +71,11 @@ export function createPostgresAssignmentStore({ pool, createId }) {
            VALUES ($1, $2, $3, 'task', $4, 'task.assigned', $5::jsonb, $6)`,
           [eventId, task.organization_id, task.project_id, taskKey,
             JSON.stringify({ specialistId: specialistKey, actorId }), timestamp]);
+        await insertOutboxEvent(client, {
+          eventId, organizationId: task.organization_id, projectId: task.project_id,
+          aggregateType: "task", aggregateId: taskKey, eventType: "task.assigned",
+          payload: { specialistId: specialistKey, actorId }, occurredAt: timestamp,
+        });
         await client.query("COMMIT");
         return { task: nextTask, specialistId: specialistKey, eventId };
       } catch (error) {
