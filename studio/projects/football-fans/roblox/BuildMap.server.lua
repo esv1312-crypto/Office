@@ -587,6 +587,11 @@ local bannerCooldowns = {}
 local fanCrews = {}
 local playerCrew = {}
 local crewSequence = 0
+local pendingInvites = {}
+local inviteCooldowns = {}
+local inviteEvent = Instance.new("RemoteEvent")
+inviteEvent.Name = "FootballFansCrewInvite"
+inviteEvent.Parent = game:GetService("ReplicatedStorage")
 
 
 for teamName, data in pairs(palette) do
@@ -733,6 +738,10 @@ local function updateCrewAttributes(crew)
 			member:SetAttribute("FanCrewName", crew.name)
 			member:SetAttribute("FanCrewLeader", member == crew.leader)
 			member:SetAttribute("FanCrewSize", crew.size)
+			local character = member.Character
+			local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+			local invitePrompt = rootPart and rootPart:FindFirstChild("InviteToFanCrew")
+			if invitePrompt then invitePrompt.Enabled = member == crew.leader end
 		end
 	end
 end
@@ -759,6 +768,16 @@ local function leaveFanCrew(player)
 	updateCrewAttributes(crew)
 end
 
+local function addMemberToCrew(player, crew)
+	if not crew or crew.size >= 6 or playerCrew[player] then return false end
+	if player:GetAttribute("FanGroup") ~= crew.group then return false end
+	crew.members[player] = true
+	crew.size += 1
+	playerCrew[player] = crew
+	updateCrewAttributes(crew)
+	return true
+end
+
 local function createOrJoinFanCrew(player)
 	local groupName = player:GetAttribute("FanGroup")
 	if not groupName or not palette[groupName] then return end
@@ -778,11 +797,59 @@ local function createOrJoinFanCrew(player)
 	end
 	if crew.size >= 6 then return end
 
-	crew.members[player] = true
-	crew.size += 1
-	playerCrew[player] = crew
-	updateCrewAttributes(crew)
+	addMemberToCrew(player, crew)
 end
+
+local function sendCrewInvite(leader, target)
+	local crew = playerCrew[leader]
+	if not crew or crew.leader ~= leader or target == leader then return end
+	if playerCrew[target] or target:GetAttribute("FanGroup") ~= crew.group then return end
+	if crew.size >= 6 then return end
+	local now = os.clock()
+	if inviteCooldowns[leader] and now - inviteCooldowns[leader] < 4 then return end
+	inviteCooldowns[leader] = now
+	pendingInvites[target] = {crew = crew, leader = leader, expiresAt = now + 30}
+	inviteEvent:FireClient(target, "invite", crew.name, leader.DisplayName, 30)
+end
+
+local function handleInviteResponse(player, action)
+	local invite = pendingInvites[player]
+	if not invite then return end
+	pendingInvites[player] = nil
+	if action ~= "accept" then return end
+	if os.clock() > invite.expiresAt then return end
+	local crew = invite.crew
+	if not crew or playerCrew[invite.leader] ~= crew or crew.leader ~= invite.leader then return end
+	if playerCrew[player] or player:GetAttribute("FanGroup") ~= crew.group then return end
+	if addMemberToCrew(player, crew) then
+		inviteEvent:FireClient(player, "joined", crew.name, invite.leader.DisplayName)
+	end
+end
+
+local function attachInvitePrompt(player, character)
+	local rootPart = character:WaitForChild("HumanoidRootPart", 8)
+	if not rootPart then return end
+	local oldPrompt = rootPart:FindFirstChild("InviteToFanCrew")
+	if oldPrompt then oldPrompt:Destroy() end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "InviteToFanCrew"
+	prompt.ActionText = "Invite to crew"
+	prompt.ObjectText = player.DisplayName
+	prompt.HoldDuration = 0.5
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = playerCrew[player] ~= nil and playerCrew[player].leader == player
+	prompt.Parent = rootPart
+	prompt.Triggered:Connect(function(inviter)
+		sendCrewInvite(inviter, player)
+	end)
+end
+
+inviteEvent.OnServerEvent:Connect(function(player, action)
+	if action == "accept" or action == "decline" then
+		handleInviteResponse(player, action)
+	end
+end)
 
 local function raiseCrewBanner(player, pad)
 	local groupName = player:GetAttribute("FanGroup")
@@ -887,6 +954,7 @@ local function setupPlayer(player)
 	player.CharacterAdded:Connect(function(character)
 		task.wait(0.25)
 		applyScarf(player, character)
+		attachInvitePrompt(player, character)
 	end)
 	if player.Character then
 		task.spawn(applyScarf, player, player.Character)
@@ -896,11 +964,83 @@ end
 Players.PlayerAdded:Connect(setupPlayer)
 Players.PlayerRemoving:Connect(function(player)
 	leaveFanCrew(player)
+	pendingInvites[player] = nil
+	inviteCooldowns[player] = nil
+	for invitedPlayer, invite in pairs(pendingInvites) do
+		if invite.leader == player then pendingInvites[invitedPlayer] = nil end
+	end
 	cooldowns[player] = nil
 	bannerCooldowns[player] = nil
 end)
 for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
 ]=]
+local StarterPlayer = game:GetService("StarterPlayer")
+local starterScripts = StarterPlayer:WaitForChild("StarterPlayerScripts")
+local oldClient = starterScripts:FindFirstChild("FootballFansCrewInviteClient")
+if oldClient then oldClient:Destroy() end
+local clientScript = Instance.new("LocalScript")
+clientScript.Name = "FootballFansCrewInviteClient"
+clientScript.Source = [=[
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local inviteEvent = ReplicatedStorage:WaitForChild("FootballFansCrewInvite")
+
+local function showMessage(message, buttons)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "FootballFansCrewInviteGui"
+	gui.ResetOnSpawn = false
+	gui.Parent = player:WaitForChild("PlayerGui")
+	local frame = Instance.new("Frame")
+	frame.AnchorPoint = Vector2.new(0.5, 0)
+	frame.Position = UDim2.new(0.5, 0, 0.12, 0)
+	frame.Size = UDim2.fromOffset(360, 132)
+	frame.BackgroundColor3 = Color3.fromRGB(35, 39, 45)
+	frame.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = frame
+	local label = Instance.new("TextLabel")
+	label.Position = UDim2.fromOffset(14, 10)
+	label.Size = UDim2.new(1, -28, 0, 54)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextWrapped = true
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Text = message
+	label.Parent = frame
+	if buttons then
+		for index, option in ipairs({{text = "ACCEPT", action = "accept"}, {text = "DECLINE", action = "decline"}}) do
+			local button = Instance.new("TextButton")
+			button.Position = UDim2.fromOffset(14 + (index - 1) * 168, 76)
+			button.Size = UDim2.fromOffset(158, 42)
+			button.BackgroundColor3 = index == 1 and Color3.fromRGB(48, 133, 75) or Color3.fromRGB(184, 61, 61)
+			button.TextColor3 = Color3.fromRGB(255, 255, 255)
+			button.Text = option.text
+			button.Font = Enum.Font.GothamBold
+			button.TextScaled = true
+			button.Parent = frame
+			button.MouseButton1Click:Connect(function()
+				inviteEvent:FireServer(option.action)
+				gui:Destroy()
+			end)
+		end
+	else
+		task.delay(3, function() if gui.Parent then gui:Destroy() end end)
+	end
+end
+
+inviteEvent.OnClientEvent:Connect(function(kind, crewName, leaderName, seconds)
+	if kind == "invite" then
+		showMessage(leaderName .. " invited you to join " .. crewName .. ". Invite expires in " .. tostring(seconds) .. " seconds.", true)
+	elseif kind == "joined" then
+		showMessage("You joined " .. crewName .. "!")
+	end
+end)
+]=]
+clientScript.Parent = starterScripts
+
 runtimeScript.Parent = ServerScriptService
 
-print("FootballFansMap generated with supporter teams, meetup cheers, shared crew banners, and fan crews. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
+print("FootballFansMap generated with supporter teams, meetup cheers, shared crew banners, fan crews, and player invitations. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
