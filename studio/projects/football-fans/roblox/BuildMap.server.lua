@@ -214,8 +214,8 @@ local stadiumDetails = folder("StadiumDetails", stadium)
 -- Seating rows on the four stands. Seats are intentionally grouped into simple
 -- repeated blocks so this remains a lightweight greybox, not a high-poly stadium.
 for row = 1, 10 do
-	local zNorth = 124 + row * 3.3
-	local zSouth = -124 - row * 3.3
+	local zNorth = 120 - row * 4.5
+	local zSouth = -120 + row * 4.5
 	local y = 9 + row * 2.8
 	for segment = 1, 10 do
 		local x = 270 - 148 + (segment - 1) * 33
@@ -225,8 +225,8 @@ for row = 1, 10 do
 end
 
 for row = 1, 10 do
-	local xWest = 104 + row * 3.3
-	local xEast = 436 - row * 3.3
+	local xWest = 120 + row * 4.5
+	local xEast = 420 - row * 4.5
 	local y = 9 + row * 2.8
 	for segment = 1, 6 do
 		local z = -96 + (segment - 1) * 38
@@ -241,8 +241,8 @@ sign(stadiumDetails, "ScoreboardDisplay", "HOME  0  :  0  AWAY", Vector3.new(270
 
 -- Goal frames at both ends of the main pitch.
 for _, z in ipairs({-66, 66}) do
-	part(stadiumDetails, "MainGoalFrame", Vector3.new(3, 18, 34), Vector3.new(270, 19, z), C.white, Enum.Material.Metal)
-	part(stadiumDetails, "MainGoalNet", Vector3.new(3, 16, 30), Vector3.new(283, 18, z), C.white, Enum.Material.Fabric)
+	part(stadiumDetails, "MainGoalFrame", Vector3.new(34, 18, 3), Vector3.new(270, 19, z), C.white, Enum.Material.Metal)
+	part(stadiumDetails, "MainGoalNet", Vector3.new(30, 16, 3), Vector3.new(270, 18, z + (z > 0 and 13 or -13)), C.white, Enum.Material.Fabric)
 end
 
 -- Four floodlight masts outside the stadium corners.
