@@ -51,7 +51,7 @@ function parseJson(content, role) {
     });
   }
 
-  const text = content.trim().replace(/^\`\`\`(?:json)?\\s*/i, "").replace(/\\s*\`\`\`$/, "");
+  const text = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const candidates = [text];
   const start = text.indexOf("{");
   if (start >= 0 && text !== text.slice(start)) candidates.push(text.slice(start));
