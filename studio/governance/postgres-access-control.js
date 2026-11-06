@@ -100,6 +100,8 @@ export function createPostgresStudioAccessControl({ pool }) {
         return administrator;
       case "task.qa.review":
         return administrator && Boolean((reviewer || specialist)?.id);
+      case "execution.recover":
+        return owner;
       default:
         return false;
     }
