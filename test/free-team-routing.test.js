@@ -33,3 +33,14 @@ test("runtime rejects tool calls that were not advertised to the employee", () =
   assert.match(source, /const availableTools=toolSchemasForEmployee\(getEmployee\(employeeId\|\|"executor"\)\)/);
   assert.match(source, /TOOL_NOT_AVAILABLE/);
 });
+test("free-only root synthesis is deterministic and preserves free model capacity for verification", () => {
+  assert.match(source, /if\(freeOnly\(\)\) \{\s*\/\/ Preserve scarce free routes for independent verification/);
+  assert.match(source, /chief\.synthesis_deterministic/);
+  assert.match(source, /model:"deterministic-synthesis"/);
+});
+
+test("free-only verifier may reuse a distinct planner model when it produced no worker output", () => {
+  assert.match(source, /const plannerCanVerify=freeOnly\(\)[\s\S]*?plannerModel!==String\(record\.model\|\|""\)[\s\S]*?!workerModels\.has\(plannerModel\)/);
+  assert.match(source, /preferredCandidate:\{provider:record\.plannerProvider\|\|"openrouter",model:plannerModel\}/);
+  assert.match(source, /verification\.planner_model_reused/);
+});
