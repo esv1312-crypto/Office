@@ -44,3 +44,13 @@ test("free-only verifier may reuse a distinct planner model when it produced no 
   assert.match(source, /preferredCandidate:\{provider:record\.plannerProvider\|\|"openrouter",model:plannerModel\}/);
   assert.match(source, /verification\.planner_model_reused/);
 });
+
+test("model cooldowns are scoped to the failing role while global provider failures remain shared", () => {
+  assert.match(source, /function modelSuppressionKey\(provider,model,role=null\)/);
+  assert.match(source, /suppressionActive\(modelSuppressionKey\(provider,model,role\)\)/);
+  assert.match(source, /\|\| suppressionActive\(modelSuppressionKey\(provider,model\)\)/);
+  assert.match(source, /roleScopedFailure=finalError\?\.status===400 \|\| finalError\?\.code==="EMPTY_RESPONSE"/);
+  assert.match(source, /roleScopedFailure \? role : null/);
+  assert.match(source, /isProviderModelSuppressed\(candidate\.provider,candidate\.model,role\)/);
+  assert.match(source, /isModelSuppressed\(x,"openrouter",role\)/);
+});
