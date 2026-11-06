@@ -46,3 +46,7 @@ This first pass intentionally avoids real club names, crests, player likenesses,
 - Spawn has clear sightlines to the central plaza and route signage.
 - Buildings and props are anchored and grouped under the generated folder.
 - The map is traversable on foot and readable on a mobile screen.
+
+## Latest blockout pass
+
+The generator now adds a small commercial street, three additional storefronts, a café interior with an open front, street posters and fan-culture graphics, and a physics-enabled football on the mini pitch. These are prototype primitives and must be inspected in Roblox Studio for scale, collisions, visibility, and mobile readability.
