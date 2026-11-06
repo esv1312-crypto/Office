@@ -76,6 +76,17 @@ export function createPostgresStudioAccessControl({ pool }) {
     if (!resourceProjectId) return false;
     let subject;
     try { subject = actorId(actor); } catch { return false; }
+    if (action === "execution.recover") {
+      const ownerResult = await pool.query(
+        `SELECT 1
+           FROM studio.organization_memberships m
+           JOIN studio.organizations o ON o.id = m.organization_id
+          WHERE m.actor_id = $1 AND m.role = 'owner'
+            AND m.status = 'active' AND o.status = 'active'
+          LIMIT 1`,
+        [subject]);
+      return Boolean(ownerResult.rows[0]);
+    }
     const result = await pool.query(
       `SELECT m.role, m.status, o.status AS organization_status
          FROM studio.projects p
