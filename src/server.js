@@ -1835,7 +1835,7 @@ async function executeRootTask(record) {
       "Plan: " + JSON.stringify(record.plan),
       "Verification checklist: " + JSON.stringify(record.verificationChecklist),
       "Worker results: " + JSON.stringify(record.workerResults)
-    ].join("\\n");
+    ].join("\n");
     let finalResult;
     if(freeOnly()) {
       // Preserve scarce free routes for independent verification. Worker outputs
@@ -1845,12 +1845,12 @@ async function executeRootTask(record) {
       finalResult={
         provider:"local",
         model:"deterministic-synthesis",
-        text:"Сводный результат по завершённым подзадачам:\\n"+finalChildren.map(x=>[
+        text:"Сводный результат по завершённым подзадачам:\n"+finalChildren.map(x=>[
           x.employeeId,
           x.status,
           x.error || "",
           String(x.result?.text || x.result || "").slice(0,12000)
-        ].join(" | ")).join("\\n")
+        ].join(" | ")).join("\n")
       };
     } else {
       try {
@@ -1859,12 +1859,12 @@ async function executeRootTask(record) {
         emit("chief.synthesis_fallback",{taskId:record.id,error:error?.message||String(error)});
         finalResult={
           model:"deterministic-synthesis",
-          text:"Deterministic synthesis fallback. Worker results:\\n"+finalChildren.map(x=>[
+          text:"Deterministic synthesis fallback. Worker results:\n"+finalChildren.map(x=>[
             x.employeeId,
             x.status,
             x.error || "",
             String(x.result?.text || x.result || "").slice(0,12000)
-          ].join(" | ")).join("\\n")
+          ].join(" | ")).join("\n")
         };
       }
     }
