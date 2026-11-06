@@ -213,3 +213,36 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - The approved-plan workflow now delegates execution to this pool, then sends successful artifacts to independent QA.
 - The pool is an in-process execution coordinator, not yet a separate always-on service. PostgreSQL remains responsible for atomic task claim, lease/fencing, and durable state. A hosted Worker process and scheduled recovery/outbox loops remain to be wired.
 - Unit tests cover concurrency limits, failure isolation, and stale assignment rejection.
+
+## Provider-neutral model gateway adapter
+
+- `gateways/openai-compatible-gateways.js` adapts an explicitly supplied OpenAI-compatible client to the Director, Worker, and QA gateway contracts.
+- Planner and QA requests use structured JSON mode; Worker requests return text artifacts.
+- Each response carries a provider/model/instruction-version/parameter snapshot for execution audit.
+- Empty and malformed structured responses receive stable error codes; Worker calls receive the execution abort signal.
+- The adapter does not create an SDK client, read environment variables, retrieve credentials, or call a provider during construction. The host application must supply a configured client and distinct model settings for planner, Worker, and QA.
+- `application/create-configured-studio-runtime.js` composes these gateways with the existing Studio runtime. It does not connect to PostgreSQL or invoke models until a workflow method is called.
+- Gateway and composition tests have been authored; their execution has not been confirmed in this branch.
+
+## Owner workflow HTTP application boundary
+
+- `http/studio-http-handlers.js` provides HTTP-framework-neutral handlers for creating a Director plan, approving a persisted plan, and executing an approved plan.
+- Authentication context and secure project/plan lookups are injected by the host application. Client-supplied project/plan objects are not trusted.
+- Execution is rejected unless the server-loaded plan is already approved by the owner.
+- These are application handlers, not mounted Express routes. No endpoint is currently exposed by the running Office service.
+- The host still needs to supply route authentication, project/plan lookup adapters, request limits, error mapping, and rate limiting before mounting these handlers.
+- Handler tests have been authored but have not been executed in this branch.
+
+## Current integration boundary and next gate
+
+The new Studio now has a composition path from model gateways through Director, Worker, and QA, plus owner workflow handlers. It is still an isolated foundation and is **not yet an autonomous running office**.
+
+Before any live task:
+1. Confirm the exact dedicated database target and apply migrations 001-005 only after explicit owner approval.
+2. Supply the existing approved model-provider credential through the host's secret manager; never copy it into source code, commits, logs, or chat.
+3. Configure and verify distinct planner, Worker, and QA models with bounded output and cost controls.
+4. Implement a real authorization policy and authenticated route mounting; the current handlers intentionally require these dependencies.
+5. Provision initial project and independent specialists, including a QA specialist with `qa.review` competency.
+6. Run isolated PostgreSQL integration tests and a deliberately small, owner-approved end-to-end task before claiming autonomous execution.
+
+No Studio migration has been applied, no live model call has been made through this new adapter, no new Studio task has been executed, and no production service has been changed.
