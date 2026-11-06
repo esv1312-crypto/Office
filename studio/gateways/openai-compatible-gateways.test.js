@@ -58,7 +58,7 @@ test("planner retries empty output without JSON mode and accepts fenced JSON", a
     }],
   };
   const { gateways, calls } = fixture({
-    contents: ["", "```json\\n" + JSON.stringify(proposal) + "\\n```"],
+    contents: ["", "```json\n" + JSON.stringify(proposal) + "\n```"],
   });
   const result = await gateways.planningGateway.generatePlan({
     request: "Build the first Roblox district slice",
