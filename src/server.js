@@ -201,6 +201,10 @@ function aiConfigured(provider) {
 }
 
 function gatewayProviders(preferred) {
+  // FREE_ONLY is a hard routing boundary, not merely a model preference.
+  // Until providers expose verifiable per-model zero pricing, only explicitly
+  // free OpenRouter routes may be called.
+  if(freeOnly() && !paidTestEnabled()) return aiConfigured("openrouter") && !isProviderSuppressed("openrouter") ? ["openrouter"] : [];
   const order=[...new Set([...providerOrder(),"huggingface"])];
   const first=String(preferred || "").toLowerCase();
   const candidates=first && first !== "auto" ? [first,...order] : order;
@@ -629,12 +633,15 @@ async function ensureEmployeeReady(employee, task, options={}) {
     cloudflare:cloudflareModels
   };
   // Give every configured provider a first-round chance before spending probes on backups.
-  const candidates=buildProviderCandidateOrder({
+  const allCandidates=buildProviderCandidateOrder({
     providerPools,
     providerOrder:[...new Set([...providerOrder(),"huggingface","gemini","apinex","cloudflare"])].filter(aiConfigured),
     preferred:{provider:brain.provider,model:brain.model},
     fallbackCandidates:(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
   });
+  const candidates=freeOnly()
+    ? allCandidates.filter(candidate=>candidate.provider==="openrouter" && String(candidate.model).endsWith(":free"))
+    : allCandidates;
   const excludedModels=new Set(options.excludeModels || []);
   const allUnique=candidates;
   const unique=allUnique.filter(x=>!excludedModels.has(x.model));
@@ -724,7 +731,7 @@ function openRouterPool(employee, preferredModel = null) {
   } catch (_) {}
   const configured=String(process.env.OPENROUTER_MODEL || "").trim();
   if (!preferredModel && configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool.unshift(configured);
-  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter")))];
+  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter") && (!freeOnly() || String(model).endsWith(":free"))) )];
 }
 
 async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
