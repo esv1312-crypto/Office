@@ -69,7 +69,7 @@ export function createPostgresStudioAccessControl({ pool }) {
     };
   }
 
-  async function authorize({ actor, action, project, plan, task, specialist }) {
+  async function authorize({ actor, action, project, plan, task, specialist, reviewer }) {
     const resource = project || plan || task;
     const resourceKind = project ? "project" : plan ? "plan" : task ? "task" : null;
     const resourceProjectId = projectIdFrom(resource, resourceKind);
@@ -99,7 +99,7 @@ export function createPostgresStudioAccessControl({ pool }) {
       case "task.assign":
         return administrator;
       case "task.qa.review":
-        return administrator && Boolean(specialist?.id);
+        return administrator && Boolean((reviewer || specialist)?.id);
       default:
         return false;
     }
