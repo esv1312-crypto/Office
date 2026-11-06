@@ -34,6 +34,7 @@ function fixture() {
     authenticate,
     rateLimit,
     artifactWriter: { async writeTextArtifact() { throw new Error("not used during composition"); } },
+    createSpecialistsForProfile: async () => [],
   });
   return { plane, calls, authenticate, rateLimit };
 }
@@ -45,7 +46,8 @@ test("composes access policy, model gateways, runtime and owner routes without s
   assert.equal(typeof plane.access.loadPlan, "function");
   assert.equal(typeof plane.runtime.director.plan, "function");
   assert.equal(typeof plane.runtime.workflow.run, "function");
-  assert.equal(calls.routes.length, 3);
+  assert.equal(typeof plane.runtime.bootstrap.bootstrap, "function");
+  assert.equal(calls.routes.length, 4);
   assert.ok(calls.routes.every(route => route[1] === authenticate && route[2] === rateLimit));
   assert.equal(calls.database, 0);
   assert.equal(calls.models, 0);
@@ -87,4 +89,16 @@ test("requires a scoped repository artifact writer for the executable control pl
     models: { planner: "p", worker: "w", qa: "q" },
     createId() {}, createWorkerId() {}, authenticate() {}, rateLimit() {},
   }), /scoped repository artifact writer/);
+});
+
+
+test("requires a dynamic product-profile team factory", () => {
+  assert.throws(() => createStudioControlPlane({
+    express: { Router: () => ({ post() {} }) },
+    pool: { connect() {}, query() {} },
+    client: { chat: { completions: { create() {} } } },
+    models: { planner: "p", worker: "w", qa: "q" },
+    createId() {}, createWorkerId() {}, authenticate() {}, rateLimit() {},
+    artifactWriter: { writeTextArtifact() {} },
+  }), /dynamic product-profile specialist factory/);
 });
