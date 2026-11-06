@@ -22,6 +22,7 @@ import { createPlanExecutionWorkflow } from "../orchestration/run-approved-plan.
 export function createStudioRuntime({
   pool, createId, createWorkerId, authorize,
   planningGateway, workerModelGateway, qaGateway,
+  artifactWriter = null, artifactPathForTask,
   now = () => new Date().toISOString(),
   workerConcurrency = 2,
 }) {
@@ -48,7 +49,8 @@ export function createStudioRuntime({
     store: domainStore, assignment, authorize, now,
   });
   const worker = createWorkerRuntime({
-    store: executionStore, modelGateway: workerModelGateway, now,
+    store: executionStore, modelGateway: workerModelGateway, artifactWriter,
+    ...(artifactPathForTask ? { artifactPathForTask } : {}), now,
   });
   const workerPool = createWorkerPool({
     worker, directory: domainStore, createWorkerId, concurrency: workerConcurrency,
