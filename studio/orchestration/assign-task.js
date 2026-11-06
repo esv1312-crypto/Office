@@ -1,3 +1,4 @@
+import { hasCompetencyCoverage } from "../core/competency-matching.js";
 /**
  * Governed deterministic assignment.
  * AI may recommend a specialist later; this policy remains the final gate.
@@ -17,12 +18,9 @@ export function createTaskAssignment({ store, authorize, now = () => new Date().
           !specialist.projectIds.includes(task.projectId)) {
         throw Object.assign(new Error("Specialist is not permitted in this project"), { code: "PROJECT_SCOPE_MISMATCH" });
       }
-      const required = Array.isArray(task.requiredCompetencies) ? task.requiredCompetencies : [];
-      const available = new Set(specialist.competencies || []);
-      const missing = required.filter(item => !available.has(item));
-      if (missing.length) {
-        throw Object.assign(new Error(`Specialist lacks required competencies: ${missing.join(", ")}`), {
-          code: "SPECIALIST_COMPETENCY_MISMATCH", missingCompetencies: missing,
+      if (!hasCompetencyCoverage(task, specialist)) {
+        throw Object.assign(new Error("Specialist does not cover any of the task's required competencies"), {
+          code: "SPECIALIST_COMPETENCY_MISMATCH",
         });
       }
       const permitted = await authorize({ actor, action: "task.assign", task, specialist });
