@@ -1,6 +1,8 @@
 import { createConfiguredStudioRuntime } from "./create-configured-studio-runtime.js";
 import { createPostgresStudioAccessControl } from "../governance/postgres-access-control.js";
 import { createStudioExpressRouter } from "../http/create-studio-express-router.js";
+import { createPostgresWorkspaceBootstrapStore } from "../storage/postgres-workspace-bootstrap-store.js";
+import { createStudioBootstrap } from "./create-studio-bootstrap.js";
 
 /**
  * Builds the isolated Studio control plane from explicit host dependencies.
@@ -21,6 +23,7 @@ export function createStudioControlPlane({
   authenticate,
   rateLimit,
   artifactWriter,
+  createSpecialistsForProfile,
   now,
   workerConcurrency,
 }) {
@@ -36,6 +39,9 @@ export function createStudioControlPlane({
   if (typeof artifactWriter?.writeTextArtifact !== "function") {
     throw new TypeError("A scoped repository artifact writer is required");
   }
+  if (typeof createSpecialistsForProfile !== "function") {
+    throw new TypeError("A dynamic product-profile specialist factory is required");
+  }
 
   const access = createPostgresStudioAccessControl({ pool });
   const runtime = createConfiguredStudioRuntime({
@@ -50,14 +56,23 @@ export function createStudioControlPlane({
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
   });
+  const bootstrapStore = createPostgresWorkspaceBootstrapStore({ pool, createId });
+  const bootstrap = createStudioBootstrap({
+    store: bootstrapStore,
+    director: runtime.director,
+    createId,
+    createSpecialistsForProfile,
+    ...(now ? { now } : {}),
+  });
+  const composedRuntime = Object.freeze({ ...runtime, bootstrap });
   const router = createStudioExpressRouter({
     express,
-    runtime,
+    runtime: composedRuntime,
     authenticate,
     rateLimit,
     loadProject: access.loadProject,
     loadPlan: access.loadPlan,
   });
 
-  return Object.freeze({ runtime, router, access });
+  return Object.freeze({ runtime: composedRuntime, router, access });
 }
