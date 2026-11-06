@@ -4,8 +4,9 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { createProject } from "../core/create-project.js";
 import { createStudioRuntime } from "../application/create-studio-runtime.js";
+import { createStudioBootstrap } from "../application/create-studio-bootstrap.js";
+import { createPostgresWorkspaceBootstrapStore } from "./postgres-workspace-bootstrap-store.js";
 import { createRobloxStarterTeam } from "../product-profiles/roblox/starter-team.js";
 import { createPostgresStudioAccessControl } from "../governance/postgres-access-control.js";
 
@@ -77,20 +78,10 @@ test("real PostgreSQL workflow completes Director plan -> approval -> Worker -> 
   const pool = new Pool({ connectionString: databaseUrl, max: 5 });
   const createId = () => randomUUID();
   const actor = { id: `integration-owner-${createId()}` };
-  const organizationId = createId();
   const at = "2026-11-07T01:00:00.000Z";
   const writtenArtifacts = [];
 
   try {
-    await pool.query(
-      "INSERT INTO studio.organizations (id, name, status, created_at) VALUES ($1, $2, 'active', $3)",
-      [organizationId, "Integration Test Studio", at],
-    );
-    await pool.query(
-      "INSERT INTO studio.organization_memberships (organization_id, actor_id, role, status, created_at, updated_at) VALUES ($1, $2, 'owner', 'active', $3, $3)",
-      [organizationId, actor.id, at],
-    );
-
     const access = createPostgresStudioAccessControl({ pool });
     const runtime = createStudioRuntime({
       pool,
@@ -147,23 +138,27 @@ test("real PostgreSQL workflow completes Director plan -> approval -> Worker -> 
       },
     });
 
-    const project = createProject({
-      id: createId(),
-      organizationId,
-      name: "Football Fans",
-      productProfileId: "roblox-experience",
-      at,
+    const bootstrap = createStudioBootstrap({
+      store: createPostgresWorkspaceBootstrapStore({ pool, createId }),
+      director: runtime.director,
+      createId,
+      now: () => at,
+      createSpecialistsForProfile: ({ productProfileId, organizationId: newOrganizationId, createId: nextId, at: timestamp }) => {
+        assert.equal(productProfileId, "roblox-experience");
+        return createRobloxStarterTeam({ organizationId: newOrganizationId, createId: nextId, at: timestamp });
+      },
     });
-    await runtime.stores.domain.createProject(project);
-
-    const team = createRobloxStarterTeam({ organizationId, createId, at });
-    for (const specialist of team) await runtime.stores.domain.createSpecialist(specialist);
-
-    const proposed = await runtime.director.plan({
-      request: "Create the first football-fans Roblox district module.",
-      project,
+    const created = await bootstrap.bootstrap({
+      organizationName: "Integration Test Studio",
+      projectName: "Football Fans",
+      productProfileId: "roblox-experience",
+      brief: "Create the first football-fans Roblox district module.",
       actor,
     });
+    assert.equal(created.status, "plan_proposed");
+    const project = created.workspace.project;
+    const organizationId = created.workspace.organization.id;
+    const proposed = created.plan;
     assert.equal(proposed.status, "proposed");
     assert.equal(proposed.tasks.length, 1);
 
