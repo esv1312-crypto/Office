@@ -124,3 +124,14 @@ These are still primitive Parts, not final stadium assets. During the first Robl
 4. Add terrain/lighting/props and custom art direction.
 5. Add the first interaction: mini-pitch penalty or ball-control activity.
 6. Add social loops and event progression only after the space is validated.
+
+## 10. Neighbourhood life pass (implemented in generator)
+
+- Three additional fictional storefronts: Scarves & Flags, Matchday Diner, and Fan Workshop.
+- Street-facing display windows, doors, and striped awnings.
+- Café counter, menu board, indoor tables, chairs, and pendant lights.
+- Café placeholder volume replaced by a four-wall shell with an open entrance so the interior can be seen and entered.
+- Fictional matchday posters and a fan-culture wall graphic.
+- A physics-enabled football placed on the Mini Pitch for the first hands-on Studio inspection.
+
+This is still a greybox. Verify collision, the café entrance, ball physics, sign readability, and camera framing in Roblox Studio before treating the map as playable.
