@@ -164,9 +164,9 @@ export function createPostgresExecutionStore({ pool, createId }) {
         }
 
         const taskResult = await client.query(
-          "SELECT t.id, t.project_id, t.status, t.version, t.payload, p.organization_id
+          `SELECT t.id, t.project_id, t.status, t.version, t.payload, p.organization_id
              FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id
-            WHERE t.id = $1 FOR UPDATE OF t",
+            WHERE t.id = $1 FOR UPDATE OF t`,
           [execution.task_id],
         );
         const taskRow = taskResult.rows[0];
