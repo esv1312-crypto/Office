@@ -165,7 +165,7 @@ test("preflight skips suppressed candidates dynamically and stops on provider-wi
   assert.match(helper, /if\(isProviderSuppressed\(candidate\.provider\) \|\| isProviderModelSuppressed\(candidate\.provider,candidate\.model,role\)\) continue/);
   assert.match(helper, /if\(probes>=4\) break/);
   assert.match(preflight, /if\(shouldSuppressProviderForStatus\(provider,error\?\.status\)\)/);
-  assert.match(preflight, /roleScopedFailure=error\?\.status===400/);
+  assert.match(preflight, /roleScopedFailure=error\?\.status===400 \|\| error\?\.code==="EMPTY_RESPONSE" \|\| \(!error\?\.status/);
   assert.match(preflight, /suppressModel\(model,message,ttl,provider,roleScopedFailure \? employee\?\.role : null\)/);
 });
 test("gateway rejects empty provider results and bounds OpenAI SDK calls", async () => {
