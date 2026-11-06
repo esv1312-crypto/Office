@@ -179,3 +179,16 @@ This is still a greybox. Verify collision, the café entrance, ball physics, sig
 - Membership is server-session-only and is cleared on PlayerRemoving.
 
 **Prototype limits:** one active crew per fan group per server; no friend invitations, custom crew names, persistent membership, cross-server parties, chat channel, or progression rewards. Test multiplayer state consistency, capacity, leader handoff, and fan-group switching in Roblox Studio.
+
+
+## 15. Player-to-player crew invitations (implemented prototype)
+
+- The crew leader can approach a player and activate the target character's `Invite to crew` ProximityPrompt.
+- The target receives a client-side invitation dialog with Accept and Decline actions.
+- Invitations expire after 30 seconds. The server validates the invitation again on acceptance.
+- Acceptance requires the inviter to remain the crew leader, the target to have no crew, both players to share the same selected fan group, and the crew to remain below six members.
+- Each leader has a short invitation cooldown. A target can have one pending invitation at a time.
+- Changing fan groups automatically removes the player from their previous crew.
+- The invitation dialog is installed through `StarterPlayerScripts`; the server remains authoritative for membership.
+
+**Prototype limits:** same-server only; no persistence, friend-list picker, invite history, cross-server invites, or moderation tools. Test the GUI on desktop and mobile, prompt visibility, expiration, leader handoff, capacity races, and server-side validation in Roblox Studio.
