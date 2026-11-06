@@ -493,6 +493,20 @@ for _, spotName in ipairs({"SquareMeetup", "PitchMeetup", "StadiumMeetup"}) do
 	end
 end
 
+for _, spotName in ipairs({"SquareMeetup", "PitchMeetup", "StadiumMeetup"}) do
+	local pad = meetups:FindFirstChild(spotName)
+	if pad then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "LeaveFanCrew"
+		prompt.ActionText = "Leave fan crew"
+		prompt.ObjectText = "Your supporter crew"
+		prompt.HoldDuration = 0.4
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = pad
+	end
+end
+
 -- Shared crew banners: each meetup pad gets a server-visible banner interaction.
 for _, spotName in ipairs({"SquareMeetup", "PitchMeetup", "StadiumMeetup"}) do
 	local pad = meetups:FindFirstChild(spotName)
@@ -855,6 +869,10 @@ if meetups then
 		local crewPrompt = pad:FindFirstChild("CreateOrJoinFanCrew")
 		if crewPrompt then
 			crewPrompt.Triggered:Connect(createOrJoinFanCrew)
+		end
+		local leaveCrewPrompt = pad:FindFirstChild("LeaveFanCrew")
+		if leaveCrewPrompt then
+			leaveCrewPrompt.Triggered:Connect(leaveFanCrew)
 		end
 		local bannerPrompt = pad:FindFirstChild("RaiseCrewBanner")
 		if bannerPrompt then
