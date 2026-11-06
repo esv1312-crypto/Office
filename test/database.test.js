@@ -252,3 +252,10 @@ test("root task cannot transition to completed unless the persisted verifier rec
   const taskState = await readFile(new URL("../src/task-state.js", import.meta.url), "utf8");
   assert.match(taskState, /export function isVerificationCompletionEligible\(verification\)/);
 });
+
+
+test("paid DeepSeek routing stays within OpenRouter no-data-collection and ZDR providers", async () => {
+  const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(server, /provider:\{data_collection:"deny",zdr:true,allow_fallbacks:true\}/);
+  assert.doesNotMatch(server, /provider:\{order:\["deepseek"\],allow_fallbacks:false\}/);
+});

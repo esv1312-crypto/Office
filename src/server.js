@@ -447,7 +447,7 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       const body={
         model,
         messages,
-        ...(provider==="openrouter"&&paidTestEnabled()?{provider:{order:["deepseek"],allow_fallbacks:false}}:{}),
+        ...(provider==="openrouter"&&paidTestEnabled()?{provider:{data_collection:"deny",zdr:true,allow_fallbacks:true}}:{}),
         ...(enableTools && toolSchemasForEmployee(getEmployee(employeeId||"executor")).length
           ? {tools:toolSchemasForEmployee(getEmployee(employeeId||"executor")),tool_choice:"auto"}
           : {}),
