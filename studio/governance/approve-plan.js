@@ -13,7 +13,9 @@ export function createPlanApproval({ store, authorize, now = () => new Date().to
       if (allowed !== true) throw Object.assign(new Error("Plan approval is not authorized"), { code: "PLAN_APPROVAL_FORBIDDEN" });
       const at = now();
       if (typeof at !== "string" || Number.isNaN(Date.parse(at))) throw new TypeError("Approval clock returned an invalid timestamp");
-      const result = await store.approvePlan({ planId: plan.id, actorId: actor?.id || null, at });
+      const actorId = typeof actor?.id === "string" ? actor.id.trim() : "";
+      if (!actorId) throw Object.assign(new Error("Authenticated owner identity is required"), { code: "AUTHENTICATION_REQUIRED" });
+      const result = await store.approvePlan({ planId: plan.id, actorId, at });
       if (!result || result.plan?.status !== "approved" || !Array.isArray(result.tasks) ||
           result.tasks.some(task => task.status !== "planned")) {
         throw new Error("Approval store did not confirm the approved plan and planned tasks");
