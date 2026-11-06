@@ -10,7 +10,7 @@ const specialist = {
 };
 
 function fixture({ generated, startResult, completeResult, gatewayError } = {}) {
-  const calls = { started: [], generated: [], completed: [], failed: [] };
+  const calls = { started: [], generated: [], completed: [], failed: [], heartbeats: [] };
   const store = {
     async startExecution(value) {
       calls.started.push(value);
@@ -34,6 +34,10 @@ function fixture({ generated, startResult, completeResult, gatewayError } = {}) 
     },
     async failExecution(value) {
       calls.failed.push(value);
+    },
+    async heartbeatExecution(value) {
+      calls.heartbeats.push(value);
+      return { executionId: value.executionId, leaseExpiresAt: "2026-11-07T01:05:00.000Z" };
     },
   };
   const modelGateway = {
@@ -88,6 +92,8 @@ test("claims an assigned task, invokes the gateway, stores an artifact, and hand
   assert.equal(calls.generated[0].specialist.instructions, specialist.instructions);
   assert.equal(calls.completed.length, 1);
   assert.equal(calls.completed[0].artifact.type, "text");
+  assert.equal(calls.completed[0].fencingToken, 1);
+  assert.equal(calls.completed[0].leaseToken, "lease-1");
   assert.equal(calls.completed[0].artifact.content, result.output);
   assert.deepEqual(calls.completed[0].modelSnapshot, result.modelSnapshot);
   assert.equal(calls.failed.length, 0);
@@ -108,6 +114,8 @@ test("records model failures and does not create an artifact", async () => {
   assert.equal(result.errorCode, "PROVIDER_UNAVAILABLE");
   assert.equal(calls.failed.length, 1);
   assert.equal(calls.failed[0].executionId, "execution-1");
+  assert.equal(calls.failed[0].fencingToken, 1);
+  assert.equal(calls.failed[0].leaseToken, "lease-1");
   assert.equal(calls.completed.length, 0);
 });
 
@@ -157,4 +165,14 @@ test("rejects a store response that did not claim the requested specialist", asy
     /did not return the claimed running task/,
   );
   assert.equal(calls.generated.length, 0);
+});
+
+
+test("renews a worker lease through the durable store", async () => {
+  const { runtime, calls } = fixture();
+  const result = await runtime.heartbeat({ executionId: "execution-1", fencingToken: 1, leaseToken: "lease-1" });
+  assert.equal(calls.heartbeats.length, 1);
+  assert.equal(calls.heartbeats[0].executionId, "execution-1");
+  assert.equal(calls.heartbeats[0].fencingToken, 1);
+  assert.equal(result.executionId, "execution-1");
 });
