@@ -193,8 +193,8 @@ test("real PostgreSQL workflow completes Director plan -> approval -> Worker -> 
     assert.equal(artifactRows.rows[0].content.external.path, writtenArtifacts[0].path);
 
     const events = await pool.query(
-      "SELECT event_type FROM studio.events WHERE project_id = $1",
-      [project.id],
+      "SELECT event_type FROM studio.events WHERE project_id = $1 OR organization_id = $2",
+      [project.id, organizationId],
     );
     const eventTypes = new Set(events.rows.map(row => row.event_type));
     for (const expected of [
