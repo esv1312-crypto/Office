@@ -625,6 +625,10 @@ async function preflightModel(provider, model, employee) {
 }
 
 async function ensureEmployeeReady(employee, task, options={}) {
+  if(paidTestEnabled()) {
+    if(!aiConfigured("openrouter")) throw Object.assign(new Error("OpenRouter is not configured for the approved paid-test model"),{code:"OPENROUTER_NOT_CONFIGURED"});
+    return {provider:"openrouter",model:paidTestModel()};
+  }
   const brain=resolveBrain(employee,task);
   const role=String(employee?.role||"executor");
   const staticRoleFallbacks=OPENROUTER_MODEL_POOLS[role] || [];
@@ -2333,6 +2337,7 @@ async function startOfficeAudit(runId=null) {
       "U FINAL STATUS: READY / PARTIALLY READY / NOT READY, with a short reason.",
       "",
       "For each P0/P1/P2 item provide: classification, exact source/runtime evidence, impact, and smallest concrete fix. Do not mix recommendations with facts.",
+      "Keep each specialist report to 1,200 words maximum. Prioritize concrete blockers and cite exact source locators; do not reproduce code or repeat the dossier. Keep the Chief synthesis to 1,800 words maximum.",
       "The audit is successful only if the report is evidence-rich and internally consistent. Do not declare READY merely because code paths exist.",
       "",
       "SOURCE DOSSIER: CURRENT AI-OFFICE SOURCE FILES ARE SUPPLIED BELOW.",
