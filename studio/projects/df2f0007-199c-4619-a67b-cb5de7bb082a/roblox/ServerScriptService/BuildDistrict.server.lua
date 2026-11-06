@@ -9,6 +9,10 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 
 local ROOT_NAME = "FootballFansDistrict"
+local defaultBaseplate = Workspace:FindFirstChild("Baseplate")
+if defaultBaseplate and defaultBaseplate:IsA("BasePart") then
+    defaultBaseplate:Destroy()
+end
 local old = Workspace:FindFirstChild(ROOT_NAME)
 if old then old:Destroy() end
 
