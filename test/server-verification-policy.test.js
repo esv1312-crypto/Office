@@ -162,10 +162,11 @@ test("preflight skips suppressed candidates dynamically and stops on provider-wi
   const preflight = source.slice(preflightStart, start);
   assert.match(helper, /let probes=0/);
   assert.match(helper, /for\(const candidate of unique\)/);
-  assert.match(helper, /if\(isProviderSuppressed\(candidate\.provider\) \|\| isProviderModelSuppressed\(candidate\.provider,candidate\.model\)\) continue/);
+  assert.match(helper, /if\(isProviderSuppressed\(candidate\.provider\) \|\| isProviderModelSuppressed\(candidate\.provider,candidate\.model,role\)\) continue/);
   assert.match(helper, /if\(probes>=4\) break/);
   assert.match(preflight, /if\(shouldSuppressProviderForStatus\(provider,error\?\.status\)\)/);
-  assert.match(preflight, /else suppressModel\(model,message,ttl,provider\)/);
+  assert.match(preflight, /roleScopedFailure=error\?\.status===400/);
+  assert.match(preflight, /suppressModel\(model,message,ttl,provider,roleScopedFailure \? employee\?\.role : null\)/);
 });
 test("gateway rejects empty provider results and bounds OpenAI SDK calls", async () => {
   const source = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
