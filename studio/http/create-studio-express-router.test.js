@@ -4,10 +4,11 @@ import { createStudioExpressRouter } from "./create-studio-express-router.js";
 
 function fixture() {
   const routes = [];
-  const calls = { auth: [], rateLimit: [], plan: [], approve: [], execute: [] };
+  const calls = { auth: [], rateLimit: [], bootstrap: [], plan: [], approve: [], execute: [] };
   const authenticate = (_req, _res, next) => { calls.auth.push(true); next(); };
   const rateLimit = (_req, _res, next) => { calls.rateLimit.push(true); next(); };
   const runtime = {
+    bootstrap: { bootstrap: async value => { calls.bootstrap.push(value); return { status: "plan_proposed" }; } },
     director: { plan: async value => {
       calls.plan.push(value);
       return { plan: { id: "plan-1", status: "proposed" }, tasks: [] };
@@ -45,6 +46,7 @@ test("registers all owner workflow routes behind authentication and rate limitin
   const { router, routes, authenticate, rateLimit } = fixture();
   assert.ok(router);
   assert.deepEqual(routes.map(route => route[0]), [
+    "/bootstrap",
     "/projects/:projectId/plans",
     "/plans/:planId/approve",
     "/plans/:planId/execute",
@@ -60,7 +62,7 @@ test("creates plans through the Director and returns HTTP 201", async () => {
   const { routes, calls } = fixture();
   const response = responseRecorder();
   let forwarded;
-  await routes[0][3]({
+  await routes[1][3]({
     auth: { actor: { id: "owner-1" } },
     params: { projectId: "project-1" },
     body: { request: "Build a prototype" },
@@ -75,7 +77,7 @@ test("forwards authentication and handler errors to Express error middleware", a
   const { routes } = fixture();
   const response = responseRecorder();
   let forwarded;
-  await routes[2][3]({
+  await routes[3][3]({
     params: { planId: "plan-1" },
   }, response, error => { forwarded = error; });
   assert.equal(forwarded.code, "AUTHENTICATION_REQUIRED");
@@ -86,11 +88,30 @@ test("forwards authentication and handler errors to Express error middleware", a
 test("executes an approved plan and returns the workflow result", async () => {
   const { routes, calls } = fixture();
   const response = responseRecorder();
-  await routes[2][3]({
+  await routes[3][3]({
     auth: { actor: { id: "owner-1" } },
     params: { planId: "plan-1" },
   }, response, error => { throw error; });
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.status, "completed");
   assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: { id: "owner-1" } }]);
+});
+
+
+test("bootstraps a product workspace from one authenticated owner command", async () => {
+  const { routes, calls } = fixture();
+  const response = responseRecorder();
+  await routes[0][3]({
+    auth: { actor: { id: "owner-1" } },
+    body: {
+      organizationName: "My Studio",
+      projectName: "First Product",
+      productProfileId: "web-application",
+      brief: "Build a useful web product",
+    },
+  }, response, error => { throw error; });
+  assert.equal(response.statusCode, 201);
+  assert.equal(calls.bootstrap[0].actor.id, "owner-1");
+  assert.equal(calls.bootstrap[0].productProfileId, "web-application");
+  assert.equal(calls.bootstrap[0].brief, "Build a useful web product");
 });
