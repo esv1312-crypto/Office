@@ -203,3 +203,13 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - These changes are code and isolated tests only. Migration 005 has not been applied, no real Worker has claimed a task, and no database recovery has been exercised.
 
 - Worker Runtime now renews the lease while a model gateway call is in progress, passes an abort signal to gateways, and refuses to persist output if heartbeat reports a lost lease. The worker host still needs a separate governed maintenance invocation to recover expired tasks.
+
+
+## Bounded Worker Pool
+
+- `agents/worker-pool.js` consumes Director-approved assignments and runs a configurable number of Workers concurrently (default 2, maximum 32).
+- Each assignment is re-read from the durable directory immediately before execution; stale task/specialist assignments are rejected before a Worker starts.
+- Individual Worker failures are isolated and reported without cancelling unrelated assignments.
+- The approved-plan workflow now delegates execution to this pool, then sends successful artifacts to independent QA.
+- The pool is an in-process execution coordinator, not yet a separate always-on service. PostgreSQL remains responsible for atomic task claim, lease/fencing, and durable state. A hosted Worker process and scheduled recovery/outbox loops remain to be wired.
+- Unit tests cover concurrency limits, failure isolation, and stale assignment rejection.
