@@ -158,17 +158,23 @@ export function createPostgresDomainStore({ pool, createId }) {
       const approvedAt = timestamp(at);
       return transaction(pool, async client => {
         const planResult = await client.query(
-          "SELECT id, project_id, status, version, payload FROM studio.plans WHERE id = $1 FOR UPDATE",
-          [id]);
+          `SELECT pl.id, pl.project_id, pl.status, pl.version, pl.payload,
+                  pr.organization_id
+             FROM studio.plans pl
+             JOIN studio.projects pr ON pr.id = pl.project_id
+             JOIN studio.organization_memberships m
+               ON m.organization_id = pr.organization_id
+             JOIN studio.organizations o ON o.id = pr.organization_id
+            WHERE pl.id = $1 AND m.actor_id = $2 AND m.role = 'owner'
+              AND m.status = 'active' AND o.status = 'active'
+            FOR UPDATE OF pl`,
+          [id, required(actorId, "actorId")]);
         const planRow = planResult.rows[0];
         if (!planRow) throw Object.assign(new Error("Plan not found"), { code: "PLAN_NOT_FOUND" });
         if (planRow.status !== "proposed") {
           throw Object.assign(new Error("Only proposed plans can be approved"), { code: "PLAN_NOT_PROPOSED" });
         }
-        const projectResult = await client.query(
-          "SELECT organization_id FROM studio.projects WHERE id = $1",
-          [planRow.project_id]);
-        const organizationId = projectResult.rows[0]?.organization_id;
+        const organizationId = planRow.organization_id;
         if (!organizationId) throw new Error("Plan project is missing");
         const taskResult = await client.query(
           "SELECT id, status, version, payload FROM studio.tasks WHERE plan_id = $1 ORDER BY id FOR UPDATE",
