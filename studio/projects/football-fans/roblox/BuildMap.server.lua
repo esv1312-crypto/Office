@@ -397,4 +397,87 @@ if cafeModel then
 	windowPanel(cafeModel, "CafeFrontGlassRight", 249, 13, -153, 14, 19)
 end
 
+
+-- Ambient supporter crowd: lightweight anchored character stand-ins.
+-- These are visual NPC prototypes; pathfinding, dialogue and emote animation
+-- are intentionally deferred until the first Roblox Studio playtest.
+local socialLife = folder("SocialLife")
+local crowd = folder("AmbientSupporters", socialLife)
+local fanMerch = folder("ScarvesAndFlags", socialLife)
+local meetups = folder("MeetupSpots", socialLife)
+
+local function makeSupporter(name, x, z, shirtColor, scarfColor, greeting)
+	local model = Instance.new("Model")
+	model.Name = name
+	model.Parent = crowd
+
+	local torso = part(model, "Torso", Vector3.new(5, 8, 3), Vector3.new(x, 9, z), shirtColor, Enum.Material.Fabric)
+	local head = part(model, "Head", Vector3.new(4, 4, 4), Vector3.new(x, 15, z), Color3.fromRGB(224, 185, 148), Enum.Material.SmoothPlastic)
+	part(model, "LeftLeg", Vector3.new(2.5, 7, 2.5), Vector3.new(x - 1.35, 2.5, z), C.dark, Enum.Material.Fabric)
+	part(model, "RightLeg", Vector3.new(2.5, 7, 2.5), Vector3.new(x + 1.35, 2.5, z), C.dark, Enum.Material.Fabric)
+	part(model, "LeftArm", Vector3.new(2.2, 7, 2.2), Vector3.new(x - 3.6, 9, z), shirtColor, Enum.Material.Fabric)
+	part(model, "RightArm", Vector3.new(2.2, 7, 2.2), Vector3.new(x + 3.6, 9, z), shirtColor, Enum.Material.Fabric)
+	part(model, "Scarf", Vector3.new(5.4, 1.5, 3.3), Vector3.new(x, 12.1, z - 0.15), scarfColor, Enum.Material.Fabric)
+	part(model, "ScarfTail", Vector3.new(1.5, 5, 1), Vector3.new(x + 1.6, 9.4, z - 1.8), scarfColor, Enum.Material.Fabric)
+	part(model, "Cap", Vector3.new(4.5, 1.2, 4.5), Vector3.new(x, 17.4, z), scarfColor, Enum.Material.Fabric)
+	model.PrimaryPart = torso
+
+	local bubble = Instance.new("BillboardGui")
+	bubble.Name = "Greeting"
+	bubble.Adornee = head
+	bubble.Size = UDim2.fromOffset(150, 38)
+	bubble.StudsOffset = Vector3.new(0, 3.2, 0)
+	bubble.AlwaysOnTop = false
+	bubble.Parent = head
+	local textLabel = Instance.new("TextLabel")
+	textLabel.Size = UDim2.fromScale(1, 1)
+	textLabel.BackgroundColor3 = C.dark
+	textLabel.BackgroundTransparency = 0.15
+	textLabel.TextColor3 = C.white
+	textLabel.Text = greeting
+	textLabel.TextScaled = true
+	textLabel.Font = Enum.Font.GothamBold
+	textLabel.Parent = bubble
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = textLabel
+	return model
+end
+
+-- Supporters gathering around the social square.
+makeSupporter("BlueScarfSupporter", -48, -20, C.blue, C.orange, "COME ON!")
+makeSupporter("OrangeScarfSupporter", -18, -35, C.orange, C.blue, "HELLO, FRIEND!")
+makeSupporter("GreenScarfSupporter", 22, -22, C.green, C.white, "MATCHDAY!")
+makeSupporter("旗Supporter", 54, 15, C.red, C.white, "WELCOME!")
+
+-- Small groups near the mini pitch and the stadium approach.
+makeSupporter("PitchSupporterOne", -390, -310, C.blue, C.white, "NICE PASS!")
+makeSupporter("PitchSupporterTwo", -150, -300, C.red, C.white, "YOUR TURN!")
+makeSupporter("StadiumSupporterOne", 190, 300, C.orange, C.blue, "THIS WAY!")
+makeSupporter("StadiumSupporterTwo", 330, 300, C.blue, C.orange, "SEE YOU INSIDE!")
+
+-- A simple scarf rack and flag display outside the Fan Shop.
+part(fanMerch, "ScarfRack", Vector3.new(34, 3, 5), Vector3.new(-250, 5, -158), C.dark, Enum.Material.Metal)
+for i, color in ipairs({C.blue, C.orange, C.red, C.green, C.white}) do
+	local x = -266 + (i - 1) * 8
+	part(fanMerch, "HangingScarf", Vector3.new(5, 14, 1), Vector3.new(x, 13, -158), color, Enum.Material.Fabric)
+end
+for i, color in ipairs({C.blue, C.orange, C.red}) do
+	local x = -292 + (i - 1) * 42
+	part(fanMerch, "FlagPole", Vector3.new(1, 22, 1), Vector3.new(x, 11, -178), C.dark, Enum.Material.Metal)
+	part(fanMerch, "SupporterFlag", Vector3.new(1, 12, 18), Vector3.new(x + 7, 14, -178), color, Enum.Material.Fabric)
+end
+sign(fanMerch, "FanColoursSign", "PICK YOUR COLOURS", Vector3.new(-250, 24, -184), Vector3.new(52, 9, 2), C.orange)
+
+-- Marked gathering spots give groups a natural place to meet.
+for _, spot in ipairs({
+	{name = "SquareMeetup", x = 82, z = -52, color = C.blue, label = "MEET HERE"},
+	{name = "PitchMeetup", x = -270, z = -405, color = C.green, label = "TEAM UP"},
+	{name = "StadiumMeetup", x = 390, z = 270, color = C.orange, label = "MEET YOUR CREW"},
+}) do
+	local pad = part(meetups, spot.name, Vector3.new(28, 1, 28), Vector3.new(spot.x, 2, spot.z), spot.color, Enum.Material.Neon)
+	pad.Transparency = 0.25
+	sign(meetups, spot.name .. "Sign", spot.label, Vector3.new(spot.x, 10, spot.z - 17), Vector3.new(32, 7, 1), spot.color)
+end
+
 print("FootballFansMap generated. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
