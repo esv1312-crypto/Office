@@ -40,7 +40,7 @@ export function createPlanExecutionWorkflow({
           status: workerResult.status, errorCode: workerResult.errorCode || null,
         });
         if (workerResult.status !== "qa") {
-          if (workerResult.status === "failed") {
+          if (workerResult.status !== "qa") {
             report.blocked.push({
               taskId: workerResult.taskId, code: workerResult.errorCode || "WORKER_FAILED",
               reason: workerResult.error || "Worker execution failed",
@@ -78,7 +78,7 @@ export function createPlanExecutionWorkflow({
       }
 
       const hasBlocked = report.blocked.length > 0;
-      const hasFailures = report.executions.some(item => item.status === "failed");
+      const hasFailures = report.executions.some(item => item.status !== "qa");
       const hasRevisions = report.qaReviews.some(item => item.verdict === "revision_required");
       const allAssignedProcessed = report.executions.length === dispatchReport.assigned.length;
       report.status = hasBlocked || hasFailures || hasRevisions || !allAssignedProcessed
