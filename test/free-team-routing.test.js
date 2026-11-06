@@ -58,5 +58,5 @@ test("model cooldowns are scoped to the failing role while global provider failu
 test("free-only team calls prefer OpenRouter's free router and retain explicit free model fallbacks", () => {
   assert.match(source, /const effectivePreferredModel=freeOnly\(\) && !isLoopbackAiTestMode\(\) && allowModelFallback \? "openrouter\/free" : preferredModel/);
   assert.match(source, /String\(model\)==="openrouter\/free" \|\| String\(model\)\.endsWith\(":free"\)/);
-  assert.match(source, /String\(candidate\.model\)==="openrouter\/free" \|\| String\(candidate\.model\)\.endsWith\(":free"\)/);
+  assert.match(source, /String\(candidate\.model\)\.endsWith\(":free"\) \|\| String\(candidate\.model\)==="openrouter\/free"/);
 });
