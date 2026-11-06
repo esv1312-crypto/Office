@@ -147,6 +147,69 @@ export function createPostgresDomainStore({ pool, createId }) {
       });
     },
 
+    async approvePlan({ planId, actorId = null, at }) {
+      const id = required(planId, "planId");
+      const approvedAt = timestamp(at);
+      return transaction(pool, async client => {
+        const planResult = await client.query(
+          "SELECT id, project_id, status, version, payload FROM studio.plans WHERE id = $1 FOR UPDATE",
+          [id]);
+        const planRow = planResult.rows[0];
+        if (!planRow) throw Object.assign(new Error("Plan not found"), { code: "PLAN_NOT_FOUND" });
+        if (planRow.status !== "proposed") {
+          throw Object.assign(new Error("Only proposed plans can be approved"), { code: "PLAN_NOT_PROPOSED" });
+        }
+        const projectResult = await client.query(
+          "SELECT organization_id FROM studio.projects WHERE id = $1",
+          [planRow.project_id]);
+        const organizationId = projectResult.rows[0]?.organization_id;
+        if (!organizationId) throw new Error("Plan project is missing");
+        const taskResult = await client.query(
+          "SELECT id, status, version, payload FROM studio.tasks WHERE plan_id = $1 ORDER BY id FOR UPDATE",
+          [id]);
+        if (!taskResult.rows.length) {
+          throw Object.assign(new Error("Plan has no tasks"), { code: "PLAN_HAS_NO_TASKS" });
+        }
+        if (taskResult.rows.some(row => row.status !== "draft")) {
+          throw Object.assign(new Error("Plan tasks are not all in draft state"), { code: "PLAN_TASK_STATE_CONFLICT" });
+        }
+
+        const nextPlan = {
+          ...(planRow.payload || {}), status: "approved",
+          version: Number(planRow.version) + 1, approvedAt, approvedBy: actorId,
+          updatedAt: approvedAt,
+        };
+        await client.query(
+          "UPDATE studio.plans SET status = 'approved', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
+          [id, nextPlan.version, JSON.stringify(nextPlan), approvedAt]);
+        const approvedTasks = [];
+        for (const row of taskResult.rows) {
+          const nextTask = {
+            ...(row.payload || {}), status: "planned",
+            version: Number(row.version) + 1, updatedAt: approvedAt,
+          };
+          await client.query(
+            "UPDATE studio.tasks SET status = 'planned', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
+            [row.id, nextTask.version, JSON.stringify(nextTask), approvedAt]);
+          approvedTasks.push(nextTask);
+          await client.query(
+            `INSERT INTO studio.events
+               (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+             VALUES ($1,$2,$3,'task',$4,'task.status_changed',$5::jsonb,$6)`,
+            [eventId(createId), organizationId, planRow.project_id, row.id,
+              JSON.stringify({ from: "draft", to: "planned", planId: id, actorId }), approvedAt]);
+        }
+        const approvalEventId = eventId(createId);
+        await client.query(
+          `INSERT INTO studio.events
+             (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+           VALUES ($1,$2,$3,'plan',$4,'plan.approved',$5::jsonb,$6)`,
+          [approvalEventId, organizationId, planRow.project_id, id,
+            JSON.stringify({ actorId, taskIds: approvedTasks.map(task => task.id) }), approvedAt]);
+        return { plan: nextPlan, tasks: approvedTasks, eventId: approvalEventId };
+      });
+    },
+
     async createTask(input) {
       const task = object(input, "task");
       const id = required(task.id, "task.id");
