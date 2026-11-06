@@ -44,4 +44,12 @@ jobs:
           done < <(find studio -type f -name '*.js' -print0)
 
       - name: Run Studio unit tests
-        run: node --test studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' tests < <(find studio -type f -name '*.test.js' -print0)
+          if (("${#tests[@]}" == 0)); then
+            echo "No Studio unit tests found"
+            exit 1
+          fi
+          node --test "${tests[@]}"
