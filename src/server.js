@@ -2568,7 +2568,7 @@ async function runFreeModelTestOnStartup() {
 
     const analyst={...getEmployee("analyst"),id:"analyst",name:"Аналитик",role:"analyst",provider:"openrouter"};
     const discovered=getCandidatePool(analyst,"openrouter");
-    const candidate=discovered.find(model=>String(model).endsWith(":free")) || "openrouter/free";
+    const candidate=discovered.find(model=>/qwen\/qwen3\.8-27b:free/i.test(String(model))) || discovered.find(model=>String(model).endsWith(":free") && !/(?:vl|vision|multimodal)/i.test(String(model))) || "openrouter/free";
     if(candidate!=="openrouter/free" && !String(candidate).endsWith(":free")) {
       throw Object.assign(new Error("Test blocked: no explicitly free OpenRouter route was selected"),{code:"NO_FREE_MODEL"});
     }
