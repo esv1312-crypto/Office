@@ -9,7 +9,7 @@ const specialist = {
   modelProfile: { preferredProvider: "openrouter", preferredModel: "configured-by-gateway" },
 };
 
-function fixture({ generated, startResult, completeResult, gatewayError } = {}) {
+function fixture({ generated, startResult, completeResult, gatewayError, gatewayDelayMs = 0, heartbeatIntervalMs = 60_000, heartbeatError } = {}) {
   const calls = { started: [], generated: [], completed: [], failed: [], heartbeats: [] };
   const store = {
     async startExecution(value) {
@@ -37,6 +37,7 @@ function fixture({ generated, startResult, completeResult, gatewayError } = {}) 
     },
     async heartbeatExecution(value) {
       calls.heartbeats.push(value);
+      if (heartbeatError) throw heartbeatError;
       return { executionId: value.executionId, leaseExpiresAt: "2026-11-07T01:05:00.000Z" };
     },
   };
@@ -44,6 +45,7 @@ function fixture({ generated, startResult, completeResult, gatewayError } = {}) 
     async generate(value) {
       calls.generated.push(value);
       if (gatewayError) throw gatewayError;
+      if (gatewayDelayMs) await new Promise(resolve => setTimeout(resolve, gatewayDelayMs));
       return generated || {
         text: "The lobby implementation plan is ready.",
         modelSnapshot: { provider: "openrouter", model: "example-model", instructionVersion: 1 },
@@ -54,6 +56,7 @@ function fixture({ generated, startResult, completeResult, gatewayError } = {}) 
     store,
     modelGateway,
     now: () => "2026-11-07T01:00:00.000Z",
+    heartbeatIntervalMs,
   });
   return { runtime, calls };
 }
@@ -176,4 +179,24 @@ test("renews a worker lease through the durable store", async () => {
   assert.equal(calls.heartbeats[0].executionId, "execution-1");
   assert.equal(calls.heartbeats[0].fencingToken, 1);
   assert.equal(result.executionId, "execution-1");
+});
+
+
+test("automatically renews the lease while a long model call is running", async () => {
+  const { runtime, calls } = fixture({ gatewayDelayMs: 240, heartbeatIntervalMs: 100 });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "qa");
+  assert.ok(calls.heartbeats.length >= 1);
+  assert.equal(calls.completed.length, 1);
+});
+
+test("does not commit a result after heartbeat reports a lost lease", async () => {
+  const leaseError = Object.assign(new Error("Lease lost"), { code: "EXECUTION_LEASE_LOST" });
+  const { runtime, calls } = fixture({
+    gatewayDelayMs: 140, heartbeatIntervalMs: 100, heartbeatError: leaseError,
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "lease_lost");
+  assert.equal(calls.completed.length, 0);
+  assert.equal(calls.failed.length, 0);
 });
