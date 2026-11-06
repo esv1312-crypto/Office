@@ -101,3 +101,12 @@ The following files are retained as an experimental integration seam, not as the
 - `orchestration/submit-office-task.js` — governed hand-off to the legacy Chief/root-task endpoint.
 
 They are not wired into the new Worker Runtime, production Express server, Neon, or Render. No live legacy task has been submitted. The new Studio must be able to execute independently; the legacy adapter may be removed or used only for a separately approved migration.
+
+## Dynamic specialists and governed assignment
+
+- `contracts/specialist.js` defines a validated, versioned specialist contract with organization ownership, competencies, instructions, allowed tools, model profile, and lifecycle status.
+- `core/create-specialist.js` creates specialist definitions deterministically without selecting a model or connecting to infrastructure.
+- `orchestration/assign-task.js` checks active status, organization/project scope, required competencies, and an injected authorization decision before asking the durable store to assign work.
+- `storage/postgres-assignment-store.js` performs assignment in a PostgreSQL transaction, locks the task and specialist rows, checks the task version and organization boundary, validates competencies again at the persistence boundary, and records `task.assigned`.
+- Tests have been added for specialist creation and assignment policy. They have not been executed in this branch.
+- Specialist records and task records still need creation/repository adapters; no database has been provisioned or changed.
