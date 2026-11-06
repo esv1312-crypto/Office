@@ -1,3 +1,4 @@
+import { insertOutboxEvent } from "./postgres-outbox-store.js";
 /**
  * PostgreSQL repositories for Studio projects, specialists, and tasks.
  * The caller injects a pg-compatible pool; this module never connects or migrates.
@@ -58,6 +59,7 @@ export function createPostgresDomainStore({ pool, createId }) {
              (id, organization_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
            VALUES ($1,$2,'project',$3,'project.created',$4::jsonb,$5)`,
           [idForEvent, organizationId, id, JSON.stringify({ name, productProfileId: profile }), at]);
+        await insertOutboxEvent(client, { eventId: idForEvent, organizationId, aggregateType: "project", aggregateId: id, eventType: "project.created", payload: { name, productProfileId: profile }, occurredAt: at });
         return { project, eventId: idForEvent };
       });
     },
@@ -86,6 +88,7 @@ export function createPostgresDomainStore({ pool, createId }) {
              (id, organization_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
            VALUES ($1,$2,'specialist',$3,'specialist.created',$4::jsonb,$5)`,
           [idForEvent, organizationId, id, JSON.stringify({ name, role, competencies: specialist.competencies }), at]);
+        await insertOutboxEvent(client, { eventId: idForEvent, organizationId, aggregateType: "specialist", aggregateId: id, eventType: "specialist.created", payload: { name, role, competencies: specialist.competencies }, occurredAt: at });
         return { specialist, eventId: idForEvent };
       });
     },
@@ -135,13 +138,16 @@ export function createPostgresDomainStore({ pool, createId }) {
            VALUES ($1,$2,$3,'plan',$4,'plan.created',$5::jsonb,$6)`,
           [createdEventId, project.organization_id, projectId, planId,
             JSON.stringify({ title: plan.title, taskIds: tasks.map(task => task.id), status: "proposed" }), at]);
+        await insertOutboxEvent(client, { eventId: createdEventId, organizationId: project.organization_id, projectId, aggregateType: "plan", aggregateId: planId, eventType: "plan.created", payload: { title: plan.title, taskIds: tasks.map(task => task.id), status: "proposed" }, occurredAt: at });
         for (const task of tasks) {
+          const eventIdValue = eventId(createId);
           await client.query(
             `INSERT INTO studio.events
                (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
              VALUES ($1,$2,$3,'task',$4,'task.created',$5::jsonb,$6)`,
-            [eventId(createId), project.organization_id, projectId, task.id,
+            [eventIdValue, project.organization_id, projectId, task.id,
               JSON.stringify({ title: task.title, planId, requiredCompetencies: task.requiredCompetencies }), at]);
+          await insertOutboxEvent(client, { eventId: eventIdValue, organizationId: project.organization_id, projectId, aggregateType: "task", aggregateId: task.id, eventType: "task.created", payload: { title: task.title, planId, requiredCompetencies: task.requiredCompetencies }, occurredAt: at });
         }
         return { plan, tasks, eventId: createdEventId };
       });
@@ -196,8 +202,9 @@ export function createPostgresDomainStore({ pool, createId }) {
             `INSERT INTO studio.events
                (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
              VALUES ($1,$2,$3,'task',$4,'task.status_changed',$5::jsonb,$6)`,
-            [eventId(createId), organizationId, planRow.project_id, row.id,
+            [taskEventId, organizationId, planRow.project_id, row.id,
               JSON.stringify({ from: "draft", to: "planned", planId: id, actorId }), approvedAt]);
+          await insertOutboxEvent(client, { eventId: taskEventId, organizationId, projectId: planRow.project_id, aggregateType: "task", aggregateId: row.id, eventType: "task.status_changed", payload: { from: "draft", to: "planned", planId: id, actorId }, occurredAt: approvedAt });
         }
         const approvalEventId = eventId(createId);
         await client.query(
@@ -206,6 +213,7 @@ export function createPostgresDomainStore({ pool, createId }) {
            VALUES ($1,$2,$3,'plan',$4,'plan.approved',$5::jsonb,$6)`,
           [approvalEventId, organizationId, planRow.project_id, id,
             JSON.stringify({ actorId, taskIds: approvedTasks.map(task => task.id) }), approvedAt]);
+        await insertOutboxEvent(client, { eventId: approvalEventId, organizationId, projectId: planRow.project_id, aggregateType: "plan", aggregateId: id, eventType: "plan.approved", payload: { actorId, taskIds: approvedTasks.map(task => task.id) }, occurredAt: approvedAt });
         return { plan: nextPlan, tasks: approvedTasks, eventId: approvalEventId };
       });
     },
@@ -310,6 +318,7 @@ export function createPostgresDomainStore({ pool, createId }) {
            VALUES ($1,$2,$3,'task',$4,'task.status_changed',$5::jsonb,$6)`,
           [idForEvent, row.organization_id, row.project_id, id,
             JSON.stringify({ from: "planned", to: "ready", actorId }), readyAt]);
+        await insertOutboxEvent(client, { eventId: idForEvent, organizationId: row.organization_id, projectId: row.project_id, aggregateType: "task", aggregateId: id, eventType: "task.status_changed", payload: { from: "planned", to: "ready", actorId }, occurredAt: readyAt });
         return { task: payload, eventId: idForEvent };
       });
     },
@@ -342,6 +351,7 @@ export function createPostgresDomainStore({ pool, createId }) {
            VALUES ($1,$2,$3,'task',$4,'task.created',$5::jsonb,$6)`,
           [idForEvent, project.organization_id, projectId, id,
             JSON.stringify({ title, requiredCompetencies: task.requiredCompetencies }), at]);
+        await insertOutboxEvent(client, { eventId: idForEvent, organizationId: project.organization_id, projectId, aggregateType: "task", aggregateId: id, eventType: "task.created", payload: { title, requiredCompetencies: task.requiredCompetencies }, occurredAt: at });
         return { task, eventId: idForEvent };
       });
     },
