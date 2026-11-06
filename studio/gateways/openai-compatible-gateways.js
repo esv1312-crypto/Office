@@ -45,22 +45,27 @@ function responseText(response) {
 }
 
 function parseJson(content, role) {
-  if (!content) {
+  if (!content || !content.trim()) {
     throw Object.assign(new Error(`${role} model returned empty content`), {
       code: "EMPTY_MODEL_OUTPUT",
     });
   }
-  try {
-    const parsed = JSON.parse(content);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Expected a JSON object");
-    }
-    return parsed;
-  } catch (error) {
-    throw Object.assign(new Error(`${role} model returned invalid JSON: ${error.message}`), {
-      code: "INVALID_MODEL_JSON",
-    });
+
+  const text = content.trim().replace(/^\`\`\`(?:json)?\\s*/i, "").replace(/\\s*\`\`\`$/, "");
+  const candidates = [text];
+  const start = text.indexOf("{");
+  if (start >= 0 && text !== text.slice(start)) candidates.push(text.slice(start));
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch {}
   }
+
+  throw Object.assign(new Error(`${role} model returned invalid JSON`), {
+    code: "INVALID_MODEL_JSON",
+  });
 }
 
 function makeSnapshot(provider, role, config) {
@@ -95,14 +100,14 @@ export function createOpenAiCompatibleGateways({
     qa: normalizeModelConfig(models.qa, "qa"),
   });
 
-  async function complete(role, messages, { signal } = {}) {
+  async function complete(role, messages, { signal, jsonMode = role !== "worker" } = {}) {
     const config = configs[role];
     const request = {
       model: config.model,
       messages,
       temperature: config.temperature,
       max_tokens: config.maxTokens,
-      ...(role === "worker" ? {} : { response_format: { type: "json_object" } }),
+      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     };
     const response = await client.chat.completions.create(
       request,
@@ -123,7 +128,7 @@ export function createOpenAiCompatibleGateways({
   return Object.freeze({
     planningGateway: Object.freeze({
       async generatePlan({ request, project, constraints = {}, signal }) {
-        const result = await complete("planner", [
+        const messages = [
           {
             role: "system",
             content: [
@@ -140,11 +145,29 @@ export function createOpenAiCompatibleGateways({
             role: "user",
             content: JSON.stringify({ request, project, constraints }),
           },
-        ], { signal });
-        return {
-          ...parseJson(result.content, "planner"),
-          modelSnapshot: result.modelSnapshot,
-        };
+        ];
+
+        try {
+          const result = await complete("planner", messages, { signal });
+          return {
+            ...parseJson(result.content, "planner"),
+            modelSnapshot: result.modelSnapshot,
+          };
+        } catch (firstError) {
+          if (!["EMPTY_MODEL_OUTPUT", "INVALID_MODEL_JSON"].includes(firstError?.code)) throw firstError;
+          const retryMessages = [
+            ...messages,
+            {
+              role: "system",
+              content: "Retry once. The previous response was empty or not valid JSON. Return one compact, complete JSON object only. No markdown, no prose, no code fences. Include title, objective, summary, acceptanceCriteria, and 1 to 12 tasks; each task needs title, description, requiredCompetencies, and acceptanceCriteria.",
+            },
+          ];
+          const retry = await complete("planner", retryMessages, { signal, jsonMode: false });
+          return {
+            ...parseJson(retry.content, "planner"),
+            modelSnapshot: retry.modelSnapshot,
+          };
+        }
       },
     }),
 
