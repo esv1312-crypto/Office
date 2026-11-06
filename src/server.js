@@ -245,10 +245,10 @@ function resolveBrain(employee, task = "") {
   const assignedModel=String(employee?.model || "").trim();
   const catalogModels=getCandidatePool(employee,assignedProvider);
   const assignedIsAllowed=!freeOnly() || (assignedProvider==="openrouter" && assignedModel.endsWith(":free"));
-  const assignedAvailable=Boolean(assignedModel && assignedIsAllowed && catalogModels.includes(assignedModel) && !isModelSuppressed(assignedModel,assignedProvider));
-  const selectedModel = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id, selected.selected.provider)
+  const assignedAvailable=Boolean(assignedModel && assignedIsAllowed && catalogModels.includes(assignedModel) && !isModelSuppressed(assignedModel,assignedProvider,employee?.role));
+  const selectedModel = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id, selected.selected.provider,employee?.role)
     ? selected.selected
-    : (selected.candidates || []).find(x => !isModelSuppressed(x.routeModel || x.id, x.provider)) || null;
+    : (selected.candidates || []).find(x => !isModelSuppressed(x.routeModel || x.id, x.provider,employee?.role)) || null;
   // Employee configuration is the primary assignment. Model Scout remains useful
   // as the ranked fallback pool when that assigned model is unavailable.
   const model = assignedAvailable
@@ -591,7 +591,10 @@ async function preflightModel(provider, model, employee) {
     if(shouldSuppressProviderForStatus(provider,error?.status)) {
       const cooldown=providerCooldownMs(provider,error?.status,message);
       suppressProvider(provider,message,cooldown);
-    } else suppressModel(model,message,ttl,provider);
+    } else {
+      const roleScopedFailure=error?.status===400 || /empty response|unexpected response|invalid response|provider returned error/i.test(message);
+      suppressModel(model,message,ttl,provider,roleScopedFailure ? employee?.role : null);
+    }
     const failedAt=new Date().toISOString();
     const expiresAt=Date.now()+Math.min(ttl,PREFLIGHT_TTL_MS);
     const errorCategory=error?.status===401? "auth"
@@ -651,7 +654,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
   let probes=0;
   const maxProbes=boundedIntegerSetting(process.env.MODEL_PREFLIGHT_MAX_PROBES,12,8,20);
   for(const candidate of unique){
-    if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model)) continue;
+    if(isProviderSuppressed(candidate.provider) || isProviderModelSuppressed(candidate.provider,candidate.model,role)) continue;
     if(maxProbes<=4) { if(probes>=4) break; }
     if(probes>=maxProbes) break;
     // OpenRouter free routes are validated by the real task, not by a synthetic
@@ -673,7 +676,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
     model:candidate.model,
     excluded:excludedModels.has(candidate.model),
     providerSuppressed:isProviderSuppressed(candidate.provider),
-    modelSuppressed:isProviderModelSuppressed(candidate.provider,candidate.model)
+    modelSuppressed:isProviderModelSuppressed(candidate.provider,candidate.model,role)
   }));
   emit("model.preflight_exhausted",{employeeId:employee?.id||null,role:employee?.role||null,probes,candidates:diagnostics});
   throw Object.assign(new Error("No preflight-approved model is available for "+employee.role+"; candidates="+JSON.stringify(diagnostics)),{code:"PREFLIGHT_EXHAUSTED"});
@@ -691,43 +694,49 @@ function suppressProvider(provider, reason, ttlMs=15*60*1000) {
   emit("gateway.provider_suppressed",{provider:key,until:new Date(Date.now()+ttlMs).toISOString(),reason});
 }
 
-function isModelSuppressed(model, provider = "openrouter") {
-  const key=String(provider)+":"+String(model);
+function modelSuppressionKey(provider,model,role=null) {
+  const normalizedRole=String(role||"").trim().toLowerCase();
+  return normalizedRole
+    ? String(provider)+":"+normalizedRole+":"+String(model)
+    : String(provider)+":"+String(model);
+}
+
+function suppressionActive(key) {
   const until=Number(modelSuppressions.get(key)||0);
-  if (!until) return false;
-  if (until <= Date.now()) {
-    modelSuppressions.delete(key);
-    return false;
-  }
+  if(!until) return false;
+  if(until<=Date.now()) { modelSuppressions.delete(key); return false; }
   return true;
 }
 
-function suppressModel(model, reason, ttlMs = 6 * 60 * 60 * 1000, provider = "openrouter") {
+function isModelSuppressed(model, provider = "openrouter", role = null) {
+  // Role-specific request failures must not disable a route for every other role.
+  // A global suppression still wins for provider-wide/auth/quota failures.
+  return (Boolean(role) && suppressionActive(modelSuppressionKey(provider,model,role)))
+    || suppressionActive(modelSuppressionKey(provider,model));
+}
+
+function suppressModel(model, reason, ttlMs = 6 * 60 * 60 * 1000, provider = "openrouter", role = null) {
   if (paidTestEnabled()) return;
   if (!model) return;
-  const key=String(provider)+":"+String(model);
+  const key=modelSuppressionKey(provider,model,role);
   modelSuppressions.set(key, Date.now()+ttlMs);
-  emit("gateway.model_suppressed",{provider,model,until:new Date(Date.now()+ttlMs).toISOString(),reason});
+  emit("gateway.model_suppressed",{provider,role:role||null,model,until:new Date(Date.now()+ttlMs).toISOString(),reason});
 }
 
-function isProviderModelSuppressed(provider, model) {
-  const key=String(provider)+":"+String(model);
-  const until=Number(modelSuppressions.get(key)||0);
-  if (!until) return false;
-  if (until <= Date.now()) { modelSuppressions.delete(key); return false; }
-  return true;
+function isProviderModelSuppressed(provider, model, role = null) {
+  return isModelSuppressed(model,provider,role);
 }
 
 function openRouterPool(employee, preferredModel = null) {
   const role=String(employee?.role || "executor");
   if (paidTestEnabled()) return [paidTestModel()];
-  const qualified=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter"));
-  const discovered=getCandidatePool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter"));
+  const qualified=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter",role));
+  const discovered=getCandidatePool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter",role));
   let pool=[preferredModel,...qualified,...discovered].filter(Boolean);
 
   const configured=String(process.env.OPENROUTER_MODEL || "").trim();
-  if (!preferredModel && configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter")) pool.unshift(configured);
-  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter") && (!freeOnly() || isLoopbackAiTestMode() || String(model).endsWith(":free"))) )];
+  if (!preferredModel && configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter",role)) pool.unshift(configured);
+  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter",role) && (!freeOnly() || isLoopbackAiTestMode() || String(model).endsWith(":free"))) )];
 }
 
 async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
@@ -786,7 +795,8 @@ async function generateWithOpenRouter(task, employee, preferredModel, taskId=nul
         suppressProvider("openrouter",failureMessage || "OpenRouter authentication failed",cooldownMs);
         break;
       }
-      suppressModel(model,failureMessage || "model temporarily unavailable",cooldownMs,"openrouter");
+      const roleScopedFailure=finalError?.status===400 || finalError?.code==="EMPTY_RESPONSE" || /empty response|invalid response|provider returned error/i.test(failureMessage);
+      suppressModel(model,failureMessage || "model temporarily unavailable",cooldownMs,"openrouter",roleScopedFailure ? role : null);
       if (i<ordered.length-1) {
         emit("gateway.model_fallback",{employeeId:employee?.id || null,role,from:model,to:ordered[i+1],reason:failureMessage});
       }
@@ -840,7 +850,7 @@ async function generateWithHuggingFace(task, employee, preferredModel, allowMode
         suppressModel(model,failureMessage || "model unavailable",6*60*60*1000,"huggingface");
       } else if(error?.status===408 || (Number(error?.status)>=500 && Number(error?.status)<=599)
         || /timeout|timed out|abort|429|quota|rate.?limit|resource.?exhausted|temporarily unavailable|overloaded|empty response|provider returned error/i.test(failureMessage)) {
-        suppressModel(model,failureMessage || "model temporarily unavailable",/empty response/i.test(failureMessage)?15*60*1000:5*60*1000,"huggingface");
+        suppressModel(model,failureMessage || "model temporarily unavailable",/empty response/i.test(failureMessage)?15*60*1000:5*60*1000,"huggingface",/empty response|provider returned error/i.test(failureMessage) ? employee?.role : null);
       }
       if(error?.status===401 || error?.status===402 || error?.status===429) break;
       if(models.indexOf(model)<models.length-1) emit("gateway.model_fallback",{employeeId:employee?.id||null,role:employee?.role||null,provider:"huggingface",from:model,to:models[models.indexOf(model)+1],reason:failureMessage||String(error)});
