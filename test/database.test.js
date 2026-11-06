@@ -83,7 +83,7 @@ test("critical task lifecycle transitions await snapshot persistence", async () 
 
 test("internal audit and smoke task endpoints persist acceptance before starting work", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
-  const officeAuditStart = server.indexOf("async function startOfficeAudit()");
+  const officeAuditStart = server.indexOf("async function startOfficeAudit(");
   const officeAuditEnd = server.indexOf('app.get("/api/office-check"', officeAuditStart);
   const officeAudit = server.slice(officeAuditStart, officeAuditEnd);
   assert.match(officeAudit, /await saveTaskSnapshot\(taskSnapshot\(record\)\)/);
@@ -173,7 +173,7 @@ test("preflight interleaves alternate providers when the preferred provider is s
 
 test("master office audit inspects supplied evidence without launching tools", async () => {
   const server = await readFile(new URL("../src/server.js", import.meta.url), "utf8");
-  const start = server.indexOf("async function startOfficeAudit()");
+  const start = server.indexOf("async function startOfficeAudit(");
   const end = server.indexOf('app.get("/api/office-check"', start);
   const audit = server.slice(start, end);
   assert.match(audit, /Do not call tools, browser\.request, GitHub, or external services/);
