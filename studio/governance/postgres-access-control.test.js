@@ -13,10 +13,12 @@ function fixture({ role = "owner", membershipStatus = "active", organizationStat
         return { rows: [{ role, status: membershipStatus, organization_status: organizationStatus }] };
       }
       if (sql.includes("FROM studio.projects p") && sql.includes("JOIN studio.organization_memberships m")) {
-        if (sql.includes("SELECT p.id")) return { rows: [{
-          id: "project-1", organization_id: "org-1", name: "Pilot",
-          product_profile_id: "roblox", status: "active", version: 1, payload: {},
-        }] };
+        if (sql.includes("SELECT p.id")) return {
+          rows: membershipStatus === "active" && organizationStatus === "active" ? [{
+            id: "project-1", organization_id: "org-1", name: "Pilot",
+            product_profile_id: "roblox", status: "active", version: 1, payload: {},
+          }] : [],
+        };
         return membershipStatus === "active" && organizationStatus === "active"
           ? { rows: [{ role, status: membershipStatus, organization_status: organizationStatus }] }
           : { rows: [] };
