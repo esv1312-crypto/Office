@@ -104,8 +104,15 @@ const modelApiKey = String(
 ).trim();
 if (!modelApiKey) throw new Error("Missing Studio model key: set STUDIO_MODEL_API_KEY or reuse the existing OpenRouter key");
 const configuredLegacyModel = String(process.env.OPENROUTER_MODEL || "").trim();
-const defaultModel = process.env.STUDIO_DEFAULT_MODEL ||
-  (/^(sk-or-|or-)/i.test(configuredLegacyModel) || !configuredLegacyModel ? "openrouter/free" : configuredLegacyModel);
+const legacyFreeModel = configuredLegacyModel.endsWith(":free") ? configuredLegacyModel : "openrouter/free";
+const defaultModel = process.env.STUDIO_DEFAULT_MODEL || legacyFreeModel;
+function freeModelEnv(name) {
+  const model = String(process.env[name] || defaultModel).trim();
+  if (model !== "openrouter/free" && !model.endsWith(":free")) {
+    throw new Error(`${name} must identify an explicitly free OpenRouter model; paid models are disabled by default`);
+  }
+  return model;
+}
 const pool = new Pool({ connectionString: databaseUrl, max: 5 });
 const client = new OpenAI({
   apiKey: modelApiKey,
@@ -113,19 +120,19 @@ const client = new OpenAI({
 });
 const models = {
   planner: {
-    model: process.env.STUDIO_PLANNER_MODEL || defaultModel,
+    model: freeModelEnv("STUDIO_PLANNER_MODEL"),
     temperature: 0.2,
     maxTokens: 3000,
     instructionVersion: "studio-v1",
   },
   worker: {
-    model: process.env.STUDIO_WORKER_MODEL || defaultModel,
+    model: freeModelEnv("STUDIO_WORKER_MODEL"),
     temperature: 0.2,
     maxTokens: 6000,
     instructionVersion: "studio-v1",
   },
   qa: {
-    model: process.env.STUDIO_QA_MODEL || defaultModel,
+    model: freeModelEnv("STUDIO_QA_MODEL"),
     temperature: 0.1,
     maxTokens: 2500,
     instructionVersion: "studio-v1",
@@ -191,7 +198,7 @@ app.use((error, _request, response, _next) => {
 });
 
 const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`[studio] isolated control plane listening on port ${port}`);
+  console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
 });
 
 async function shutdown(signal) {
