@@ -81,14 +81,17 @@ test("requires a pool with both transactional and scoped-query capabilities", ()
 });
 
 
-test("requires a scoped repository artifact writer for the executable control plane", () => {
-  assert.throws(() => createStudioControlPlane({
+test("supports PostgreSQL-backed artifacts without an external repository writer", () => {
+  const pool = { connect() { throw new Error("not called during composition"); }, query() { throw new Error("not called during composition"); } };
+  const plane = createStudioControlPlane({
     express: { Router: () => ({ post() {} }) },
-    pool: { connect() {}, query() {} },
+    pool,
     client: { chat: { completions: { create() {} } } },
     models: { planner: "p", worker: "w", qa: "q" },
     createId() {}, createWorkerId() {}, authenticate() {}, rateLimit() {},
-  }), /scoped repository artifact writer/);
+    createSpecialistsForProfile: () => [],
+  });
+  assert.equal(typeof plane.runtime.workflow.run, "function");
 });
 
 
