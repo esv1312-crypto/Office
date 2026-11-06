@@ -688,6 +688,9 @@ local function selectFanGroup(player, display)
 	if not data then return end
 	local team = Teams:FindFirstChild(groupName)
 	if not team then return end
+	if player:GetAttribute("FanGroup") ~= groupName and playerCrew[player] then
+		leaveFanCrew(player)
+	end
 
 	player:SetAttribute("FanGroup", groupName)
 	player.Team = team
@@ -755,6 +758,10 @@ local function leaveFanCrew(player)
 	player:SetAttribute("FanCrewName", nil)
 	player:SetAttribute("FanCrewLeader", nil)
 	player:SetAttribute("FanCrewSize", nil)
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	local invitePrompt = rootPart and rootPart:FindFirstChild("InviteToFanCrew")
+	if invitePrompt then invitePrompt.Enabled = false end
 	if crew.size == 0 then
 		fanCrews[crew.group] = nil
 		return
