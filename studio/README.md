@@ -181,3 +181,11 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - It uses Node.js 22, checks JavaScript syntax under `studio/`, then runs `node --test studio`.
 - The workflow has read-only repository permissions and does not read secrets, connect to Neon/Render, invoke model providers, or touch the legacy Office runtime.
 - The workflow has been added but its execution result has not yet been confirmed in this session. Do not treat authored tests as passing until a completed Actions run is inspected.
+
+## Reliable event delivery — transactional outbox foundation
+
+- `storage/migrations/004_transactional_outbox.sql` adds an isolated outbox ledger for reliable delivery of domain events to Workers, monitoring, and future integrations.
+- The schema stores a stable event ID, organization/project scope, aggregate identity, event type, payload, schema version, correlation ID, retry timing, attempt count, publication timestamp, and a time-limited claim token.
+- The pending-event index supports a future dispatcher using PostgreSQL `FOR UPDATE SKIP LOCKED`; expired claims can be safely reclaimed by a lease-aware dispatcher.
+- Event producers must insert the domain journal event and matching outbox row in the same database transaction. Consumers must deduplicate by `event_id`; delivery is at-least-once, not exactly-once.
+- Migration 004 depends on migrations 001-003 and has not been applied to any database. No dispatcher is wired yet, and no live event has been published.
