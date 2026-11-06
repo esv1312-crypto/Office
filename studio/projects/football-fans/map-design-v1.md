@@ -145,3 +145,13 @@ This is still a greybox. Verify collision, the café entrance, ball physics, sig
 - All NPC stand-ins are grouped under `Workspace.FootballFansMap.SocialLife` and are generated without external assets.
 
 **Scope note:** these are static visual stand-ins only. They do not yet use Humanoid rigs, pathfinding, interactive dialogue, animated emotes, or player outfit selection. Those systems require a dedicated gameplay implementation and Studio playtest.
+
+## 12. First social gameplay interactions (implemented prototype)
+
+- Five interactive scarf displays use ProximityPrompt: Blue Crew, Orange Crew, Red Crew, Green Crew, and White Crew.
+- Selecting a display assigns the matching Roblox Team and sets the player's `FanGroup` attribute.
+- A simple two-part scarf visual is welded to the player's torso and reapplied after respawn.
+- Three meetup pads expose a `Cheer together` prompt. The server runtime briefly tweens the player's shoulder joints into a raised-arm cheer and restores the original joint offsets.
+- A single `ServerScriptService.FootballFansSocialRuntime` script owns these interactions and is replaced safely when the map generator is rerun.
+
+**Prototype limits:** selection is session-only (no DataStore), scarf geometry is deliberately simple, and the cheer is a joint-tween prototype rather than a polished animation. Test both R6 and R15 rigs, prompt visibility, team assignment, respawn, and animation conflicts in Roblox Studio before calling this feature complete.
