@@ -100,3 +100,48 @@ test("caches JWKS between valid requests", async () => {
   }
   assert.equal(f.fetches, 1);
 });
+
+
+test("accepts a valid Neon Auth EdDSA (Ed25519) token", async () => {
+  const { publicKey: edPublicKey, privateKey: edPrivateKey } = generateKeyPairSync("ed25519");
+  const edJwk = { ...edPublicKey.export({ format: "jwk" }), kid: "neon-ed-key", use: "sig", alg: "EdDSA" };
+  const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const header = encode({ alg: "EdDSA", typ: "JWT", kid: "neon-ed-key" });
+  const claims = encode({
+    iss: "https://auth.example.test",
+    aud: "studio-api",
+    sub: "neon-owner-456",
+    exp: 1_800_000_300,
+    email: "owner@example.test",
+  });
+  const input = `${header}.${claims}`;
+  const jwt = `${input}.${sign(null, Buffer.from(input), edPrivateKey).toString("base64url")}`;
+  const middleware = createNeonAuthBearerMiddleware({
+    jwksUrl: "https://auth.example.test/.well-known/jwks.json",
+    issuer: "https://auth.example.test",
+    audience: "studio-api",
+    now,
+    fetchImpl: async () => ({ ok: true, json: async () => ({ keys: [edJwk] }) }),
+  });
+  const response = {
+    statusCode: null,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  const request = { headers: { authorization: `Bearer ${jwt}` } };
+  let nextCalls = 0;
+  await middleware(request, response, () => { nextCalls += 1; });
+  assert.equal(nextCalls, 1);
+  assert.equal(request.auth.actor.id, "neon-owner-456");
+  assert.equal(request.auth.actor.email, "owner@example.test");
+  assert.equal(response.statusCode, null);
+});
+
+test("rejects an EdDSA token when the JWKS key is RSA", async () => {
+  const f = fixture();
+  const parts = token().split(".");
+  const header = Buffer.from(JSON.stringify({ alg: "EdDSA", typ: "JWT", kid: "test-key" })).toString("base64url");
+  await f.middleware({ headers: { authorization: `Bearer ${header}.${parts[1]}.${parts[2]}` } }, f.response, () => assert.fail("next must not run"));
+  assert.equal(f.response.statusCode, 401);
+});
