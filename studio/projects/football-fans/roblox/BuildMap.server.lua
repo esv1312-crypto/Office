@@ -601,6 +601,31 @@ local function applyScarf(player, character)
 	tailWeld.Part0 = torso
 	tailWeld.Part1 = tail
 	tailWeld.Parent = tail
+
+	local head = character:FindFirstChild("Head")
+	if head then
+		local oldTag = head:FindFirstChild("FanGroupTag")
+		if oldTag then oldTag:Destroy() end
+		local tag = Instance.new("BillboardGui")
+		tag.Name = "FanGroupTag"
+		tag.Adornee = head
+		tag.Size = UDim2.fromOffset(140, 28)
+		tag.StudsOffset = Vector3.new(0, 2.8, 0)
+		tag.AlwaysOnTop = false
+		tag.Parent = head
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundColor3 = data.color
+		label.BackgroundTransparency = 0.08
+		label.TextColor3 = Color3.fromRGB(25, 28, 32)
+		label.Text = string.upper(groupName)
+		label.TextScaled = true
+		label.Font = Enum.Font.GothamBold
+		label.Parent = tag
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 8)
+		corner.Parent = label
+	end
 end
 
 local function selectFanGroup(player, display)
