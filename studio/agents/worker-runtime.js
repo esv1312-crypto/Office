@@ -32,9 +32,27 @@ function safeModelSnapshot(value) {
   return value;
 }
 
+function safePathSegment(value, field) {
+  const segment = requiredString(value, field);
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(segment)) {
+    throw Object.assign(new Error(`${field} cannot be used in an artifact path`), {
+      code: "ARTIFACT_PATH_REJECTED",
+    });
+  }
+  return segment;
+}
+
+function defaultArtifactPath({ task }) {
+  const project = safePathSegment(task.projectId, "task.projectId");
+  const taskId = safePathSegment(task.id, "task.id");
+  return `studio/projects/${project}/artifacts/${taskId}.md`;
+}
+
 export function createWorkerRuntime({
   store,
   modelGateway,
+  artifactWriter = null,
+  artifactPathForTask = defaultArtifactPath,
   now = () => new Date().toISOString(),
   leaseMs = 300_000,
   heartbeatIntervalMs = 60_000,
@@ -48,6 +66,10 @@ export function createWorkerRuntime({
   if (!modelGateway || typeof modelGateway.generate !== "function") {
     throw new TypeError("modelGateway.generate is required");
   }
+  if (artifactWriter !== null && typeof artifactWriter?.writeTextArtifact !== "function") {
+    throw new TypeError("artifactWriter.writeTextArtifact is required when an artifact writer is configured");
+  }
+  if (typeof artifactPathForTask !== "function") throw new TypeError("artifactPathForTask must be a function");
   if (typeof now !== "function") {
     throw new TypeError("now must be a function");
   }
@@ -163,12 +185,50 @@ export function createWorkerRuntime({
       }
 
       const output = generated.text.trim();
+      let externalArtifact = null;
+      if (artifactWriter) {
+        try {
+          const path = artifactPathForTask({
+            task: started.task,
+            specialistId,
+            executionId: started.executionId,
+          });
+          externalArtifact = await artifactWriter.writeTextArtifact({
+            path,
+            content: output,
+            provenance: {
+              projectId: started.task.projectId,
+              taskId: id,
+              executionId: started.executionId,
+              specialistId,
+            },
+          });
+        } catch (error) {
+          const reason = "Artifact repository write failed";
+          await store.failExecution({
+            executionId: started.executionId,
+            reason,
+            fencingToken: started.execution.fencingToken,
+            leaseToken: started.execution.leaseToken,
+            at: now(),
+          });
+          return {
+            executionId: started.executionId,
+            taskId: id,
+            status: "failed",
+            errorCode: error?.code || "ARTIFACT_WRITE_FAILED",
+            error: reason,
+          };
+        }
+      }
+
       const artifact = {
         type: "text",
         name: `${started.task.title} — результат работы`,
         content: output,
         createdByWorkerId: worker,
         specialistId,
+        ...(externalArtifact ? { external: externalArtifact } : {}),
       };
 
       // Keep persistence outside the model-error catch. If durable completion
@@ -195,6 +255,7 @@ export function createWorkerRuntime({
         artifactId: completed.artifactId,
         output,
         modelSnapshot: generated.modelSnapshot,
+        externalArtifact,
       };
     },
   });
