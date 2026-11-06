@@ -202,7 +202,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
           [artifactId, execution.task_id, id,
             required(artifactInput.type, "artifact.type"),
             required(artifactInput.name, "artifact.name"),
-            JSON.stringify({ content: text, modelSnapshot: snapshot }),
+            JSON.stringify({ content: text, modelSnapshot: snapshot, ...(artifactInput.external ? { external: artifactInput.external } : {}) }),
             required(artifactInput.createdByWorkerId, "artifact.createdByWorkerId"),
             required(artifactInput.specialistId, "artifact.specialistId"),
             timestamp],
@@ -220,7 +220,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
             WHERE id = $1`,
           [taskRow.id, nextTask.version, JSON.stringify(nextTask), timestamp],
         );
-        const artifactPayload = { executionId: id, artifactId, specialistId: execution.specialist_id };
+        const artifactPayload = { executionId: id, artifactId, specialistId: execution.specialist_id, ...(artifactInput.external ? { external: artifactInput.external } : {}) };
         await client.query(
           `INSERT INTO studio.events
              (id, organization_id, project_id, aggregate_type, aggregate_id,
