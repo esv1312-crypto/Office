@@ -207,4 +207,69 @@ for _, p in ipairs({
 	lamp(details, p.X, p.Z)
 end
 
+
+-- Stadium detail pass: visible seating tiers, scoreboard, floodlights and entry arches.
+local stadiumDetails = folder("StadiumDetails", stadium)
+
+-- Seating rows on the four stands. Seats are intentionally grouped into simple
+-- repeated blocks so this remains a lightweight greybox, not a high-poly stadium.
+for row = 1, 10 do
+	local zNorth = 124 + row * 3.3
+	local zSouth = -124 - row * 3.3
+	local y = 9 + row * 2.8
+	for segment = 1, 10 do
+		local x = 270 - 148 + (segment - 1) * 33
+		part(stadiumDetails, "NorthStandSeatRow", Vector3.new(29, 2, 3), Vector3.new(x, y, zNorth), (segment % 2 == 0) and C.blue or C.orange, Enum.Material.Plastic)
+		part(stadiumDetails, "SouthStandSeatRow", Vector3.new(29, 2, 3), Vector3.new(x, y, zSouth), (segment % 2 == 0) and C.red or C.orange, Enum.Material.Plastic)
+	end
+end
+
+for row = 1, 10 do
+	local xWest = 104 + row * 3.3
+	local xEast = 436 - row * 3.3
+	local y = 9 + row * 2.8
+	for segment = 1, 6 do
+		local z = -96 + (segment - 1) * 38
+		part(stadiumDetails, "WestStandSeatRow", Vector3.new(3, 2, 32), Vector3.new(xWest, y, z), (segment % 2 == 0) and C.orange or C.blue, Enum.Material.Plastic)
+		part(stadiumDetails, "EastStandSeatRow", Vector3.new(3, 2, 32), Vector3.new(xEast, y, z), (segment % 2 == 0) and C.blue or C.red, Enum.Material.Plastic)
+	end
+end
+
+-- Scoreboard facing the centre of the pitch.
+part(stadiumDetails, "ScoreboardFrame", Vector3.new(54, 30, 5), Vector3.new(270, 58, 126), C.dark, Enum.Material.Metal)
+sign(stadiumDetails, "ScoreboardDisplay", "HOME  0  :  0  AWAY", Vector3.new(270, 59, 122), Vector3.new(48, 20, 2), C.green)
+
+-- Goal frames at both ends of the main pitch.
+for _, z in ipairs({-66, 66}) do
+	part(stadiumDetails, "MainGoalFrame", Vector3.new(3, 18, 34), Vector3.new(270, 19, z), C.white, Enum.Material.Metal)
+	part(stadiumDetails, "MainGoalNet", Vector3.new(3, 16, 30), Vector3.new(283, 18, z), C.white, Enum.Material.Fabric)
+end
+
+-- Four floodlight masts outside the stadium corners.
+for _, x in ipairs({55, 485}) do
+	for _, z in ipairs({-155, 155}) do
+		part(stadiumDetails, "FloodlightMast", Vector3.new(4, 82, 4), Vector3.new(x, 41, z), C.dark, Enum.Material.Metal)
+		part(stadiumDetails, "FloodlightPanel", Vector3.new(18, 8, 5), Vector3.new(x, 82, z), C.white, Enum.Material.Neon)
+	end
+end
+
+-- Exterior entry arches and turnstile blocks at the north approach.
+local gates = folder("TurnstilesAndEntrances", forecourt)
+for gate = 1, 5 do
+	local x = 140 + (gate - 1) * 60
+	part(gates, "GatePillarLeft", Vector3.new(5, 22, 5), Vector3.new(x - 12, 11, 185), C.dark, Enum.Material.Metal)
+	part(gates, "GatePillarRight", Vector3.new(5, 22, 5), Vector3.new(x + 12, 11, 185), C.dark, Enum.Material.Metal)
+	part(gates, "GateLintel", Vector3.new(30, 5, 6), Vector3.new(x, 22, 185), C.orange, Enum.Material.Metal)
+	part(gates, "Turnstile", Vector3.new(8, 8, 8), Vector3.new(x, 4, 200), C.blue, Enum.Material.Metal)
+end
+
+-- Small public-space details: benches and planted islands around the square.
+local publicRealm = folder("PublicRealmDetails", square)
+for _, x in ipairs({-82, 82}) do
+	part(publicRealm, "Planter", Vector3.new(24, 3, 24), Vector3.new(x, 2.5, -55), C.dark, Enum.Material.Concrete)
+	part(publicRealm, "TreeTrunk", Vector3.new(4, 18, 4), Vector3.new(x, 13, -55), C.orange, Enum.Material.Wood)
+	local crown = part(publicRealm, "TreeCrown", Vector3.new(20, 20, 20), Vector3.new(x, 30, -55), C.green, Enum.Material.Grass)
+	crown.Shape = Enum.PartType.Ball
+end
+
 print("FootballFansMap generated. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
