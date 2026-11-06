@@ -36,6 +36,8 @@ export function createWorkerRuntime({
   store,
   modelGateway,
   now = () => new Date().toISOString(),
+  leaseMs = 300_000,
+  heartbeatIntervalMs = 60_000,
 }) {
   if (!store ||
       typeof store.startExecution !== "function" ||
@@ -48,6 +50,10 @@ export function createWorkerRuntime({
   }
   if (typeof now !== "function") {
     throw new TypeError("now must be a function");
+  }
+  if (!Number.isInteger(leaseMs) || leaseMs < 1_000) throw new TypeError("leaseMs must be an integer of at least 1000");
+  if (!Number.isInteger(heartbeatIntervalMs) || heartbeatIntervalMs < 100 || heartbeatIntervalMs >= leaseMs) {
+    throw new TypeError("heartbeatIntervalMs must be at least 100 and shorter than leaseMs");
   }
 
   return Object.freeze({
@@ -71,6 +77,7 @@ export function createWorkerRuntime({
         specialistId,
         workerId: worker,
         at: now(),
+        leaseMs,
       });
       if (!started || !started.executionId || !started.task ||
           !Number.isInteger(started.execution?.fencingToken) || !started.execution?.leaseToken) {
@@ -82,6 +89,30 @@ export function createWorkerRuntime({
       }
 
       let generated;
+      let leaseError = null;
+      let heartbeatInFlight = null;
+      const abortController = new AbortController();
+      const renewLease = async () => {
+        if (heartbeatInFlight || leaseError) return heartbeatInFlight;
+        heartbeatInFlight = store.heartbeatExecution({
+          executionId: started.executionId,
+          fencingToken: started.execution.fencingToken,
+          leaseToken: started.execution.leaseToken,
+          leaseMs,
+          at: now(),
+        }).catch(error => {
+          leaseError = error;
+          abortController.abort(error);
+        }).finally(() => { heartbeatInFlight = null; });
+        return heartbeatInFlight;
+      };
+      const heartbeatTimer = typeof store.heartbeatExecution === "function"
+        ? setInterval(() => { void renewLease(); }, heartbeatIntervalMs)
+        : null;
+      const stopHeartbeat = async () => {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        if (heartbeatInFlight) await heartbeatInFlight;
+      };
       try {
         generated = await modelGateway.generate({
           task: started.task,
@@ -92,7 +123,10 @@ export function createWorkerRuntime({
             modelProfile: specialist.modelProfile || null,
           },
           execution: started.execution,
+          signal: abortController.signal,
         });
+        await stopHeartbeat();
+        if (leaseError) throw leaseError;
         if (!generated || typeof generated.text !== "string" || !generated.text.trim()) {
           throw Object.assign(new Error("Model gateway returned an empty result"), {
             code: "EMPTY_MODEL_OUTPUT",
@@ -100,6 +134,17 @@ export function createWorkerRuntime({
         }
         safeModelSnapshot(generated.modelSnapshot);
       } catch (error) {
+        await stopHeartbeat();
+        if (leaseError || error?.code === "EXECUTION_LEASE_LOST") {
+          const lost = leaseError || error;
+          return {
+            executionId: started.executionId,
+            taskId: id,
+            status: "lease_lost",
+            errorCode: lost.code || "EXECUTION_LEASE_LOST",
+            error: String(lost.message || lost),
+          };
+        }
         const reason = String(error?.message || error).slice(0, 1000);
         await store.failExecution({
           executionId: started.executionId,
