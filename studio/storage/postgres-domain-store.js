@@ -56,9 +56,9 @@ export function createPostgresDomainStore({ pool, createId }) {
         const idForEvent = eventId(createId);
         await client.query(
           `INSERT INTO studio.events
-             (id, organization_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
-           VALUES ($1,$2,'project',$3,'project.created',$4::jsonb,$5)`,
-          [idForEvent, organizationId, id, JSON.stringify({ name, productProfileId: profile }), at]);
+             (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+           VALUES ($1,$2,$3,'project',$4,'project.created',$5::jsonb,$6)`,
+          [idForEvent, organizationId, id, id, JSON.stringify({ name, productProfileId: profile }), at]);
         await insertOutboxEvent(client, { eventId: idForEvent, organizationId, aggregateType: "project", aggregateId: id, eventType: "project.created", payload: { name, productProfileId: profile }, occurredAt: at });
         return { project, eventId: idForEvent };
       });
