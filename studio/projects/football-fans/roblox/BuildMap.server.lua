@@ -377,10 +377,24 @@ football.Material = Enum.Material.SmoothPlastic
 football.Color = C.white
 football.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.35, 0.55)
 football.Parent = ballArea
-local ballMark = Instance.new("Decal")
-ballMark.Name = "BallMark"
-ballMark.Face = Enum.NormalId.Front
-ballMark.Texture = "rbxasset://textures/face.png"
-ballMark.Parent = football
+
+
+-- Open the café front so its interior props are visible and players can enter.
+-- Replace the original solid placeholder volume with a simple four-wall shell.
+local cafeModel = shops:FindFirstChild("SupportersCafe")
+if cafeModel then
+	local solidVolume = cafeModel:FindFirstChild("MainVolume")
+	if solidVolume then solidVolume:Destroy() end
+	local frontWindows = cafeModel:FindFirstChild("FrontWindowBand")
+	if frontWindows then frontWindows:Destroy() end
+	part(cafeModel, "CafeLeftWall", Vector3.new(4, 30, 62), Vector3.new(189, 15, -120), C.blue, Enum.Material.Concrete)
+	part(cafeModel, "CafeRightWall", Vector3.new(4, 30, 62), Vector3.new(271, 15, -120), C.blue, Enum.Material.Concrete)
+	part(cafeModel, "CafeBackWall", Vector3.new(82, 30, 4), Vector3.new(230, 15, -89), C.blue, Enum.Material.Concrete)
+	part(cafeModel, "CafeFrontLeftPier", Vector3.new(20, 26, 4), Vector3.new(199, 13, -151), C.blue, Enum.Material.Concrete)
+	part(cafeModel, "CafeFrontRightPier", Vector3.new(20, 26, 4), Vector3.new(261, 13, -151), C.blue, Enum.Material.Concrete)
+	part(cafeModel, "CafeFrontHeader", Vector3.new(82, 4, 4), Vector3.new(230, 28, -151), C.dark, Enum.Material.Metal)
+	windowPanel(cafeModel, "CafeFrontGlassLeft", 211, 13, -153, 14, 19)
+	windowPanel(cafeModel, "CafeFrontGlassRight", 249, 13, -153, 14, 19)
+end
 
 print("FootballFansMap generated. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
