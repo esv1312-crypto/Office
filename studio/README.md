@@ -119,3 +119,12 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - Tasks can declare `requiredCompetencies`; assignment checks these requirements both in the orchestration policy and again in the database adapter.
 - `storage/postgres-domain-store.test.js` covers transactional creation and rejection when the parent project is missing. Tests are authored, not yet executed.
 - This is a repository adapter, not a connected database: no Neon schema, Render service, production runtime, or live AI provider has been touched.
+
+## AI Director — proposed planning
+
+- `director/director-runtime.js` accepts an owner request, checks authorization and project status, and calls an injected `planningGateway.generatePlan()`.
+- The Director validates the structured proposal, captures a model snapshot, and creates a proposed plan plus draft tasks with explicit required competencies and acceptance criteria.
+- `storage/migrations/002_director_plans.sql` adds durable plan records and a nullable task-to-plan relationship. Apply migration 001 first; neither migration has been applied to any database.
+- `createPlanWithTasks()` in `storage/postgres-domain-store.js` persists the plan, all draft tasks, and their events in one transaction.
+- A plan remains `proposed`: the Director does not approve it, assign specialists, or start Workers. Owner approval and a governed dispatch workflow are the next required controls.
+- Director runtime and plan-persistence tests are authored but have not been executed.
