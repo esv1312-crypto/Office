@@ -2532,6 +2532,96 @@ async function runFinalAuditOnStartup() {
   }
 }
 
+async function runFreeModelTestOnStartup() {
+  const runId=String(process.env.OFFICE_FREE_MODEL_TEST_RUN_ID || "").trim();
+  if(!runId) return;
+  const existing=[...tasks.values()].find(record=>record.kind==="free_model_test" && record.freeModelTestRunId===runId);
+  if(existing) {
+    emit("free_model_test.already_recorded",{taskId:existing.id,runId,status:existing.status});
+    return;
+  }
+
+  const taskText=[
+    "КРАТКИЙ АНАЛИТИЧЕСКИЙ ТЕСТ AI-OFFICE.",
+    "Подготовь краткий обзор пяти основных категорий навесного оборудования для экскаваторов, которые могут быть востребованы на российском рынке: для каждой категории укажи типовые работы и вероятного покупателя.",
+    "Затем предложи три практических способа поиска потенциальных покупателей.",
+    "Не выдумывай рыночную статистику, объёмы продаж, доли рынка, цены или ссылки. Отделяй общие отраслевые знания от предположений о текущем спросе в России. Если для вывода нужны свежие данные, прямо укажи это.",
+    "Ответ на русском языке, структурированно и кратко. Это аналитический ответ по общим знаниям, не утверждай, что проводил интернет-исследование."
+  ].join("\n");
+
+  const record=createTaskRecord({task:taskText,employeeId:"analyst",parentTaskId:null,kind:"free_model_test"});
+  record.freeModelTestRunId=runId;
+  tasks.set(record.id,record);
+  try {
+    await saveTaskSnapshot(taskSnapshot(record));
+  } catch(error) {
+    tasks.delete(record.id);
+    emit("free_model_test.accept_failed",{runId,error:error?.message||String(error)});
+    return;
+  }
+  emit("free_model_test.accepted",{taskId:record.id,runId,employeeId:"analyst"});
+
+  try {
+    if(!freeOnly()) throw Object.assign(new Error("Test blocked: AI_FREE_ONLY must be true"),{code:"FREE_ONLY_REQUIRED"});
+    if(paidTestEnabled()) throw Object.assign(new Error("Test blocked: paid-test mode is enabled"),{code:"PAID_TEST_MODE_BLOCKED"});
+    if(!aiConfigured("openrouter")) throw Object.assign(new Error("Test blocked: OpenRouter credentials are not configured"),{code:"OPENROUTER_NOT_CONFIGURED"});
+
+    const analyst={...getEmployee("analyst"),id:"analyst",name:"Аналитик",role:"analyst",provider:"openrouter"};
+    const discovered=getCandidatePool(analyst,"openrouter");
+    const candidate=discovered.find(model=>String(model).endsWith(":free")) || "openrouter/free";
+    if(candidate!=="openrouter/free" && !String(candidate).endsWith(":free")) {
+      throw Object.assign(new Error("Test blocked: no explicitly free OpenRouter route was selected"),{code:"NO_FREE_MODEL"});
+    }
+
+    analyst.model=candidate;
+    record.provider="openrouter";
+    record.model=candidate;
+    await saveTaskSnapshot(taskSnapshot(record));
+    await transitionTask(record,"running",{
+      startedAt:new Date().toISOString(),
+      provider:"openrouter",
+      model:candidate,
+      freeOnly:true
+    });
+
+    const result=await generateViaGateway(
+      "You are the Analyst in AI-OFFICE.\n"+taskText,
+      analyst,
+      {provider:"openrouter",model:candidate,routeModel:candidate},
+      record.id,
+      {strictCandidate:true}
+    );
+    const answer=String(result?.text||"").trim();
+    if(!answer) throw Object.assign(new Error("Free model returned an empty answer"),{code:"EMPTY_RESPONSE"});
+    const usedModel=String(result.model||candidate);
+    await transitionTask(record,"completed",{
+      completedAt:new Date().toISOString(),
+      result:answer,
+      provider:"openrouter",
+      model:usedModel,
+      freeOnly:true
+    });
+    emit("free_model_test.completed",{
+      taskId:record.id,
+      runId,
+      provider:"openrouter",
+      model:usedModel,
+      answerLength:answer.length,
+      freeOnly:true
+    });
+  } catch(error) {
+    const message=error?.message||String(error);
+    try {
+      await transitionTask(record,"failed",{failedAt:new Date().toISOString(),error:message});
+    } catch(persistError) {
+      record.status="failed";
+      record.error=message;
+      await saveTaskSnapshot(taskSnapshot(record)).catch(()=>{});
+    }
+    emit("free_model_test.failed",{taskId:record.id,runId,provider:record.provider,model:record.model,error:message,freeOnly:freeOnly()});
+  }
+}
+
 async function bootstrapDatabase() {
   try {
     const enabled = await initDatabase();
@@ -2581,7 +2671,10 @@ const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
   if (isLoopbackAiTestMode()) {
     emit("test.local_ai_mode",{modelScout:"disabled",resourceScout:"disabled",endpoint:"loopback-only"});
   } else {
-    void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)}));
+    void refreshModelScout()
+      .then(()=>emit("model_scout.refreshed",getModelScoutState()))
+      .catch(error=>emit("model_scout.error",{error:error?.message||String(error)}))
+      .finally(()=>{ void runFreeModelTestOnStartup(); });
     modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
     void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
     resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));
