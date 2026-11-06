@@ -50,3 +50,9 @@ This first pass intentionally avoids real club names, crests, player likenesses,
 ## Latest blockout pass
 
 The generator now adds a small commercial street, three additional storefronts, a café interior with an open front, street posters and fan-culture graphics, and a physics-enabled football on the mini pitch. These are prototype primitives and must be inspected in Roblox Studio for scale, collisions, visibility, and mobile readability.
+
+## Supporter crowd prototype
+
+The map generator now places eight lightweight, anchored supporter character stand-ins around the square, mini pitch, and stadium approach. They have fictional colour combinations, scarves, caps, and short greeting labels. A scarf rack, three supporter flags, and marked meetup pads establish the first social gathering points.
+
+These are visual prototypes, not yet fully interactive Roblox NPCs: they do not have Humanoids, pathfinding, dialogue systems, or animated emotes. Player-controlled fan-colour selection and wearable accessories remain a separate gameplay task.
