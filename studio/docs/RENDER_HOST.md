@@ -18,7 +18,8 @@ Set these in the dedicated service's secret environment configuration; never com
 - `STUDIO_DATABASE_URL` — connection string for the isolated Neon `studio_db`.
 - `STUDIO_MODEL_API_KEY` — API key for an explicitly approved OpenAI-compatible provider.
 - `STUDIO_PLANNER_MODEL`, `STUDIO_WORKER_MODEL`, `STUDIO_QA_MODEL` — separate model routes. Choose routes with known pricing and owner-approved limits.
-- `STUDIO_AUTH_JWKS_URL`, `STUDIO_AUTH_ISSUER`, `STUDIO_AUTH_AUDIENCE` — values from the separately provisioned Neon Auth instance.
+- `STUDIO_AUTH_JWKS_URL` — `https://ep-dark-snow-bavufmug.neonauth.c-8.eu-central-1.aws.neon.tech/studio_db/auth/.well-known/jwks.json`.
+- `STUDIO_AUTH_ISSUER` and `STUDIO_AUTH_AUDIENCE` — both set to the Neon Auth base URL `https://ep-dark-snow-bavufmug.neonauth.c-8.eu-central-1.aws.neon.tech/studio_db/auth` (Better Auth JWT defaults).
 - `STUDIO_GITHUB_TOKEN` — narrowly scoped token with Contents write access to the `Office` repository. The artifact writer is hard-limited to `studio/projects/` on `studio-v1-foundation`.
 
 Optional configuration:
@@ -41,4 +42,4 @@ Optional configuration:
 
 ## Remaining prerequisites
 
-Neon Auth must be provisioned and its verified issuer/JWKS/audience values supplied. The model provider and three model routes require explicit owner-approved credentials/pricing. A narrowly scoped GitHub token must be supplied through Render secrets. None of those secrets are stored in this repository.
+Neon Auth is provisioned on the isolated `universal-ai-studio` project's `main` branch. Public email/password sign-up is disabled and email verification is required. The host must use the branch's base URL as both issuer and audience and the published JWKS URL. The model provider and three model routes require explicit owner-approved credentials/pricing. A narrowly scoped GitHub token must be supplied through Render secrets. None of those secrets are stored in this repository.
