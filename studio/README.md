@@ -29,11 +29,12 @@ The first end-to-end workflow is:
 
 - `contracts/` — stable domain contracts.
 - `core/` — deterministic domain logic with no provider or database dependency.
-- `director/` — planning and delegation (next phase).
-- `agents/` — specialist, worker, and QA runtimes (later phases).
-- `gateways/` — model and tool adapters (later phases).
-- `governance/` — permissions and approvals (later phases).
+- `director/` — planning and delegation.
+- `agents/` — specialist, worker, and QA runtimes.
+- `gateways/` — model and tool adapters.
+- `governance/` — permissions and approvals.
 - `product-profiles/` — Roblox, web, mobile, SaaS, and future product domains.
+- `projects/` — product-specific briefs, plans, and build artifacts.
 
 ## Implemented in this foundation
 
@@ -41,6 +42,17 @@ The first end-to-end workflow is:
 - Task creation in the initial `draft` state.
 - A deterministic task lifecycle state machine.
 - Versioned task status-change domain events.
+- First product project: `projects/football-fans/`, with a map design brief and a Roblox Studio blockout generator.
+
+## First product assignment: Football Fans
+
+The first Roblox pilot is a social football-fan district, not just a football pitch.
+Its first blockout includes Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, and Main Stadium.
+
+See:
+- `projects/football-fans/README.md`
+- `projects/football-fans/map-design-v1.md`
+- `projects/football-fans/roblox/BuildMap.server.lua`
 
 ## Local verification
 
@@ -50,4 +62,6 @@ Run all current domain tests from the repository root:
 node --test studio/core/*.test.js
 ```
 
-This is a deliberately small first slice. It is not yet connected to HTTP routes, PostgreSQL, model providers, or production workers.
+The map generator must be run and visually inspected in Roblox Studio before the map can be called play-tested. It does not publish or change a live Roblox experience.
+
+This foundation is not yet connected to HTTP routes, PostgreSQL, model providers, or production workers.
