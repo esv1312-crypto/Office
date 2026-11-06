@@ -632,7 +632,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
     preferred:{provider:brain.provider,model:brain.model},
     fallbackCandidates:(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
   });
-  const candidates=freeOnly()
+  const candidates=freeOnly() && !isLoopbackAiTestMode()
     ? allCandidates.filter(candidate=>candidate.provider==="openrouter" && String(candidate.model).endsWith(":free"))
     : allCandidates;
   const excludedModels=new Set(options.excludeModels || []);
