@@ -447,6 +447,7 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       const body={
         model,
         messages,
+        ...(provider==="openrouter"&&paidTestEnabled()?{provider:{order:["deepseek"],allow_fallbacks:false}}:{}),
         ...(enableTools && toolSchemasForEmployee(getEmployee(employeeId||"executor")).length
           ? {tools:toolSchemasForEmployee(getEmployee(employeeId||"executor")),tool_choice:"auto"}
           : {}),
@@ -2273,7 +2274,7 @@ app.get("/api/smoke/evidence", async (req,res)=>{
 });
 
 
-async function startOfficeAudit(runId=null) {
+async function startOfficeAudit(runId=null, direct=false) {
   const files=["src/server.js","src/model-scout.js","src/browser-manager.js","src/free-ai-resource-manager.js","src/task-state.js","src/task-context.js","src/worker-watchdog.js","src/runtime-config.js","src/db.js","package.json",".github/workflows/office-live-test.yml"];
   try{
     const {readFile}=await import("node:fs/promises");
@@ -2337,13 +2338,14 @@ async function startOfficeAudit(runId=null) {
       "U FINAL STATUS: READY / PARTIALLY READY / NOT READY, with a short reason.",
       "",
       "For each P0/P1/P2 item provide: classification, exact source/runtime evidence, impact, and smallest concrete fix. Do not mix recommendations with facts.",
-      "Keep each specialist report to 1,200 words maximum. Prioritize concrete blockers and cite exact source locators; do not reproduce code or repeat the dossier. Keep the Chief synthesis to 1,800 words maximum.",
+      direct ? "You are performing this entire audit yourself as the principal software architect. Keep the final report under 1,800 words, prioritize P0/P1 blockers, and include an evidence index with exact file/function/constant locators." : "Keep each specialist report to 1,200 words maximum. Prioritize concrete blockers and cite exact source locators; do not reproduce code or repeat the dossier. Keep the Chief synthesis to 1,800 words maximum.",
+      direct ? "RUNTIME TEST OBSERVATIONS (verified facts): First paid DeepSeek team run 492d089b-d8fa-4db3-b174-d58e72bb7949 failed with Worker and replacement attempts failed. Second run 577764dd-27a3-4aea-ad6c-7a959db58e66 also failed. The Chief successfully planned and created Analyst, Developer, and Verifier subtasks. The first 4,096-token attempt returned empty/truncated outputs. The second 8,192-token attempt produced a Verifier response but the runtime rejected it because extractEvidenceIndex found no required EVIDENCE INDEX; Analyst and Developer returned empty responses with finish_reason=unknown. Replacement attempts failed. Paid model usage estimates recorded by OpenRouter were approximately $0.111977 and $0.134893 for those two runs; these are token-usage estimates, not invoice totals. All calls were routed to DeepSeek V4.1 Flash after the paid-test routing fix." : "",
       "The audit is successful only if the report is evidence-rich and internally consistent. Do not declare READY merely because code paths exist.",
       "",
       "SOURCE DOSSIER: CURRENT AI-OFFICE SOURCE FILES ARE SUPPLIED BELOW.",
       "\n===== SOURCE DOSSIER =====\n"+dossier.join("")
     ].join("\n");
-    const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:runId?"paid_model_audit":"root"});
+    const record=createTaskRecord({task:taskText,employeeId:direct?"analyst":"chief",parentTaskId:null,kind:runId?(direct?"paid_model_direct_audit":"paid_model_audit"):"root"});
     tasks.set(record.id,record);
     try {
       await saveTaskSnapshot(taskSnapshot(record));
@@ -2351,8 +2353,24 @@ async function startOfficeAudit(runId=null) {
       tasks.delete(record.id);
       throw error;
     }
-    emit("office_check.started",{taskId:record.id,readOnly:true,filesAudited:files});
-    if(!aiAvailable(record.provider)) await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
+    emit("office_check.started",{taskId:record.id,readOnly:true,direct,filesAudited:files});
+    if(direct) {
+      try {
+        await transitionTask(record,"running",{startedAt:new Date().toISOString(),paidModelDirect:true});
+        const auditor={...getEmployee("analyst"),id:"analyst",name:"Principal Auditor",role:"analyst",provider:"openrouter"};
+        const candidate={provider:"openrouter",model:paidTestModel(),routeModel:paidTestModel()};
+        const result=await generateViaGateway("You are the principal software architect conducting a direct, read-only engineering audit for AI-OFFICE.\n"+taskText,auditor,candidate,record.id,{strictCandidate:true});
+        const answer=String(result?.text||"").trim();
+        if(!answer) throw Object.assign(new Error("DeepSeek direct audit returned an empty result"),{code:"EMPTY_RESPONSE"});
+        await transitionTask(record,"completed",{completedAt:new Date().toISOString(),result:answer,provider:"openrouter",model:result.model||paidTestModel()});
+        emit("paid_model_direct_audit.completed",{taskId:record.id,runId,provider:"openrouter",model:result.model||paidTestModel(),resultLength:answer.length,readOnly:true});
+      } catch(error) {
+        const message=error?.message||String(error);
+        await transitionTask(record,"failed",{failedAt:new Date().toISOString(),error:message}).catch(()=>{});
+        emit("paid_model_direct_audit.failed",{taskId:record.id,runId,error:message});
+        throw error;
+      }
+    } else if(!aiAvailable(record.provider)) await transitionTask(record,"waiting",{waitingReason:"ai_not_configured"});
     else void executeRootTask(record);
     return record;
   } catch(error) {
@@ -2577,6 +2595,31 @@ async function runPaidModelAuditOnStartup() {
   }
 }
 
+async function runPaidModelDirectAuditOnStartup() {
+  const runId=String(process.env.OFFICE_PAID_MODEL_DIRECT_AUDIT_RUN_ID||"").trim();
+  if(!runId) return;
+  if(!paidTestEnabled() || !String(paidTestModel()).startsWith("deepseek/")) {
+    emit("paid_model_direct_audit.blocked",{runId,reason:"paid-test mode or a DeepSeek model is not configured"});
+    return;
+  }
+  if(!freeOnly() || providerOrder().some(provider=>provider!=="openrouter")) {
+    emit("paid_model_direct_audit.blocked",{runId,reason:"audit requires FREE_ONLY=true and provider order restricted to OpenRouter"});
+    return;
+  }
+  const marker="AUDIT RUN ID: "+runId;
+  const existing=[...tasks.values()].find(record=>record.kind==="paid_model_direct_audit" && String(record.task||"").includes(marker));
+  if(existing) {
+    emit("paid_model_direct_audit.already_recorded",{taskId:existing.id,runId,status:existing.status});
+    return;
+  }
+  try {
+    const record=await startOfficeAudit(runId,true);
+    emit("paid_model_direct_audit.started",{taskId:record.id,runId,provider:"openrouter",model:paidTestModel(),budgetUsd:paidTestBudgetUsd(),readOnly:true});
+  } catch(error) {
+    emit("paid_model_direct_audit.failed",{runId,error:error?.message||String(error)});
+  }
+}
+
 async function runFinalAuditOnStartup() {
   if (String(process.env.RUN_FINAL_AUDIT_ON_START || "false").toLowerCase() !== "true") return;
   await sleep(5000);
@@ -2769,7 +2812,7 @@ const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
     void refreshModelScout()
       .then(()=>emit("model_scout.refreshed",getModelScoutState()))
       .catch(error=>emit("model_scout.error",{error:error?.message||String(error)}))
-      .finally(()=>{ void runFreeModelTestOnStartup(); void runFreeModelTeamTestOnStartup(); void runPaidModelAuditOnStartup(); });
+      .finally(()=>{ void runFreeModelTestOnStartup(); void runFreeModelTeamTestOnStartup(); void runPaidModelAuditOnStartup(); void runPaidModelDirectAuditOnStartup(); });
     modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
     void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
     resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));
