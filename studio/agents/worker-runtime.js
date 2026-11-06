@@ -51,6 +51,11 @@ export function createWorkerRuntime({
   }
 
   return Object.freeze({
+    async heartbeat({ executionId, fencingToken, leaseToken, leaseMs }) {
+      if (typeof store.heartbeatExecution !== "function") throw new Error("Execution store does not support lease heartbeats");
+      return store.heartbeatExecution({ executionId, fencingToken, leaseToken, leaseMs, at: now() });
+    },
+
     async execute({ taskId, specialist, workerId }) {
       const id = requiredString(taskId, "taskId");
       const worker = requiredString(workerId, "workerId");
@@ -67,7 +72,8 @@ export function createWorkerRuntime({
         workerId: worker,
         at: now(),
       });
-      if (!started || !started.executionId || !started.task) {
+      if (!started || !started.executionId || !started.task ||
+          !Number.isInteger(started.execution?.fencingToken) || !started.execution?.leaseToken) {
         throw new Error("Execution store returned an invalid start result");
       }
       if (started.task.status !== "running" ||
@@ -98,6 +104,8 @@ export function createWorkerRuntime({
         await store.failExecution({
           executionId: started.executionId,
           reason,
+          fencingToken: started.execution.fencingToken,
+          leaseToken: started.execution.leaseToken,
           at: now(),
         });
         return {
@@ -126,6 +134,8 @@ export function createWorkerRuntime({
         output,
         modelSnapshot: generated.modelSnapshot,
         artifact,
+        fencingToken: started.execution.fencingToken,
+        leaseToken: started.execution.leaseToken,
         at: now(),
       });
 
