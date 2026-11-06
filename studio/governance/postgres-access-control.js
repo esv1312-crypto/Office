@@ -24,23 +24,9 @@ function projectIdFrom(resource, kind) {
 export function createPostgresStudioAccessControl({ pool }) {
   if (!pool || typeof pool.query !== "function") throw new TypeError("A pg-compatible query pool is required");
 
-  async function membership({ actor, organizationId }) {
-    const id = actorId(actor);
-    const orgId = required(organizationId, "organizationId");
-    const result = await pool.query(
-      `SELECT m.role, m.status, o.status AS organization_status
-         FROM studio.organization_memberships m
-         JOIN studio.organizations o ON o.id = m.organization_id
-        WHERE m.organization_id = $1 AND m.actor_id = $2`,
-      [orgId, id]);
-    const row = result.rows[0];
-    if (!row || row.status !== "active" || row.organization_status !== "active") return null;
-    return { role: row.role, organizationId: orgId };
-  }
-
   async function loadProject({ projectId, actor }) {
     const id = required(projectId, "projectId");
-    const actor = actorId(actor);
+    const subject = actorId(actor);
     const result = await pool.query(
       `SELECT p.id, p.organization_id, p.name, p.product_profile_id,
               p.status, p.version, p.payload
@@ -50,7 +36,7 @@ export function createPostgresStudioAccessControl({ pool }) {
          JOIN studio.organizations o ON o.id = p.organization_id
         WHERE p.id = $1 AND m.actor_id = $2
           AND m.status = 'active' AND o.status = 'active'`,
-      [id, actor]);
+      [id, subject]);
     const row = result.rows[0];
     if (!row) return null;
     return {
