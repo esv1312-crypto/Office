@@ -20,7 +20,7 @@ test("free-only mode serializes worker execution regardless of a higher concurre
 
 test("employee-assigned models must exist in the current provider catalog and obey free-only routing", () => {
   assert.match(source, /const catalogModels=getCandidatePool\(employee,assignedProvider\)/);
-  assert.match(source, /const assignedIsAllowed=!freeOnly\(\) \|\| \(assignedProvider==="openrouter" && assignedModel\.endsWith\(":free"\)\)/);
+  assert.match(source, /const assignedIsAllowed=!freeOnly\(\) \|\| \(assignedProvider==="openrouter" && \(assignedModel\.endsWith\(":free"\) \|\| assignedModel==="openrouter\/free"\)\)/);
   assert.match(source, /catalogModels\.includes\(assignedModel\)/);
 });
 
@@ -53,4 +53,10 @@ test("model cooldowns are scoped to the failing role while global provider failu
   assert.match(source, /roleScopedFailure \? role : null/);
   assert.match(source, /isProviderModelSuppressed\(candidate\.provider,candidate\.model,role\)/);
   assert.match(source, /isModelSuppressed\(x,"openrouter",role\)/);
+});
+
+test("free-only team calls prefer OpenRouter's free router and retain explicit free model fallbacks", () => {
+  assert.match(source, /const effectivePreferredModel=freeOnly\(\) && !isLoopbackAiTestMode\(\) && allowModelFallback \? "openrouter\/free" : preferredModel/);
+  assert.match(source, /String\(model\)==="openrouter\/free" \|\| String\(model\)\.endsWith\(":free"\)/);
+  assert.match(source, /String\(candidate\.model\)\.endsWith\(":free"\) \|\| String\(candidate\.model\)==="openrouter\/free"/);
 });

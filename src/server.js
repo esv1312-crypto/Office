@@ -244,7 +244,7 @@ function resolveBrain(employee, task = "") {
   const assignedProvider=String(employee?.provider || process.env.AI_PROVIDER || aiProvider()).toLowerCase();
   const assignedModel=String(employee?.model || "").trim();
   const catalogModels=getCandidatePool(employee,assignedProvider);
-  const assignedIsAllowed=!freeOnly() || (assignedProvider==="openrouter" && assignedModel.endsWith(":free"));
+  const assignedIsAllowed=!freeOnly() || (assignedProvider==="openrouter" && (assignedModel.endsWith(":free") || assignedModel==="openrouter/free"));
   const assignedAvailable=Boolean(assignedModel && assignedIsAllowed && catalogModels.includes(assignedModel) && !isModelSuppressed(assignedModel,assignedProvider,employee?.role));
   const selectedModel = selected.selected && !isModelSuppressed(selected.selected.routeModel || selected.selected.id, selected.selected.provider,employee?.role)
     ? selected.selected
@@ -646,7 +646,7 @@ async function ensureEmployeeReady(employee, task, options={}) {
     fallbackCandidates:(brain.candidates||[]).map(x=>({provider:x.provider||"openrouter",model:x.routeModel||x.id}))
   });
   const candidates=freeOnly() && !isLoopbackAiTestMode()
-    ? allCandidates.filter(candidate=>candidate.provider==="openrouter" && String(candidate.model).endsWith(":free"))
+    ? [...allCandidates.filter(candidate=>candidate.provider==="openrouter" && (String(candidate.model).endsWith(":free") || String(candidate.model)==="openrouter/free")), {provider:"openrouter",model:"openrouter/free"}]
     : allCandidates;
   const excludedModels=new Set(options.excludeModels || []);
   const allUnique=candidates;
@@ -732,22 +732,23 @@ function openRouterPool(employee, preferredModel = null) {
   if (paidTestEnabled()) return [paidTestModel()];
   const qualified=getDynamicPool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter",role));
   const discovered=getCandidatePool(employee,"openrouter").filter(x => x && !isModelSuppressed(x,"openrouter",role));
-  let pool=[preferredModel,...qualified,...discovered].filter(Boolean);
+  let pool=[preferredModel,...(freeOnly() && !isLoopbackAiTestMode() ? ["openrouter/free"] : []),...qualified,...discovered].filter(Boolean);
 
   const configured=String(process.env.OPENROUTER_MODEL || "").trim();
   if (!preferredModel && configured && !/^(sk-or-|or-)/i.test(configured) && !isModelSuppressed(configured,"openrouter",role)) pool.unshift(configured);
-  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter",role) && (!freeOnly() || isLoopbackAiTestMode() || String(model).endsWith(":free"))) )];
+  return [...new Set(pool.filter(model=>model && !isModelSuppressed(model,"openrouter",role) && (!freeOnly() || isLoopbackAiTestMode() || String(model)==="openrouter/free" || String(model).endsWith(":free"))) )];
 }
 
 async function generateWithOpenRouter(task, employee, preferredModel, taskId=null, allowModelFallback=true, enableToolsOverride=null, timeoutMsOverride=null) {
   const enableTools=enableToolsOverride===null ? toolSchemasForEmployee(employee).length>0 : Boolean(enableToolsOverride);
   const timeoutMs=timeoutMsOverride===null ? aiRequestTimeoutMs() : (Number.isFinite(Number(timeoutMsOverride))?Math.max(1000,Number(timeoutMsOverride)):aiRequestTimeoutMs());
-  const pool=allowModelFallback ? openRouterPool(employee, preferredModel) : [String(preferredModel||"")].filter(Boolean);
+  const effectivePreferredModel=freeOnly() && !isLoopbackAiTestMode() && allowModelFallback ? "openrouter/free" : preferredModel;
+  const pool=allowModelFallback ? openRouterPool(employee, effectivePreferredModel) : [String(preferredModel||"")].filter(Boolean);
   const role=String(employee?.role || "executor");
   const cursor=Number(openRouterRotation.get(role) || 0);
   const fallbackLimit=boundedIntegerSetting(process.env.OPENROUTER_MAX_MODEL_FALLBACKS,12,8,20);
   const ordered=allowModelFallback
-    ? orderPrimaryModelFirst(pool, preferredModel, cursor).slice(0,fallbackLimit)
+    ? orderPrimaryModelFirst(pool, effectivePreferredModel, cursor).slice(0,fallbackLimit)
     : pool.slice(0,1);
   // Rotate backup candidates only. The assigned primary must not be skipped
   // merely because this role has advanced its fallback cursor.
@@ -1422,7 +1423,7 @@ async function verifyRootTask(record) {
   const workerModels=new Set(completedRelatedTasks.map(task=>String(task.model||"")).filter(Boolean));
   const plannerModel=String(record.plannerModel||"");
   const plannerCanVerify=freeOnly()
-    && plannerModel.endsWith(":free")
+    && (plannerModel.endsWith(":free") || plannerModel==="openrouter/free")
     && plannerModel!==String(record.model||"")
     && !workerModels.has(plannerModel);
   const verifier=plannerCanVerify
