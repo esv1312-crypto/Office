@@ -90,6 +90,63 @@ export function createPostgresDomainStore({ pool, createId }) {
       });
     },
 
+    async createPlanWithTasks({ plan: planInput, tasks: taskInputs }) {
+      const plan = object(planInput, "plan");
+      const planId = required(plan.id, "plan.id");
+      const projectId = required(plan.projectId, "plan.projectId");
+      const at = timestamp(plan.createdAt);
+      if (plan.status !== "proposed" || plan.version !== 1) {
+        throw new TypeError("A new director plan must be proposed at version 1");
+      }
+      if (!Array.isArray(taskInputs) || taskInputs.length < 1 || taskInputs.length > 50) {
+        throw new TypeError("A director plan must contain between 1 and 50 tasks");
+      }
+      const tasks = taskInputs.map(task => {
+        object(task, "task");
+        if (task.projectId !== projectId || task.status !== "draft" ||
+            task.version !== 1 || task.assigneeSpecialistId !== null) {
+          throw new TypeError("Plan tasks must be new, draft, unassigned tasks in the same project");
+        }
+        return task;
+      });
+      return transaction(pool, async client => {
+        const projectResult = await client.query(
+          "SELECT organization_id FROM studio.projects WHERE id = $1 AND status = 'active' FOR SHARE",
+          [projectId]);
+        const project = projectResult.rows[0];
+        if (!project) throw Object.assign(new Error("Active project not found"), { code: "PROJECT_NOT_FOUND_OR_INACTIVE" });
+        await client.query(
+          `INSERT INTO studio.plans
+             (id, project_id, status, version, payload, created_at, updated_at)
+           VALUES ($1,$2,'proposed',1,$3::jsonb,$4,$5)`,
+          [planId, projectId, JSON.stringify(plan), at, timestamp(plan.updatedAt)]);
+        for (const task of tasks) {
+          await client.query(
+            `INSERT INTO studio.tasks
+               (id, project_id, plan_id, status, assignee_specialist_id, version, payload, created_at, updated_at)
+             VALUES ($1,$2,$3,'draft',NULL,1,$4::jsonb,$5,$6)`,
+            [required(task.id, "task.id"), projectId, planId, JSON.stringify(task),
+              timestamp(task.createdAt), timestamp(task.updatedAt)]);
+        }
+        const createdEventId = eventId(createId);
+        await client.query(
+          `INSERT INTO studio.events
+             (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+           VALUES ($1,$2,$3,'plan',$4,'plan.created',$5::jsonb,$6)`,
+          [createdEventId, project.organization_id, projectId, planId,
+            JSON.stringify({ title: plan.title, taskIds: tasks.map(task => task.id), status: "proposed" }), at]);
+        for (const task of tasks) {
+          await client.query(
+            `INSERT INTO studio.events
+               (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+             VALUES ($1,$2,$3,'task',$4,'task.created',$5::jsonb,$6)`,
+            [eventId(createId), project.organization_id, projectId, task.id,
+              JSON.stringify({ title: task.title, planId, requiredCompetencies: task.requiredCompetencies }), at]);
+        }
+        return { plan, tasks, eventId: createdEventId };
+      });
+    },
+
     async createTask(input) {
       const task = object(input, "task");
       const id = required(task.id, "task.id");
