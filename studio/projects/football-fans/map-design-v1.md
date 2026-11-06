@@ -135,3 +135,13 @@ These are still primitive Parts, not final stadium assets. During the first Robl
 - A physics-enabled football placed on the Mini Pitch for the first hands-on Studio inspection.
 
 This is still a greybox. Verify collision, the café entrance, ball physics, sign readability, and camera framing in Roblox Studio before treating the map as playable.
+
+## 11. Supporter crowd and social landmarks (implemented prototype)
+
+- Eight anchored supporter character stand-ins distributed across the social square, mini pitch, and stadium approach.
+- Fictional scarf/cap colour combinations and short overhead greeting labels.
+- Scarf display rack and three supporter flags near the Fan Shop.
+- Three clearly marked meetup pads: square, mini pitch, and stadium approach.
+- All NPC stand-ins are grouped under `Workspace.FootballFansMap.SocialLife` and are generated without external assets.
+
+**Scope note:** these are static visual stand-ins only. They do not yet use Humanoid rigs, pathfinding, interactive dialogue, animated emotes, or player outfit selection. Those systems require a dedicated gameplay implementation and Studio playtest.
