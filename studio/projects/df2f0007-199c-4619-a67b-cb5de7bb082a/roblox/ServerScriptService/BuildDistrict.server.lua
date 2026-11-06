@@ -57,7 +57,7 @@ local function part(parent, name, size, position, color, material, transparency,
 end
 
 local function label(parent, name, text, position, width, height, color)
-    local anchor = part(parent, name, Vector3.new(width or 18, 1, 1), position, COLORS.dark, Enum.Material.SmoothPlastic)
+    local anchor = part(parent, name, Vector3.new(1, 1, 1), position, COLORS.dark, Enum.Material.SmoothPlastic)
     anchor.Transparency = 1
     anchor.CanCollide = false
     local gui = Instance.new("BillboardGui")
