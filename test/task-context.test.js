@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildPlanningTaskBrief } from "../src/task-context.js";
+import { buildPlanningTaskBrief, buildWorkerTaskContext, MAX_WORKER_CONTEXT_CHARS } from "../src/task-context.js";
 
 test("planning brief keeps task instructions and replaces a large inline dossier with its file index", () => {
   const task = [
@@ -34,4 +34,20 @@ test("planning brief bounds long tasks without an explicit dossier marker", () =
   const brief = buildPlanningTaskBrief(task, 4000);
   assert.equal(brief.length, 4000 + "\n[PLANNING CONTEXT TRUNCATED BY RUNTIME; full task remains attached to parent task.]".length);
   assert.match(brief, /PLANNING CONTEXT TRUNCATED BY RUNTIME/);
+});
+
+test("worker context preserves the complete large source dossier below the expanded limit", () => {
+  const task = ["Audit this project read-only.", "===== src/server.js =====", "a".repeat(142345), "===== src/model-scout.js =====", "END_OF_DOSSIER"].join("\n");
+  const context = buildWorkerTaskContext(task);
+  assert.equal(context, task);
+  assert.ok(context.includes("END_OF_DOSSIER"));
+  assert.ok(context.length < MAX_WORKER_CONTEXT_CHARS);
+});
+
+test("worker context explicitly marks truncation above the expanded limit", () => {
+  const task = "SOURCE DOSSIER " + "x".repeat(MAX_WORKER_CONTEXT_CHARS + 100);
+  const context = buildWorkerTaskContext(task);
+  assert.ok(context.length > MAX_WORKER_CONTEXT_CHARS);
+  assert.match(context, /WORKER SOURCE CONTEXT TRUNCATED/);
+  assert.match(context, new RegExp(String(task.length)));
 });
