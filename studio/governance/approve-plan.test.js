@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createPlanApproval } from "./approve-plan.js";
 
-const plan = { id: "plan-1", status: "proposed" };
+const plan = { id: "plan-1", projectId: "project-1", status: "proposed" };
 const actor = { id: "owner-1" };
 
 test("requires owner authorization before persisting approval", async () => {
