@@ -155,3 +155,14 @@ This is still a greybox. Verify collision, the café entrance, ball physics, sig
 - A single `ServerScriptService.FootballFansSocialRuntime` script owns these interactions and is replaced safely when the map generator is rerun.
 
 **Prototype limits:** selection is session-only (no DataStore), scarf geometry is deliberately simple, and the cheer is a joint-tween prototype rather than a polished animation. Test both R6 and R15 rigs, prompt visibility, team assignment, respawn, and animation conflicts in Roblox Studio before calling this feature complete.
+
+
+## 13. Shared supporter banners (implemented prototype)
+
+- Each of the three meetup pads has a `Raise crew banner` ProximityPrompt.
+- A player must select a fan group before raising a banner.
+- The first activation creates a simple anchored pole and cloth at the meetup spot; later activations recolour the existing banner and update its crew label.
+- The banner is replicated by the server, so all players in that server see the current crew identity at that meetup spot.
+- Each player has a short activation cooldown. The banner is session-only and is not persisted.
+
+**Prototype limits:** one live banner per meetup spot; the latest valid activation determines its colour and label. This is not a personal inventory or a saved group asset. Validate multiplayer replication, prompt accessibility, banner orientation, and visual readability in Roblox Studio.
