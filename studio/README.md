@@ -166,3 +166,11 @@ They are not wired into the new Worker Runtime, production Express server, Neon,
 - `storage/postgres-domain-store.js` now exposes task and specialist read methods used by this coordinator.
 - Tests cover a successful Worker-to-QA pass, Worker failure, missing QA reviewer, and QA-requested revision. Tests are authored but have not been executed.
 - This is an orchestration component, not a live service: no API endpoint, model gateway implementation, worker process, or database connection has been wired. It still requires an application composition root and a safe integration test environment.
+
+## Application composition root
+
+- `application/create-studio-runtime.js` now assembles the PostgreSQL domain, assignment, execution, and QA stores with Director, approval, dispatch, Worker, QA, and plan-workflow services.
+- Construction requires explicit injection of a migrated PostgreSQL pool, ID generators, governance authorization, and three provider-neutral gateways (planning, Worker generation, and QA review).
+- The composition root performs no connection, query, migration, provider call, or deployment by itself. This makes dependency wiring explicit and testable.
+- `application/create-studio-runtime.test.js` verifies all services are composed and construction does not connect to the database. Tests are authored but have not been executed.
+- The composition root is not yet exposed through an HTTP API or connected to the running legacy Office server. A real deployment still requires an approved dedicated database, configured gateways, route-level authentication, and isolated integration tests.
