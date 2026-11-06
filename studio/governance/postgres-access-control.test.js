@@ -21,10 +21,12 @@ function fixture({ role = "owner", membershipStatus = "active", organizationStat
           ? { rows: [{ role, status: membershipStatus, organization_status: organizationStatus }] }
           : { rows: [] };
       }
-      if (sql.includes("FROM studio.plans pl")) return { rows: [{
-        id: "plan-1", project_id: "project-1", organization_id: "org-1",
-        status: "proposed", version: 1, payload: { title: "Pilot plan" },
-      }] };
+      if (sql.includes("FROM studio.plans pl")) return {
+        rows: membershipStatus === "active" && organizationStatus === "active" ? [{
+          id: "plan-1", project_id: "project-1", organization_id: "org-1",
+          status: "proposed", version: 1, payload: { title: "Pilot plan" },
+        }] : [],
+      };
       return { rows: [] };
     },
   };
