@@ -59,7 +59,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
 
       return inTransaction(pool, async client => {
         const selected = await client.query(
-          `SELECT t.id, t.status, t.assignee_specialist_id, t.version, t.payload,
+          `SELECT t.id, t.project_id, t.status, t.assignee_specialist_id, t.version, t.payload,
                   p.organization_id
              FROM studio.tasks t
              JOIN studio.projects p ON p.id = t.project_id
@@ -126,11 +126,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
             WHERE t.id = $4`,
           [startedEventId, JSON.stringify(startedPayload), timestamp, id],
         );
-        const startedScope = await client.query(
-          "SELECT p.organization_id, t.project_id FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id WHERE t.id = $1",
-          [id],
-        );
-        await insertOutboxEvent(client, { eventId: startedEventId, organizationId: startedScope.rows[0].organization_id, projectId: startedScope.rows[0].project_id, aggregateType: "task", aggregateId: id, eventType: "execution.started", payload: startedPayload, occurredAt: timestamp });
+        await insertOutboxEvent(client, { eventId: startedEventId, organizationId: row.organization_id, projectId: row.project_id, aggregateType: "task", aggregateId: id, eventType: "execution.started", payload: startedPayload, occurredAt: timestamp });
 
         return {
           executionId,
@@ -168,7 +164,9 @@ export function createPostgresExecutionStore({ pool, createId }) {
         }
 
         const taskResult = await client.query(
-          "SELECT id, status, version, payload FROM studio.tasks WHERE id = $1 FOR UPDATE",
+          "SELECT t.id, t.project_id, t.status, t.version, t.payload, p.organization_id
+             FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id
+            WHERE t.id = $1 FOR UPDATE OF t",
           [execution.task_id],
         );
         const taskRow = taskResult.rows[0];
@@ -221,11 +219,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
             WHERE t.id = $4`,
           [eventId, JSON.stringify(artifactPayload), timestamp, taskRow.id],
         );
-        const artifactScope = await client.query(
-          "SELECT p.organization_id, t.project_id FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id WHERE t.id = $1",
-          [taskRow.id],
-        );
-        await insertOutboxEvent(client, { eventId, organizationId: artifactScope.rows[0].organization_id, projectId: artifactScope.rows[0].project_id, aggregateType: "task", aggregateId: taskRow.id, eventType: "artifact.created", payload: artifactPayload, occurredAt: timestamp });
+        await insertOutboxEvent(client, { eventId, organizationId: taskRow.organization_id, projectId: taskRow.project_id, aggregateType: "task", aggregateId: taskRow.id, eventType: "artifact.created", payload: artifactPayload, occurredAt: timestamp });
 
         return { task: nextTask, artifactId };
       });
@@ -252,7 +246,9 @@ export function createPostgresExecutionStore({ pool, createId }) {
         }
 
         const taskResult = await client.query(
-          "SELECT id, status, version, payload FROM studio.tasks WHERE id = $1 FOR UPDATE",
+          "SELECT t.id, t.project_id, t.status, t.version, t.payload, p.organization_id
+             FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id
+            WHERE t.id = $1 FOR UPDATE OF t",
           [execution.task_id],
         );
         const taskRow = taskResult.rows[0];
@@ -287,11 +283,7 @@ export function createPostgresExecutionStore({ pool, createId }) {
             WHERE t.id = $4`,
           [failedEventId, JSON.stringify(failedPayload), timestamp, taskRow.id],
         );
-        const failedScope = await client.query(
-          "SELECT p.organization_id, t.project_id FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id WHERE t.id = $1",
-          [taskRow.id],
-        );
-        await insertOutboxEvent(client, { eventId: failedEventId, organizationId: failedScope.rows[0].organization_id, projectId: failedScope.rows[0].project_id, aggregateType: "task", aggregateId: taskRow.id, eventType: "execution.failed", payload: failedPayload, occurredAt: timestamp });
+        await insertOutboxEvent(client, { eventId: failedEventId, organizationId: taskRow.organization_id, projectId: taskRow.project_id, aggregateType: "task", aggregateId: taskRow.id, eventType: "execution.failed", payload: failedPayload, occurredAt: timestamp });
         return { task: nextTask, alreadyFailed: false };
       });
     },
