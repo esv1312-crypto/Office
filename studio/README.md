@@ -271,6 +271,8 @@ No Studio migration has been applied, no live model call has been made through t
 
 - `application/create-studio-control-plane.js` now composes the PostgreSQL membership policy, configured planning/Worker/QA gateways, Studio runtime, and guarded Express router.
 - The host must inject a verified identity-provider middleware that maps the provider's stable subject to `request.auth.actor.id`, plus a rate limiter and bounded request/error middleware.
+- Apply migrations in order: 001 initial schema, 002 plans, 003 QA reviews, 004 transactional outbox, 005 worker leases/fencing, then 006 organizations/memberships. These migrations have not been applied.
+- Before creating projects, provision an organization row and an `owner` membership whose `actor_id` exactly matches the verified identity-provider subject. Do this through a separately reviewed administrative provisioning step; the runtime does not self-assign ownership.
 - The returned router is not mounted automatically. The caller must mount it only in an approved isolated host after migrations 001-006 have been applied to a dedicated database and initial organization/owner membership have been provisioned.
 - Composition performs no database query, migration, model request, server mount, or deployment. The provider client and pool are injected by the host.
 - This completes code-level dependency composition, not live deployment or autonomous execution.
