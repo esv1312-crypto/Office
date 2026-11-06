@@ -8,6 +8,7 @@ import { createTaskAssignment } from "../orchestration/assign-task.js";
 import { createDirectorDispatch } from "../director/director-dispatch.js";
 import { createWorkerRuntime } from "../agents/worker-runtime.js";
 import { createQaRuntime } from "../agents/qa-runtime.js";
+import { createExecutionRecovery } from "../governance/recover-expired-executions.js";
 import { createPlanExecutionWorkflow } from "../orchestration/run-approved-plan.js";
 
 /**
@@ -50,6 +51,7 @@ export function createStudioRuntime({
   const qa = createQaRuntime({
     store: qaStore, qaGateway, authorize, now,
   });
+  const recovery = createExecutionRecovery({ store: executionStore, authorize, now });
   const workflow = createPlanExecutionWorkflow({
     dispatch, worker, qa, directory: domainStore, createWorkerId,
   });
@@ -60,6 +62,7 @@ export function createStudioRuntime({
     dispatch,
     worker,
     qa,
+    recovery,
     workflow,
     stores: Object.freeze({
       domain: domainStore,
