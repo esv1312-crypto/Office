@@ -1209,7 +1209,7 @@ function rootTaskFor(record) {
 function buildWorkerPrompt(record,employee){
   const root=rootTaskFor(record), original=String(root?.task||record.task||"");
   const context=buildRoleScopedWorkerContext(original,employee?.role);
-  const codeEvidenceTask=/\\b(code|coding|repository|repo|source file|pull request|implementation|bug|runtime|api|database|workflow|test suite|unit test)\\b/i.test(original);
+  const codeEvidenceTask=/\b(code|coding|repository|repo|source file|pull request|implementation|bug|runtime|api|database|workflow|test suite|unit test)\b/i.test(original);
   const evidenceRules=codeEvidenceTask ? [
     "1) Make concrete findings from supplied source evidence, not generic advice.",
     "2) Label every material conclusion FACT, INFERENCE, ASSUMPTION, or UNPROVEN.",
@@ -1791,7 +1791,7 @@ async function executeRootTask(record) {
         {employeeId:"executor",task:"Run safe operational checks and recovery/replacement actions available to the runtime; report actual outcomes only."}
       ];
       const constrainedWorkers=explicitConstraint && Number.isInteger(explicitCount) && explicitCount>=1 && explicitCount<=4
-        ? recoveryWorkers.filter(worker=>new RegExp("\\b"+worker.employeeId+"\\b","i").test(roleNames))
+        ? recoveryWorkers.filter(worker=>new RegExp("\b"+worker.employeeId+"\b","i").test(roleNames))
         : [];
       const useConstraint=constrainedWorkers.length===explicitCount;
       plan = {
