@@ -272,6 +272,25 @@ export function createPostgresDomainStore({ pool, createId }) {
       };
     },
 
+    async getLatestArtifactForTask({ taskId }) {
+      const id = required(taskId, "taskId");
+      const result = await pool.query(
+        `SELECT id, artifact_type, name, content, specialist_id
+           FROM studio.artifacts
+          WHERE task_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`, [id]);
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        type: row.artifact_type,
+        name: row.name,
+        content: typeof row.content?.content === "string" ? row.content.content : row.content,
+        specialistId: row.specialist_id,
+      };
+    },
+
     async getSpecialist({ specialistId }) {
       const id = required(specialistId, "specialistId");
       const result = await pool.query(
