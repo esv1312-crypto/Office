@@ -33,6 +33,7 @@ function fixture() {
     createWorkerId: () => "worker-id",
     authenticate,
     rateLimit,
+    artifactWriter: { async writeTextArtifact() { throw new Error("not used during composition"); } },
   });
   return { plane, calls, authenticate, rateLimit };
 }
@@ -56,12 +57,14 @@ test("requires verified identity and rate limiting before building routes", () =
     client: { chat: { completions: { create() {} } } },
     models: { planner: "p", worker: "w", qa: "q" },
     createId() {}, createWorkerId() {}, rateLimit() {},
+    artifactWriter: { writeTextArtifact() {} },
   }), /identity-provider middleware/);
   assert.throws(() => createStudioControlPlane({
     pool: { connect() {}, query() {} },
     client: { chat: { completions: { create() {} } } },
     models: { planner: "p", worker: "w", qa: "q" },
     createId() {}, createWorkerId() {}, authenticate() {},
+    artifactWriter: { writeTextArtifact() {} },
   }), /rate-limit middleware/);
 });
 
@@ -71,5 +74,17 @@ test("requires a pool with both transactional and scoped-query capabilities", ()
     client: { chat: { completions: { create() {} } } },
     models: { planner: "p", worker: "w", qa: "q" },
     createId() {}, createWorkerId() {}, authenticate() {}, rateLimit() {},
+    artifactWriter: { writeTextArtifact() {} },
   }), /PostgreSQL pool/);
+});
+
+
+test("requires a scoped repository artifact writer for the executable control plane", () => {
+  assert.throws(() => createStudioControlPlane({
+    express: { Router: () => ({ post() {} }) },
+    pool: { connect() {}, query() {} },
+    client: { chat: { completions: { create() {} } } },
+    models: { planner: "p", worker: "w", qa: "q" },
+    createId() {}, createWorkerId() {}, authenticate() {}, rateLimit() {},
+  }), /scoped repository artifact writer/);
 });
