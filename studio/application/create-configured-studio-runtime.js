@@ -17,6 +17,8 @@ export function createConfiguredStudioRuntime({
   createId,
   createWorkerId,
   authorize,
+  artifactWriter = null,
+  artifactPathForTask,
   now,
   workerConcurrency,
 }) {
@@ -38,6 +40,8 @@ export function createConfiguredStudioRuntime({
     planningGateway: gateways.planningGateway,
     workerModelGateway: gateways.workerModelGateway,
     qaGateway: gateways.qaGateway,
+    artifactWriter,
+    ...(artifactPathForTask ? { artifactPathForTask } : {}),
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
   });
