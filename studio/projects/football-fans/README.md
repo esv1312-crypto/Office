@@ -71,3 +71,10 @@ This remains an early prototype. Validate Script.Source installation from the St
 Each of the three meetup pads now has a `Raise crew banner` proximity prompt. A player must first select one of the five fan groups. Activating the prompt creates or recolours a server-visible banner at that meetup location and labels it with the selected crew. Other players can replace the banner by raising their own crew's colours. A short per-player cooldown limits repeated activation.
 
 The banner is a simple anchored primitive model and exists only for the current server session. It is not saved between sessions. Validate prompt placement, visibility from multiple approach directions, and multiplayer updates in a disposable Roblox Studio playtest.
+
+
+## Supporter crews (server-session prototype)
+
+Players who have selected one of the five fan groups can use any meetup pad to create or join that group's supporter crew. The first player creates a session crew; later players from the same fan group join it. Crews are limited to six members. The crew name and membership/leader/size are exposed as Player attributes for later UI integration. Players can leave at any meetup pad; if the leader leaves, leadership transfers to a remaining member. Membership is session-only and is cleared when players leave the server.
+
+This is a lightweight server-side party prototype, not a persistent clan system: there are no friend invitations, custom names, saved membership, chat channels, rewards, or cross-server crews yet. Validate multiplayer join/leave, leader handoff, crew capacity, and switching fan groups in Roblox Studio.
