@@ -25,7 +25,7 @@ function fixture({ generated, startResult, completeResult, gatewayError } = {}) 
           assigneeSpecialistId: specialist.id,
           version: 5,
         },
-        execution: { attempt: 1 },
+        execution: { attempt: 1, fencingToken: 1, leaseToken: "lease-1" },
       };
     },
     async completeExecution(value) {
