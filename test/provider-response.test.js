@@ -44,3 +44,22 @@ test("multimodal content parts are normalized to final text", () => {
 test("legacy choice text remains supported when final content is absent", () => {
   assert.equal(extractFinalAssistantText({ content: null, reasoning: "internal only" }, "Legacy final answer."), "Legacy final answer.");
 });
+
+test("provider response diagnostics expose shape but never response or reasoning text", async () => {
+  const { summarizeProviderResponse } = await import("../src/provider-response.js");
+  const summary = summarizeProviderResponse({
+    id: "resp_123", model: "example/model",
+    choices: [{ finish_reason: "length", message: { role: "assistant", content: null, reasoning: "private reasoning text", reasoning_details: [{ type: "reasoning.text", text: "private detail" }], tool_calls: [] } }],
+    usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46 }
+  }, 200, "req_abc");
+  assert.equal(summary.httpStatus, 200);
+  assert.equal(summary.requestId, "req_abc");
+  assert.equal(summary.finishReason, "length");
+  assert.equal(summary.contentType, "null");
+  assert.equal(summary.contentChars, 0);
+  assert.equal(summary.reasoningChars, 22);
+  assert.equal(summary.reasoningDetailsCount, 1);
+  assert.deepEqual(summary.usage, { promptTokens: 12, completionTokens: 34, totalTokens: 46 });
+  assert.equal(JSON.stringify(summary).includes("private reasoning"), false);
+  assert.equal(JSON.stringify(summary).includes("private detail"), false);
+});

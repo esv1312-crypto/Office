@@ -6,7 +6,7 @@ import { refreshModelScout, getModelScoutState, getDynamicPool, getCandidatePool
 import { initDatabase, loadDatabaseState, saveTaskSnapshot, saveTaskSnapshots, saveEvent, databaseStatus, databaseEnabled, saveResourceSnapshot, closeDatabase } from "./database.js";
 import { enforceVerificationEvidence } from "./verification.js";
 import { extractEvidenceIndex } from "./evidence-index.js";
-import { extractFinalAssistantText } from "./provider-response.js";
+import { extractFinalAssistantText, summarizeProviderResponse } from "./provider-response.js";
 import { buildProviderCandidateOrder, orderPrimaryModelFirst } from "./provider-candidate-order.js";
 import { shouldStopOpenRouterFallback, shouldSuppressProviderForStatus, providerCooldownMs, modelCooldownMs } from "./provider-retry-policy.js";
 import { normalizeTaskSnapshotAfterRestart, validateSubtaskBatch, isVerificationCompletionEligible, applyPersistedTaskTransition } from "./task-state.js";
@@ -461,6 +461,8 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
         body:JSON.stringify(body)
       });
       const data=await response.json().catch(()=>({}));
+      const responseDiagnostics=summarizeProviderResponse(data,response.status,response.headers.get("x-request-id") || response.headers.get("x-openrouter-request-id"));
+      emit("ai.response_received",{taskId,employeeId,provider,model,...responseDiagnostics});
       if(provider==="openrouter"&&paidTestEnabled()){
         const usage=data?.usage;
         const hasInputTokens=Boolean(usage) && (usage.prompt_tokens!=null || usage.input_tokens!=null);
@@ -498,9 +500,10 @@ async function callOpenAICompatible({provider,baseUrl,apiKey,model,task,headers=
       const text=extractFinalAssistantText(message,choiceText);
       if(!text) {
         const finishReason=String(data?.choices?.[0]?.finish_reason || "unknown");
-        const error=new Error(provider+" returned an empty response (no final assistant content; finish_reason="+finishReason+")");
+        const error=new Error(provider+" returned an empty response (no final assistant content; finish_reason="+finishReason+"; diagnostics="+JSON.stringify(responseDiagnostics)+")");
         error.code="EMPTY_RESPONSE";
         error.finishReason=finishReason;
+        error.responseDiagnostics=responseDiagnostics;
         throw error;
       }
       return {text,model,usage:data?.usage||null};
