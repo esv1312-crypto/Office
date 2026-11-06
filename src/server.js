@@ -2622,6 +2622,45 @@ async function runFreeModelTestOnStartup() {
   }
 }
 
+async function runFreeModelTeamTestOnStartup() {
+  const runId=String(process.env.OFFICE_FREE_MODEL_TEAM_TEST_RUN_ID || "").trim();
+  if(!runId) return;
+  const existing=[...tasks.values()].find(record=>record.kind==="free_model_team_test" && record.freeModelTeamTestRunId===runId);
+  if(existing) {
+    emit("free_model_team_test.already_recorded",{taskId:existing.id,runId,status:existing.status});
+    return;
+  }
+  if(!freeOnly() || paidTestEnabled()) {
+    emit("free_model_team_test.blocked",{runId,reason:"free-only mode is not safely enabled"});
+    return;
+  }
+  if(!aiConfigured("openrouter")) {
+    emit("free_model_team_test.blocked",{runId,reason:"OpenRouter credentials are not configured"});
+    return;
+  }
+  const taskText=[
+    "ПРОВЕДИ КОМАНДНЫЙ АНАЛИЗ РЫНКА НАВЕСНОГО ОБОРУДОВАНИЯ ДЛЯ ЭКСКАВАТОРОВ В РОССИИ.",
+    "delegate exactly 3 subtasks: analyst, executor, verifier",
+    "АНАЛИТИК: выдели пять приоритетных категорий навесного оборудования для экскаваторов; для каждой укажи типовые работы, покупателя и аргументы спроса. Не выдумывай статистику.",
+    "ИСПОЛНИТЕЛЬ: разработай три практических канала поиска российских B2B-покупателей, опиши конкретный порядок действий и признаки целевого клиента. Никаких внешних действий не заявляй.",
+    "ПРОВЕРЯЮЩИЙ: независимо проверь выводы двух специалистов, найди повторы, сомнительные категории, неподтверждённые утверждения и пробелы. Явно раздели факты, предположения и то, что требует актуальных данных.",
+    "РУКОВОДИТЕЛЬ: сведи результаты в единый краткий отчёт, убери дубли, обозначь ограничения и дай практический приоритет для продавца навесного оборудования.",
+    "Ответ на русском. Не заявляй о проведённом интернет-исследовании. Не придумывай цены, объёмы рынка, доли, компании-покупатели или статистику."
+  ].join("\n");
+  const record=createTaskRecord({task:taskText,employeeId:"chief",parentTaskId:null,kind:"free_model_team_test"});
+  record.freeModelTeamTestRunId=runId;
+  tasks.set(record.id,record);
+  try {
+    await saveTaskSnapshot(taskSnapshot(record));
+  } catch(error) {
+    tasks.delete(record.id);
+    emit("free_model_team_test.accept_failed",{runId,error:error?.message||String(error)});
+    return;
+  }
+  emit("free_model_team_test.accepted",{taskId:record.id,runId,freeOnly:true,subtasksRequested:3});
+  void executeRootTask(record);
+}
+
 async function bootstrapDatabase() {
   try {
     const enabled = await initDatabase();
@@ -2674,7 +2713,7 @@ const httpServer=app.listen(process.env.PORT || 10000,"0.0.0.0",()=>{
     void refreshModelScout()
       .then(()=>emit("model_scout.refreshed",getModelScoutState()))
       .catch(error=>emit("model_scout.error",{error:error?.message||String(error)}))
-      .finally(()=>{ void runFreeModelTestOnStartup(); });
+      .finally(()=>{ void runFreeModelTestOnStartup(); void runFreeModelTeamTestOnStartup(); });
     modelScoutTimer=setInterval(()=>void refreshModelScout().then(()=>emit("model_scout.refreshed",getModelScoutState())).catch(error=>emit("model_scout.error",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.MODEL_SCOUT_INTERVAL_MS,3600000,60000,604800000));
     void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)}));
     resourceScoutTimer=setInterval(()=>void runResourceScan().catch(error=>emit("resource_scout.scan_failed",{error:error?.message||String(error)})), boundedIntegerSetting(process.env.RESOURCE_SCOUT_INTERVAL_MS,86400000,60000,604800000));
