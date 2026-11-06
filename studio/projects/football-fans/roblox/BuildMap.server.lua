@@ -448,7 +448,7 @@ end
 makeSupporter("BlueScarfSupporter", -48, -20, C.blue, C.orange, "COME ON!")
 makeSupporter("OrangeScarfSupporter", -18, -35, C.orange, C.blue, "HELLO, FRIEND!")
 makeSupporter("GreenScarfSupporter", 22, -22, C.green, C.white, "MATCHDAY!")
-makeSupporter("旗Supporter", 54, 15, C.red, C.white, "WELCOME!")
+makeSupporter("RedScarfSupporter", 54, 15, C.red, C.white, "WELCOME!")
 
 -- Small groups near the mini pitch and the stadium approach.
 makeSupporter("PitchSupporterOne", -390, -310, C.blue, C.white, "NICE PASS!")
