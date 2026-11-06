@@ -232,14 +232,17 @@ test("completion reads the task fencing token before validating and persisting t
   const result = await store.completeExecution({
     executionId: "execution-1", output: "Lobby built",
     modelSnapshot: { provider: "test", model: "test-model" },
-    artifact: { type: "text", name: "Lobby result", createdByWorkerId: "worker-1", specialistId: "specialist-1" },
+    artifact: { type: "text", name: "Lobby result", createdByWorkerId: "worker-1", specialistId: "specialist-1", external: { path: "studio/projects/project-1/artifacts/task-1.md", branch: "studio-v1-foundation", sha256: "checksum" } },
     at: "2026-11-07T12:00:00.000Z", fencingToken: 5, leaseToken: "lease-5",
   });
   assert.equal(result.task.status, "qa");
   assert.equal(result.artifactId, "generated-1");
   const taskLockQuery = calls.find(call => call.sql.includes("FROM studio.tasks t JOIN studio.projects p") && call.sql.includes("FOR UPDATE OF t"));
   assert.match(taskLockQuery.sql, /t\.fencing_token/);
-  assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.artifacts")));
+  const artifactInsert = calls.find(call => call.sql.includes("INSERT INTO studio.artifacts"));
+  assert.ok(artifactInsert);
+  const storedArtifact = JSON.parse(artifactInsert.params[5]);
+  assert.equal(storedArtifact.external.path, "studio/projects/project-1/artifacts/task-1.md");
   assert.ok(calls.some(call => call.sql.includes("UPDATE studio.tasks") && call.sql.includes("SET status = 'qa'")));
   assert.equal(calls.at(-2).sql, "COMMIT");
 });
