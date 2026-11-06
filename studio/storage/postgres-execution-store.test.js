@@ -72,9 +72,13 @@ test("claims an assigned task and writes execution in one transaction", async ()
   assert.equal(result.task.status, "running");
   assert.equal(result.task.version, 4);
   assert.equal(result.execution.attempt, 2);
+  assert.equal(result.execution.fencingToken, 5);
+  assert.equal(result.execution.leaseToken, "generated-2");
+  assert.ok(result.execution.leaseExpiresAt);
   assert.equal(result.execution.workerId, "worker-1");
   assert.equal(calls[0].sql, "BEGIN");
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.executions")));
+  assert.ok(calls.some(call => call.sql.includes("fencing_token = $5")));
   assert.ok(calls.some(call => call.sql.includes("execution.started")));
   assert.equal(calls.at(-2).sql, "COMMIT");
   assert.equal(calls.at(-1).sql, "RELEASE");
