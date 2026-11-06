@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { createStudioHttpHandlers } from "./studio-http-handlers.js";
 
 function fixture({ planStatus = "proposed" } = {}) {
-  const calls = { create: [], approve: [], execute: [], projectLookup: [], planLookup: [] };
+  const calls = { bootstrap: [], create: [], approve: [], execute: [], projectLookup: [], planLookup: [] };
   const runtime = {
+    bootstrap: { bootstrap: async value => { calls.bootstrap.push(value); return { status: "plan_proposed" }; } },
     director: { plan: async value => {
       calls.create.push(value);
       return { plan: { id: "plan-1", status: "proposed" }, tasks: [], status: "proposed" };
@@ -83,4 +84,24 @@ test("executes an approved plan and returns the workflow report", async () => {
   assert.equal(result.status, 200);
   assert.equal(result.body.status, "completed");
   assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: ownerRequest.auth.actor }]);
+});
+
+
+test("bootstraps a workspace using only the verified request actor", async () => {
+  const { handlers, calls } = fixture();
+  const result = await handlers.bootstrapWorkspace({
+    ...ownerRequest,
+    body: {
+      organizationName: "My Studio",
+      projectName: "Universal Product",
+      productProfileId: "saas-platform",
+      brief: "Create a subscription management product",
+      ownerActorId: "forged-owner",
+    },
+  });
+  assert.equal(result.status, 201);
+  assert.equal(calls.bootstrap[0].actor.id, "owner-1");
+  assert.equal(calls.bootstrap[0].productProfileId, "saas-platform");
+  assert.equal(calls.bootstrap[0].brief, "Create a subscription management product");
+  assert.equal("ownerActorId" in calls.bootstrap[0], false);
 });
