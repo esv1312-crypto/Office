@@ -60,3 +60,7 @@ test("free-only team calls prefer OpenRouter's free router and retain explicit f
   assert.match(source, /String\(model\)==="openrouter\/free" \|\| String\(model\)\.endsWith\(":free"\)/);
   assert.match(source, /String\(candidate\.model\)\.endsWith\(":free"\) \|\| String\(candidate\.model\)==="openrouter\/free"/);
 });
+
+test("free-only model fallback is bounded to protect the provider daily request quota", () => {
+  assert.match(source, /const fallbackLimit=freeOnly\(\)\s*\? boundedIntegerSetting\(process\.env\.OPENROUTER_FREE_MAX_MODEL_FALLBACKS,3,1,5\)\s*:/);
+});
