@@ -478,6 +478,21 @@ for _, spot in ipairs({
 end
 
 
+-- Fan crew interaction: create or join a small server-session supporter party.
+for _, spotName in ipairs({"SquareMeetup", "PitchMeetup", "StadiumMeetup"}) do
+	local pad = meetups:FindFirstChild(spotName)
+	if pad then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "CreateOrJoinFanCrew"
+		prompt.ActionText = "Create / join fan crew"
+		prompt.ObjectText = "Supporter meetup"
+		prompt.HoldDuration = 0.6
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = pad
+	end
+end
+
 -- Shared crew banners: each meetup pad gets a server-visible banner interaction.
 for _, spotName in ipairs({"SquareMeetup", "PitchMeetup", "StadiumMeetup"}) do
 	local pad = meetups:FindFirstChild(spotName)
@@ -555,6 +570,9 @@ local palette = {
 }
 local cooldowns = {}
 local bannerCooldowns = {}
+local fanCrews = {}
+local playerCrew = {}
+local crewSequence = 0
 
 
 for teamName, data in pairs(palette) do
@@ -695,6 +713,63 @@ local function cheer(player)
 	end)
 end
 
+local function updateCrewAttributes(crew)
+	for member in pairs(crew.members) do
+		if member.Parent == Players then
+			member:SetAttribute("FanCrewName", crew.name)
+			member:SetAttribute("FanCrewLeader", member == crew.leader)
+			member:SetAttribute("FanCrewSize", crew.size)
+		end
+	end
+end
+
+local function leaveFanCrew(player)
+	local crew = playerCrew[player]
+	if not crew then return end
+	crew.members[player] = nil
+	crew.size = math.max(0, crew.size - 1)
+	playerCrew[player] = nil
+	player:SetAttribute("FanCrewName", nil)
+	player:SetAttribute("FanCrewLeader", nil)
+	player:SetAttribute("FanCrewSize", nil)
+	if crew.size == 0 then
+		fanCrews[crew.group] = nil
+		return
+	end
+	if crew.leader == player then
+		for member in pairs(crew.members) do
+			crew.leader = member
+			break
+		end
+	end
+	updateCrewAttributes(crew)
+end
+
+local function createOrJoinFanCrew(player)
+	local groupName = player:GetAttribute("FanGroup")
+	if not groupName or not palette[groupName] then return end
+	if playerCrew[player] then return end
+
+	local crew = fanCrews[groupName]
+	if not crew then
+		crewSequence += 1
+		crew = {
+			name = groupName .. " Rally " .. tostring(crewSequence),
+			group = groupName,
+			leader = player,
+			members = {},
+			size = 0,
+		}
+		fanCrews[groupName] = crew
+	end
+	if crew.size >= 6 then return end
+
+	crew.members[player] = true
+	crew.size += 1
+	playerCrew[player] = crew
+	updateCrewAttributes(crew)
+end
+
 local function raiseCrewBanner(player, pad)
 	local groupName = player:GetAttribute("FanGroup")
 	local data = groupName and palette[groupName]
@@ -777,6 +852,10 @@ if meetups then
 		if cheerPrompt then
 			cheerPrompt.Triggered:Connect(cheer)
 		end
+		local crewPrompt = pad:FindFirstChild("CreateOrJoinFanCrew")
+		if crewPrompt then
+			crewPrompt.Triggered:Connect(createOrJoinFanCrew)
+		end
 		local bannerPrompt = pad:FindFirstChild("RaiseCrewBanner")
 		if bannerPrompt then
 			bannerPrompt.Triggered:Connect(function(player)
@@ -798,6 +877,7 @@ end
 
 Players.PlayerAdded:Connect(setupPlayer)
 Players.PlayerRemoving:Connect(function(player)
+	leaveFanCrew(player)
 	cooldowns[player] = nil
 	bannerCooldowns[player] = nil
 end)
@@ -805,4 +885,4 @@ for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
 ]=]
 runtimeScript.Parent = ServerScriptService
 
-print("FootballFansMap generated with supporter teams, meetup cheers, and shared crew banners. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
+print("FootballFansMap generated with supporter teams, meetup cheers, shared crew banners, and fan crews. Zones: Arrival Plaza, Fan Street, Supporters' Square, Fan Shop, Café, Mini Pitch, Stadium Forecourt, Main Stadium.")
