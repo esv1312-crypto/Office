@@ -2,29 +2,30 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createPostgresStudioAccessControl } from "./postgres-access-control.js";
 
-function fixture({ role = "owner", membershipStatus = "active", organizationStatus = "active" } = {}) {
+function fixture({ role = "owner", membershipStatus = "active", organizationStatus = "active", actorId = "identity-provider-subject-42" } = {}) {
   const calls = [];
   const pool = {
     async query(sql, params) {
       calls.push({ sql, params });
+      const actorMatches = params?.[1] === actorId;
       if (sql.includes("FROM studio.organization_memberships m") &&
           sql.includes("JOIN studio.organizations o") &&
           !sql.includes("JOIN studio.projects p")) {
-        return { rows: [{ role, status: membershipStatus, organization_status: organizationStatus }] };
+        return { rows: actorMatches ? [{ role, status: membershipStatus, organization_status: organizationStatus }] : [] };
       }
       if (sql.includes("FROM studio.projects p") && sql.includes("JOIN studio.organization_memberships m")) {
         if (sql.includes("SELECT p.id")) return {
-          rows: membershipStatus === "active" && organizationStatus === "active" ? [{
+          rows: actorMatches && membershipStatus === "active" && organizationStatus === "active" ? [{
             id: "project-1", organization_id: "org-1", name: "Pilot",
             product_profile_id: "roblox", status: "active", version: 1, payload: {},
           }] : [],
         };
-        return membershipStatus === "active" && organizationStatus === "active"
+        return actorMatches && membershipStatus === "active" && organizationStatus === "active"
           ? { rows: [{ role, status: membershipStatus, organization_status: organizationStatus }] }
           : { rows: [] };
       }
       if (sql.includes("FROM studio.plans pl")) return {
-        rows: membershipStatus === "active" && organizationStatus === "active" ? [{
+        rows: actorMatches && membershipStatus === "active" && organizationStatus === "active" ? [{
           id: "plan-1", project_id: "project-1", organization_id: "org-1",
           status: "proposed", version: 1, payload: { title: "Pilot plan" },
         }] : [],
@@ -80,4 +81,29 @@ test("denies revoked memberships, suspended organizations, global scopes and unk
   const { access } = fixture();
   assert.equal(await access.authorize({ actor, action: "execution.recover", scope: "studio" }), false);
   assert.equal(await access.authorize({ actor, action: "unknown.action", project: { id: "project-1" } }), false);
+});
+
+
+test("does not disclose projects or plans to an authenticated subject without membership", async () => {
+  const { access, calls } = fixture();
+  const stranger = { id: "different-identity-provider-subject" };
+  assert.equal(await access.loadProject({ projectId: "project-1", actor: stranger }), null);
+  assert.equal(await access.loadPlan({ planId: "plan-1", actor: stranger }), null);
+  assert.deepEqual(calls.map(call => call.params), [
+    ["project-1", stranger.id],
+    ["plan-1", stranger.id],
+  ]);
+});
+
+test("observers cannot create plans and administrators cannot approve or execute them", async () => {
+  const observer = fixture({ role: "observer" });
+  const project = { id: "project-1" };
+  const plan = { id: "plan-1", projectId: "project-1" };
+  assert.equal(await observer.access.authorize({ actor, action: "director.plan.create", project }), false);
+
+  const administrator = fixture({ role: "admin" });
+  assert.equal(await administrator.access.authorize({ actor, action: "director.plan.create", project }), true);
+  assert.equal(await administrator.access.authorize({ actor, action: "task.assign", task: { projectId: "project-1" } }), true);
+  assert.equal(await administrator.access.authorize({ actor, action: "director.plan.approve", plan }), false);
+  assert.equal(await administrator.access.authorize({ actor, action: "director.plan.execute", plan }), false);
 });
