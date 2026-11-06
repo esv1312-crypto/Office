@@ -1,0 +1,24 @@
+{
+  "name": "FootballFansDistrict",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "BuildDistrict": {
+        "$path": "ServerScriptService/BuildDistrict.server.lua"
+      },
+      "Gameplay": {
+        "$path": "ServerScriptService/Gameplay.server.lua"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "HUD": {
+          "$path": "StarterPlayer/StarterPlayerScripts/HUD.client.lua"
+        }
+      }
+    }
+  }
+}
