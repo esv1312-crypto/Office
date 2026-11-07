@@ -82,3 +82,26 @@ test("skips tasks already assigned or in execution", async () => {
   assert.equal(result.skipped.length, 2);
   assert.equal(result.assigned.length, 0);
 });
+
+test("resumes already-assigned tasks with their existing active specialist", async () => {
+  const { dispatch, calls } = setup([{
+    id: "task-resume", projectId: "project-1", status: "assigned", version: 4,
+    assigneeSpecialistId: "a-dev", requiredCompetencies: ["lua", "roblox"],
+  }]);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.status, "dispatched");
+  assert.deepEqual(result.assigned, [{
+    taskId: "task-resume", specialistId: "a-dev", taskStatus: "assigned", resumed: true,
+  }]);
+  assert.equal(calls.length, 0, "resuming must not reassign or mutate the existing assignment");
+});
+
+test("blocks stale assignments whose specialist is no longer active", async () => {
+  const { dispatch } = setup([{
+    id: "task-stale", projectId: "project-1", status: "assigned", version: 4,
+    assigneeSpecialistId: "missing-specialist", requiredCompetencies: ["lua"],
+  }]);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.blocked[0].code, "ASSIGNED_SPECIALIST_UNAVAILABLE");
+});
