@@ -17,7 +17,9 @@ test("creates a validated Roblox pilot team with independent QA", () => {
   assert.ok(qa);
   assert.ok(qa.competencies.includes("qa.review"));
   assert.ok(!qa.competencies.includes("roblox.lua"));
-  assert.ok(team.every(item => item.allowedTools.length === 0));
+  assert.deepEqual(team.find(item => item.role === "roblox_gameplay_engineer").allowedTools, ["list_repo_directory", "read_repo_file", "write_repo_file"]);
+  assert.deepEqual(qa.allowedTools, ["list_repo_directory", "read_repo_file"]);
+  assert.ok(team.find(item => item.role === "roblox_technical_director").allowedTools.length === 0);
 });
 
 test("rejects missing organization or ID generator", () => {
