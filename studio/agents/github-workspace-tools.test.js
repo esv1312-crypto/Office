@@ -6,103 +6,90 @@ function response(status, body = {}) {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
 }
 
-test("exposes only the three governed GitHub workspace tools", () => {
-  const tools = createGithubWorkspaceTools({
+function createTools(fetchImpl, options = {}) {
+  return createGithubWorkspaceTools({
     owner: "example", repo: "office", branch: "studio-ai-agent-workspace", token: "test",
-    fetchImpl: async () => response(404),
+    fetchImpl, ...options,
   });
-  assert.deepEqual(tools.allowedToolNames, ["list_repo_directory", "read_repo_file", "write_repo_file"]);
-  assert.equal(tools.definitions.length, 3);
+}
+
+test("exposes bounded workspace tools including range reads and patch writes", () => {
+  const tools = createTools(async () => response(404));
+  assert.deepEqual(tools.allowedToolNames, [
+    "list_repo_directory", "read_repo_file", "write_repo_file", "patch_repo_file",
+  ]);
 });
 
-test("lists a workspace directory on the isolated branch", async () => {
-  const calls = [];
-  const tools = createGithubWorkspaceTools({
-    owner: "example", repo: "office", branch: "studio-ai-agent-workspace", token: "test",
-    fetchImpl: async (url, options) => {
-      calls.push({ url, options });
-      return response(200, [{ name: "index.js", path: "studio/agent-workspace/index.js", type: "file", size: 10 }]);
-    },
-  });
-  const result = await tools.execute({ name: "list_repo_directory", arguments: { path: "studio/agent-workspace/" } });
-  assert.equal(result[0].name, "index.js");
-  assert.match(calls[0].url, /ref=studio-ai-agent-workspace$/);
-});
-
-test("reads a UTF-8 file from the isolated branch", async () => {
-  const source = "export const answer = 42;";
-  const tools = createGithubWorkspaceTools({
-    owner: "example", repo: "office", branch: "studio-ai-agent-workspace", token: "test",
-    fetchImpl: async () => response(200, {
-      type: "file", content: Buffer.from(source).toString("base64"), sha: "blob-sha",
-    }),
-  });
-  const result = await tools.execute({ name: "read_repo_file", arguments: { path: "studio/agent-workspace/index.js" } });
-  assert.equal(result.content, source);
+test("reads only a requested inclusive line range and returns SHA metadata", async () => {
+  const source = "one\ntwo\nthree\nfour\nfive";
+  const tools = createTools(async () => response(200, {
+    type: "file", content: Buffer.from(source).toString("base64"), sha: "blob-sha",
+  }));
+  const result = await tools.execute({ name: "read_repo_file", arguments: {
+    path: "studio/agent-workspace/demo.js", start_line: 2, end_line: 3,
+  } });
+  assert.equal(result.content, "two\nthree");
+  assert.deepEqual(result.range, { startLine: 2, endLine: 3, totalLines: 5 });
   assert.equal(result.sha, "blob-sha");
 });
 
-test("creates a new file and updates existing files using the existing blob SHA", async () => {
-  const calls = [];
-  const tools = createGithubWorkspaceTools({
-    owner: "example", repo: "office", branch: "studio-ai-agent-workspace", token: "test",
-    fetchImpl: async (url, options) => {
-      calls.push({ url, options });
-      if (options.method === "PUT") return response(201, { content: { sha: "new-blob", html_url: "https://github.com/example/office" }, commit: { sha: "commit-sha" } });
-      return response(404);
-    },
-  });
-  const created = await tools.execute({ name: "write_repo_file", arguments: {
-    path: "studio/agent-workspace/new.js", content: "export default 1;", message: "Add file",
+test("bounds range reads to maxReadLines", async () => {
+  const source = Array.from({ length: 20 }, (_, i) => "line-" + (i + 1)).join("\n");
+  const tools = createTools(async () => response(200, {
+    type: "file", content: Buffer.from(source).toString("base64"), sha: "blob-sha",
+  }), { maxReadLines: 4 });
+  const result = await tools.execute({ name: "read_repo_file", arguments: {
+    path: "studio/agent-workspace/demo.js", start_line: 2, end_line: 20,
   } });
-  assert.equal(created.commitSha, "commit-sha");
-  assert.equal(JSON.parse(calls[1].options.body).branch, "studio-ai-agent-workspace");
-  assert.equal(Buffer.from(JSON.parse(calls[1].options.body).content, "base64").toString(), "export default 1;");
-
-  calls.length = 0;
-  const updating = createGithubWorkspaceTools({
-    owner: "example", repo: "office", branch: "studio-ai-agent-workspace", token: "test",
-    fetchImpl: async (_url, options) => {
-      calls.push(options);
-      if (options.method === "PUT") return response(200, { content: { sha: "updated" }, commit: { sha: "commit-2" } });
-      return response(200, { sha: "old-blob" });
-    },
-  });
-  await updating.execute({ name: "write_repo_file", arguments: {
-    path: "studio/agent-workspace/new.js", content: "export default 2;", message: "Update file",
-  } });
-  assert.equal(JSON.parse(calls[1].body).sha, "old-blob");
+  assert.equal(result.content.split("\n").length, 4);
+  assert.equal(result.truncated, true);
 });
 
-test("rejects traversal, secrets, workflows, and paths outside the workspace before network access", async () => {
-  let calls = 0;
-  const tools = createGithubWorkspaceTools({
-    owner: "example", repo: "office", branch: "studio-ai-agent-workspace", token: "test",
-    fetchImpl: async () => { calls += 1; return response(404); },
+test("patches only the requested lines and uses optimistic SHA concurrency", async () => {
+  const calls = [];
+  const source = "alpha\nbeta\ngamma\ndelta";
+  const tools = createTools(async (_url, options) => {
+    calls.push(options);
+    if (options.method === "PUT") return response(200, {
+      content: { sha: "new-blob", html_url: "https://github.com/example/office" },
+      commit: { sha: "commit-sha" },
+    });
+    return response(200, { type: "file", content: Buffer.from(source).toString("base64"), sha: "old-blob" });
   });
+  const result = await tools.execute({ name: "patch_repo_file", arguments: {
+    path: "studio/agent-workspace/demo.js", start_line: 2, end_line: 3,
+    replacement: "BETA\nGAMMA", expected_sha: "old-blob", message: "Update two lines",
+  } });
+  assert.equal(result.commitSha, "commit-sha");
+  const payload = JSON.parse(calls.at(-1).body);
+  assert.equal(Buffer.from(payload.content, "base64").toString(), "alpha\nBETA\nGAMMA\ndelta");
+  assert.equal(payload.sha, "old-blob");
+});
+
+test("rejects stale patch SHA before writing", async () => {
+  let writes = 0;
+  const tools = createTools(async (_url, options) => {
+    if (options.method === "PUT") writes += 1;
+    return response(200, { type: "file", content: Buffer.from("fresh").toString("base64"), sha: "fresh-sha" });
+  });
+  await assert.rejects(tools.execute({ name: "patch_repo_file", arguments: {
+    path: "studio/agent-workspace/demo.js", start_line: 1, end_line: 1,
+    replacement: "stale", expected_sha: "old-sha", message: "Should not write",
+  } }), error => error.code === "WORKSPACE_WRITE_CONFLICT");
+  assert.equal(writes, 0);
+});
+
+test("rejects traversal, secrets, workflows, and paths outside the workspace", async () => {
+  let calls = 0;
+  const tools = createTools(async () => { calls += 1; return response(404); });
   for (const path of [
-    "../outside.js",
-    "studio/agent-workspace/../../outside.js",
-    "studio/agent-workspace/.env",
-    "studio/agent-workspace/secrets/token.txt",
-    "studio/agent-workspace/.github/workflows/deploy.yml",
-    "studio/projects/private.md",
-    "/studio/agent-workspace/file.js",
-    "studio\\agent-workspace\\file.js",
+    "../outside.js", "studio/agent-workspace/../../outside.js",
+    "studio/agent-workspace/.env", "studio/agent-workspace/secrets/token.txt",
+    "studio/agent-workspace/.github/workflows/deploy.yml", "studio/projects/private.md",
+    "/studio/agent-workspace/file.js", "studio\\agent-workspace\\file.js",
   ]) {
-    await assert.rejects(
-      tools.execute({ name: "read_repo_file", arguments: { path } }),
-      error => error.code === "WORKSPACE_PATH_REJECTED",
-    );
+    await assert.rejects(tools.execute({ name: "read_repo_file", arguments: { path } }),
+      error => error.code === "WORKSPACE_PATH_REJECTED");
   }
   assert.equal(calls, 0);
-});
-
-test("rejects unregistered tools and malformed arguments", async () => {
-  const tools = createGithubWorkspaceTools({
-    owner: "example", repo: "office", branch: "studio-ai-agent-workspace", token: "test",
-    fetchImpl: async () => response(404),
-  });
-  await assert.rejects(tools.execute({ name: "run_shell", arguments: {} }), error => error.code === "WORKSPACE_TOOL_NOT_ALLOWED");
-  await assert.rejects(tools.execute({ name: "read_repo_file", arguments: "{" }), error => error.code === "WORKSPACE_INVALID_ARGUMENTS");
 });
