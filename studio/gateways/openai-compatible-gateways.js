@@ -89,6 +89,11 @@ export function createOpenAiCompatibleGateways({
   provider = "openai-compatible",
   workerTools = null,
   maxToolRounds = 8,
+  maxToolCalls = 12,
+  maxToolResultBytes = 12 * 1024,
+  maxTotalToolResultBytes = 48 * 1024,
+  maxTotalOutputTokens = 12000,
+  maxTotalPromptTokens = 120000,
 }) {
   if (!client?.chat?.completions ||
       typeof client.chat.completions.create !== "function") {
@@ -243,6 +248,11 @@ export function createOpenAiCompatibleGateways({
             temperature: configs.worker.temperature,
             maxTokens: configs.worker.maxTokens,
             maxRounds: maxToolRounds,
+            maxToolCalls,
+            maxToolResultBytes,
+            maxTotalToolResultBytes,
+            maxTotalOutputTokens,
+            maxTotalPromptTokens,
             signal,
           });
           return {
@@ -251,6 +261,8 @@ export function createOpenAiCompatibleGateways({
               ...makeSnapshot(providerName, "worker", configs.worker),
               toolCallsExecuted: result.toolCallsExecuted,
               toolRounds: result.toolRounds,
+              usage: result.usage,
+              budget: result.budget,
             },
           };
         }
