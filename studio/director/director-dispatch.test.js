@@ -73,12 +73,28 @@ test("does not dispatch without authorization", async () => {
   assert.equal(calls.length, 0);
 });
 
-test("skips tasks already assigned or in execution", async () => {
-  const { dispatch } = setup([
-    { id: "task-3", status: "assigned", version: 4 },
+test("requeues previously assigned tasks after a worker lease expires", async () => {
+  const { dispatch, calls } = setup([
+    { id: "task-3", status: "assigned", assigneeSpecialistId: "a-dev", version: 4 },
     { id: "task-4", status: "qa", version: 5 },
+    { id: "task-5", status: "running", assigneeSpecialistId: "a-dev", version: 6 },
   ]);
   const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
-  assert.equal(result.skipped.length, 2);
+  assert.deepEqual(result.assigned, [{
+    taskId: "task-3", specialistId: "a-dev", taskStatus: "assigned", resumed: true
+  }]);
+  assert.deepEqual(result.skipped, [
+    { taskId: "task-4", status: "qa" },
+    { taskId: "task-5", status: "running" },
+  ]);
+  assert.equal(calls.length, 0);
+});
+
+test("blocks recovery when the original assigned specialist is no longer active", async () => {
+  const { dispatch } = setup([{
+    id: "task-6", status: "assigned", assigneeSpecialistId: "missing", version: 1,
+  }]);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
   assert.equal(result.assigned.length, 0);
+  assert.equal(result.blocked[0].code, "ASSIGNED_SPECIALIST_UNAVAILABLE");
 });
