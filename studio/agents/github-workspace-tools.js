@@ -17,7 +17,7 @@ function safePath(value, allowedPrefix) {
       /(^|\/)(\.git|\.github\/workflows)(\/|$)/i.test(path)) {
     throw Object.assign(new Error("Workspace path is outside the permitted source area"), { code: "WORKSPACE_PATH_REJECTED" });
   }
-  return path;
+  return normalized;
 }
 
 async function parseResponse(response) {
