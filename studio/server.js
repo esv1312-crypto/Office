@@ -105,11 +105,16 @@ const modelApiKey = String(
 if (!modelApiKey) throw new Error("Missing Studio model key: set STUDIO_MODEL_API_KEY or reuse the existing OpenRouter key");
 const configuredLegacyModel = String(process.env.OPENROUTER_MODEL || "").trim();
 const legacyFreeModel = configuredLegacyModel.endsWith(":free") ? configuredLegacyModel : "openrouter/free";
-const defaultModel = process.env.STUDIO_DEFAULT_MODEL || legacyFreeModel;
-function freeModelEnv(name) {
+const paidModelsEnabled = String(process.env.STUDIO_ALLOW_PAID_MODELS || "").toLowerCase() === "true";
+const defaultModel = String(
+  process.env.STUDIO_DEFAULT_MODEL ||
+  (paidModelsEnabled ? "deepseek/deepseek-v4.1-flash-1017" : legacyFreeModel),
+).trim();
+function modelEnv(name) {
   const model = String(process.env[name] || defaultModel).trim();
-  if (model !== "openrouter/free" && !model.endsWith(":free")) {
-    throw new Error(`${name} must identify an explicitly free OpenRouter model; paid models are disabled by default`);
+  if (!model) throw new Error(`${name} must identify an OpenRouter model`);
+  if (!paidModelsEnabled && model !== "openrouter/free" && !model.endsWith(":free")) {
+    throw new Error(`${name} must identify an explicitly free OpenRouter model unless STUDIO_ALLOW_PAID_MODELS=true`);
   }
   return model;
 }
@@ -120,19 +125,19 @@ const client = new OpenAI({
 });
 const models = {
   planner: {
-    model: freeModelEnv("STUDIO_PLANNER_MODEL"),
+    model: modelEnv("STUDIO_PLANNER_MODEL"),
     temperature: 0.2,
     maxTokens: 3000,
     instructionVersion: "studio-v1",
   },
   worker: {
-    model: freeModelEnv("STUDIO_WORKER_MODEL"),
+    model: modelEnv("STUDIO_WORKER_MODEL"),
     temperature: 0.2,
     maxTokens: 6000,
     instructionVersion: "studio-v1",
   },
   qa: {
-    model: freeModelEnv("STUDIO_QA_MODEL"),
+    model: modelEnv("STUDIO_QA_MODEL"),
     temperature: 0.1,
     maxTokens: 2500,
     instructionVersion: "studio-v1",
