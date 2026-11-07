@@ -32,6 +32,7 @@ function fixture({ workerStatus = "qa", verdict = "accepted", reviewerList = [bu
   const directory = {
     getTask: async () => ({ ...task, status: "assigned", assigneeSpecialistId: builder.id }),
     getSpecialist: async () => builder,
+    getLatestArtifactForTask: async () => null,
     listActiveSpecialists: async () => reviewerList,
   };
   const workflow = createPlanExecutionWorkflow({
