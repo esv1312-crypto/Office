@@ -163,12 +163,13 @@ const artifactWriter = githubToken
       allowedPrefixes: ["studio/projects/"],
     })
   : null;
-const githubWorkspaceTools = githubToken
+const githubWorkspaceToken = String(process.env.STUDIO_GITHUB_WORKSPACE_TOKEN || githubToken).trim();
+const githubWorkspaceTools = githubWorkspaceToken
   ? createGithubWorkspaceTools({
       owner: "esv1312-crypto",
       repo: "Office",
       branch: process.env.STUDIO_GITHUB_WORKSPACE_BRANCH || "studio-ai-agent-workspace",
-      token: githubToken,
+      token: githubWorkspaceToken,
       allowedPrefix: "studio/agent-workspace/",
     })
   : null;
