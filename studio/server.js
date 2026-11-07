@@ -6,6 +6,7 @@ import { createStudioControlPlane } from "./application/create-studio-control-pl
 import { createNeonAuthBearerMiddleware } from "./http/create-neon-auth-bearer-middleware.js";
 import { createLegacyOfficeTokenMiddleware } from "./http/create-legacy-office-token-middleware.js";
 import { createGithubArtifactWriter } from "./artifacts/github-artifact-writer.js";
+import { createGithubWorkspaceTools } from "./agents/github-workspace-tools.js";
 import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.js";
 
 function requiredEnv(name) {
@@ -71,6 +72,7 @@ function createSpecialistsForProfile({ productProfileId, organizationId, createI
       role: "implementation_specialist",
       competencies: ["implementation", "coding", "documentation"],
       instructions: "Produce the assigned implementation artifact. Follow the task acceptance criteria, explain assumptions, and never claim external changes that were not performed.",
+      allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"],
     },
     {
       name: "Quality Engineer",
@@ -86,7 +88,7 @@ function createSpecialistsForProfile({ productProfileId, organizationId, createI
     ...role,
     status: "active",
     version: 1,
-    allowedTools: [],
+    allowedTools: role.allowedTools || [],
     modelProfile: { strategy: "gateway-default", requiresOwnerApprovalForPaidModels: true },
     createdAt: at,
     updatedAt: at,
@@ -161,6 +163,16 @@ const artifactWriter = githubToken
       allowedPrefixes: ["studio/projects/"],
     })
   : null;
+const githubWorkspaceToken = String(process.env.STUDIO_GITHUB_WORKSPACE_TOKEN || githubToken).trim();
+const githubWorkspaceTools = githubWorkspaceToken
+  ? createGithubWorkspaceTools({
+      owner: "esv1312-crypto",
+      repo: "Office",
+      branch: "studio-ai-agent-workspace",
+      token: githubWorkspaceToken,
+      allowedPrefix: "studio/agent-workspace/",
+    })
+  : null;
 const controlPlane = createStudioControlPlane({
   express,
   pool,
@@ -175,6 +187,7 @@ const controlPlane = createStudioControlPlane({
     max: positiveIntegerEnv("STUDIO_RATE_LIMIT_PER_MINUTE", 60, 600),
   }),
   artifactWriter,
+  workerTools: githubWorkspaceTools,
   createSpecialistsForProfile,
   workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
 });

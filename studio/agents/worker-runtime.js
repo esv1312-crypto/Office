@@ -142,6 +142,8 @@ export function createWorkerRuntime({
             id: specialistId,
             role: specialist.role,
             instructions: specialist.instructions,
+            competencies: specialist.competencies || [],
+            allowedTools: Array.isArray(specialist.allowedTools) ? specialist.allowedTools : [],
             modelProfile: specialist.modelProfile || null,
           },
           execution: started.execution,

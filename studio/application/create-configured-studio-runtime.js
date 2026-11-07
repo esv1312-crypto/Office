@@ -18,6 +18,7 @@ export function createConfiguredStudioRuntime({
   createWorkerId,
   authorize,
   artifactWriter = null,
+  workerTools = null,
   artifactPathForTask,
   now,
   workerConcurrency,
@@ -31,7 +32,7 @@ export function createConfiguredStudioRuntime({
   if (typeof authorize !== "function") {
     throw new TypeError("A governance authorization policy is required");
   }
-  const gateways = createOpenAiCompatibleGateways({ client, models, provider });
+  const gateways = createOpenAiCompatibleGateways({ client, models, provider, workerTools });
   const runtime = createStudioRuntime({
     pool,
     createId,
