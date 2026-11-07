@@ -42,8 +42,29 @@ export function createDirectorDispatch({
       const report = { planId: loaded.plan.id, status: "dispatched", assigned: [], blocked: [], skipped: [] };
 
       for (const task of loaded.tasks) {
-        if (task.status === "assigned" || task.status === "running" ||
-            task.status === "qa" || task.status === "completed") {
+        if (task.status === "assigned") {
+          // An assigned task may have a failed/expired execution while the task
+          // remains assigned. Re-submit the existing assignment to the Worker
+          // Pool so its durable execution store can start a fresh attempt.
+          const existingAssignee = specialists.find(specialist =>
+            specialist.id === task.assigneeSpecialistId &&
+            specialist.status === "active" &&
+            specialist.organizationId === loaded.organizationId &&
+            (!specialist.projectIds?.length || specialist.projectIds.includes(task.projectId)));
+          if (existingAssignee) {
+            report.assigned.push({
+              taskId: task.id, specialistId: existingAssignee.id,
+              taskStatus: "assigned", resumed: true,
+            });
+          } else {
+            report.blocked.push({
+              taskId: task.id, code: "ASSIGNED_SPECIALIST_UNAVAILABLE",
+              reason: "Assigned task cannot be resumed because its specialist is inactive or outside project scope",
+            });
+          }
+          continue;
+        }
+        if (task.status === "running" || task.status === "qa" || task.status === "completed") {
           report.skipped.push({ taskId: task.id, status: task.status });
           continue;
         }
