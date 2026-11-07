@@ -72,6 +72,7 @@ function createSpecialistsForProfile({ productProfileId, organizationId, createI
       role: "implementation_specialist",
       competencies: ["implementation", "coding", "documentation"],
       instructions: "Produce the assigned implementation artifact. Follow the task acceptance criteria, explain assumptions, and never claim external changes that were not performed.",
+      allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"],
     },
     {
       name: "Quality Engineer",
@@ -87,7 +88,7 @@ function createSpecialistsForProfile({ productProfileId, organizationId, createI
     ...role,
     status: "active",
     version: 1,
-    allowedTools: [],
+    allowedTools: role.allowedTools || [],
     modelProfile: { strategy: "gateway-default", requiresOwnerApprovalForPaidModels: true },
     createdAt: at,
     updatedAt: at,
