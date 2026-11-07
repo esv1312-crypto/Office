@@ -10,11 +10,14 @@ function required(value, field) {
 
 function safePath(value, allowedPrefix) {
   const path = required(value, "path");
-  if (path.startsWith("/") || path.includes("\\") || path.split("/").some(part => !part || part === "." || part === "..")) {
+  const normalized = path.endsWith("/") ? path.slice(0, -1) : path;
+  if (normalized.startsWith("/") || normalized.includes("\\") ||
+      normalized.split("/").some(part => !part || part === "." || part === "..")) {
     throw Object.assign(new Error("Workspace path rejected"), { code: "WORKSPACE_PATH_REJECTED" });
   }
-  if (!path.startsWith(allowedPrefix) || /(^|\/)(\.env|secrets?|credentials?)(\/|$)/i.test(path) ||
-      /(^|\/)(\.git|\.github\/workflows)(\/|$)/i.test(path)) {
+  if (!(normalized === allowedPrefix.slice(0, -1) || normalized.startsWith(allowedPrefix)) ||
+      /(^|\/)(\.env|secrets?|credentials?)(\/|$)/i.test(normalized) ||
+      /(^|\/)(\.git|\.github\/workflows)(\/|$)/i.test(normalized)) {
     throw Object.assign(new Error("Workspace path is outside the permitted source area"), { code: "WORKSPACE_PATH_REJECTED" });
   }
   return normalized;
