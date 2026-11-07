@@ -168,7 +168,7 @@ const githubWorkspaceTools = githubWorkspaceToken
   ? createGithubWorkspaceTools({
       owner: "esv1312-crypto",
       repo: "Office",
-      branch: process.env.STUDIO_GITHUB_WORKSPACE_BRANCH || "studio-ai-agent-workspace",
+      branch: "studio-ai-agent-workspace",
       token: githubWorkspaceToken,
       allowedPrefix: "studio/agent-workspace/",
     })
