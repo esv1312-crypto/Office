@@ -12,7 +12,9 @@ function usageFrom(response) {
     usage.input_tokens_details?.cached_tokens ??
     usage.cached_tokens ?? 0
   ) || 0;
-  return { promptTokens: prompt, completionTokens: completion, cachedInputTokens: cached };
+  const rawCost = usage.cost ?? response?.cost;
+  const cost = Number.isFinite(Number(rawCost)) ? Number(rawCost) : null;
+  return { promptTokens: prompt, completionTokens: completion, cachedInputTokens: cached, providerCost: cost };
 }
 
 function compactToolResult(result, maxBytes) {
@@ -46,6 +48,7 @@ export async function runOpenAiToolLoop({
   maxToolResultBytes = 12 * 1024,
   maxTotalToolResultBytes = 48 * 1024,
   maxTotalOutputTokens = 12000,
+  maxTotalPromptTokens = 120000,
   signal,
 }) {
   if (typeof client?.chat?.completions?.create !== "function") throw new TypeError("chat.completions.create is required");
@@ -58,13 +61,14 @@ export async function runOpenAiToolLoop({
   if (!Number.isInteger(maxToolResultBytes) || maxToolResultBytes < 256) throw new TypeError("maxToolResultBytes must be at least 256");
   if (!Number.isInteger(maxTotalToolResultBytes) || maxTotalToolResultBytes < maxToolResultBytes) throw new TypeError("maxTotalToolResultBytes must be at least maxToolResultBytes");
   if (!Number.isInteger(maxTotalOutputTokens) || maxTotalOutputTokens < 1) throw new TypeError("maxTotalOutputTokens must be positive");
+  if (!Number.isInteger(maxTotalPromptTokens) || maxTotalPromptTokens < 1) throw new TypeError("maxTotalPromptTokens must be positive");
 
   const allowed = new Set(tools.map(item => item?.function?.name).filter(name => typeof name === "string"));
   if (allowed.size !== tools.length) throw new TypeError("tool definitions must have unique function names");
   const conversation = [...messages];
   let executed = 0;
   let totalToolResultBytes = 0;
-  const usage = { promptTokens: 0, completionTokens: 0, cachedInputTokens: 0, requests: 0 };
+  const usage = { promptTokens: 0, completionTokens: 0, cachedInputTokens: 0, providerCost: null, requests: 0 };
 
   for (let round = 0; round <= maxRounds; round += 1) {
     const remainingOutput = maxTotalOutputTokens - usage.completionTokens;
@@ -83,7 +87,13 @@ export async function runOpenAiToolLoop({
     usage.promptTokens += requestUsage.promptTokens;
     usage.completionTokens += requestUsage.completionTokens;
     usage.cachedInputTokens += requestUsage.cachedInputTokens;
+    if (requestUsage.providerCost !== null) usage.providerCost = (usage.providerCost || 0) + requestUsage.providerCost;
     usage.requests += 1;
+    if (usage.promptTokens > maxTotalPromptTokens) {
+      throw Object.assign(new Error("Worker reached its cumulative prompt-token budget"), {
+        code: "PROMPT_TOKEN_BUDGET", usage
+      });
+    }
 
     const message = response?.choices?.[0]?.message;
     if (!message || typeof message !== "object") {
@@ -99,7 +109,7 @@ export async function runOpenAiToolLoop({
         toolCallsExecuted: executed,
         toolRounds: round,
         usage,
-        budget: { maxToolCalls, maxToolResultBytes, maxTotalToolResultBytes, maxTotalOutputTokens }
+        budget: { maxToolCalls, maxToolResultBytes, maxTotalToolResultBytes, maxTotalOutputTokens, maxTotalPromptTokens }
       };
     }
     if (round === maxRounds) {
