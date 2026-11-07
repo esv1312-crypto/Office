@@ -23,6 +23,7 @@ export function createStudioControlPlane({
   authenticate,
   rateLimit,
   artifactWriter,
+  workerTools,
   createSpecialistsForProfile,
   now,
   workerConcurrency,
@@ -50,6 +51,7 @@ export function createStudioControlPlane({
     createWorkerId,
     authorize: access.authorize,
     artifactWriter,
+    workerTools,
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
   });
