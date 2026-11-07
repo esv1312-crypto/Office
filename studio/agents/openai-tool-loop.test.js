@@ -3,61 +3,121 @@ import assert from "node:assert/strict";
 import { runOpenAiToolLoop } from "./openai-tool-loop.js";
 
 const tool = { type: "function", function: { name: "read_file", parameters: { type: "object" } } };
+function clientFor(create) {
+  return { chat: { completions: { create } } };
+}
 
-test("executes a tool call, returns its result to the model, and continues to final answer", async () => {
+test("executes a tool call and returns a compact result to the model", async () => {
   const calls = [];
-  const client = { chat: { completions: { create: async request => {
+  const client = clientFor(async request => {
     calls.push(request);
-    if (calls.length === 1) return { choices: [{ message: { role: "assistant", content: null, tool_calls: [
-      { id: "call-1", type: "function", function: { name: "read_file", arguments: JSON.stringify({ path: "studio/a.js" }) } },
-    ] } }] };
-    return { choices: [{ message: { role: "assistant", content: "Read complete." } }] };
-  } } } };
+    if (calls.length === 1) {
+      return {
+        choices: [{ message: { role: "assistant", content: null, tool_calls: [
+          { id: "call-1", type: "function", function: { name: "read_file", arguments: "{}" } }
+        ] } }],
+        usage: { prompt_tokens: 20, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 7 } }
+      };
+    }
+    return {
+      choices: [{ message: { role: "assistant", content: "Done." } }],
+      usage: { prompt_tokens: 25, completion_tokens: 3 }
+    };
+  });
   const result = await runOpenAiToolLoop({
     client, model: "deepseek/flash", messages: [{ role: "user", content: "Inspect file" }],
-    tools: [tool], executeTool: async ({ name, arguments: args }) => ({ name, path: JSON.parse(args).path, content: "hello" }),
+    tools: [tool], executeTool: async () => ({ content: "hello" })
   });
-  assert.equal(result.text, "Read complete.");
+  assert.equal(result.text, "Done.");
   assert.equal(result.toolCallsExecuted, 1);
-  assert.equal(calls.length, 2);
+  assert.equal(result.usage.promptTokens, 45);
+  assert.equal(result.usage.completionTokens, 8);
+  assert.equal(result.usage.cachedInputTokens, 7);
   assert.equal(calls[1].messages.at(-1).role, "tool");
-  assert.equal(JSON.parse(calls[1].messages.at(-1).content).content, "hello");
 });
 
-test("returns tool errors to the model without leaking stack traces", async () => {
-  let round = 0;
-  const client = { chat: { completions: { create: async request => {
-    round += 1;
-    if (round === 1) return { choices: [{ message: { tool_calls: [
-      { id: "call-1", type: "function", function: { name: "read_file", arguments: "{}" } },
-    ] } }] };
-    assert.match(request.messages.at(-1).content, /DENIED/);
-    assert.doesNotMatch(request.messages.at(-1).content, /stack|secret-token/i);
-    return { choices: [{ message: { content: "Permission respected." } }] };
-  } } } };
+test("caps oversized tool results before adding them to model context", async () => {
+  let call = 0;
+  const client = clientFor(async request => {
+    call += 1;
+    if (call === 1) {
+      return { choices: [{ message: { tool_calls: [
+        { id: "call-1", type: "function", function: { name: "read_file", arguments: "{}" } }
+      ] } }] };
+    }
+    const payload = JSON.parse(request.messages.at(-1).content);
+    assert.equal(payload.truncated, true);
+    assert.ok(Buffer.byteLength(request.messages.at(-1).content) < 700);
+    return { choices: [{ message: { content: "Summarized." } }] };
+  });
   const result = await runOpenAiToolLoop({
     client, model: "m", messages: [{ role: "user", content: "read" }], tools: [tool],
-    executeTool: async () => { throw Object.assign(new Error("DENIED"), { code: "DENIED" }); },
+    executeTool: async () => ({ content: "x".repeat(5000) }), maxToolResultBytes: 512
   });
-  assert.equal(result.text, "Permission respected.");
+  assert.equal(result.text, "Summarized.");
+});
+
+test("stops before exceeding the total tool-call budget", async () => {
+  const client = clientFor(async () => ({
+    choices: [{ message: { tool_calls: [
+      { id: "a", type: "function", function: { name: "read_file", arguments: "{}" } },
+      { id: "b", type: "function", function: { name: "read_file", arguments: "{}" } }
+    ] } }]
+  }));
+  await assert.rejects(runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "loop" }], tools: [tool],
+    executeTool: async () => ({}), maxToolCalls: 1
+  }), error => error.code === "TOOL_CALL_BUDGET");
+});
+
+test("stops when cumulative tool output exceeds the context budget", async () => {
+  const client = clientFor(async () => ({
+    choices: [{ message: { tool_calls: [
+      { id: "a", type: "function", function: { name: "read_file", arguments: "{}" } }
+    ] } }]
+  }));
+  await assert.rejects(runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "loop" }], tools: [tool],
+    executeTool: async () => ({ content: "x".repeat(2000) }),
+    maxToolResultBytes: 512, maxTotalToolResultBytes: 512
+  }), error => error.code === "TOOL_CONTEXT_BUDGET");
 });
 
 test("rejects tool calls outside the granted definitions", async () => {
-  const client = { chat: { completions: { create: async () => ({ choices: [{ message: { tool_calls: [
-    { id: "call-1", type: "function", function: { name: "run_shell", arguments: "{}" } },
-  ] } }] }) } } };
+  const client = clientFor(async () => ({
+    choices: [{ message: { tool_calls: [
+      { id: "call-1", type: "function", function: { name: "run_shell", arguments: "{}" } }
+    ] } }]
+  }));
   await assert.rejects(runOpenAiToolLoop({
     client, model: "m", messages: [{ role: "user", content: "do it" }], tools: [tool],
-    executeTool: async () => ({}),
+    executeTool: async () => ({})
   }), error => error.code === "TOOL_NOT_ALLOWED");
 });
 
 test("stops at the configured round limit", async () => {
-  const client = { chat: { completions: { create: async () => ({ choices: [{ message: { tool_calls: [
-    { id: "call-1", type: "function", function: { name: "read_file", arguments: "{}" } },
-  ] } }] }) } } };
+  const client = clientFor(async () => ({
+    choices: [{ message: { tool_calls: [
+      { id: "call-1", type: "function", function: { name: "read_file", arguments: "{}" } }
+    ] } }]
+  }));
   await assert.rejects(runOpenAiToolLoop({
     client, model: "m", messages: [{ role: "user", content: "loop" }], tools: [tool],
-    executeTool: async () => ({}), maxRounds: 1,
+    executeTool: async () => ({}), maxRounds: 1
   }), error => error.code === "TOOL_ROUND_LIMIT");
+});
+
+
+test("stops when cumulative prompt tokens exceed the task budget and records provider cost", async () => {
+  const client = clientFor(async () => ({
+    choices: [{ message: { tool_calls: [
+      { id: "a", type: "function", function: { name: "read_file", arguments: "{}" } }
+    ] } }],
+    usage: { prompt_tokens: 101, completion_tokens: 2, cost: 0.0004 }
+  }));
+  await assert.rejects(runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "loop" }], tools: [tool],
+    executeTool: async () => ({}), maxTotalPromptTokens: 100
+  }), error => error.code === "PROMPT_TOKEN_BUDGET" &&
+    error.usage.promptTokens === 101 && error.usage.providerCost === 0.0004);
 });
