@@ -106,3 +106,18 @@ test("stops at the configured round limit", async () => {
     executeTool: async () => ({}), maxRounds: 1
   }), error => error.code === "TOOL_ROUND_LIMIT");
 });
+
+
+test("stops when cumulative prompt tokens exceed the task budget and records provider cost", async () => {
+  const client = clientFor(async () => ({
+    choices: [{ message: { tool_calls: [
+      { id: "a", type: "function", function: { name: "read_file", arguments: "{}" } }
+    ] } }],
+    usage: { prompt_tokens: 101, completion_tokens: 2, cost: 0.0004 }
+  }));
+  await assert.rejects(runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "loop" }], tools: [tool],
+    executeTool: async () => ({}), maxTotalPromptTokens: 100
+  }), error => error.code === "PROMPT_TOKEN_BUDGET" &&
+    error.usage.promptTokens === 101 && error.usage.providerCost === 0.0004);
+});
