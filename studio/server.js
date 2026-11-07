@@ -6,6 +6,7 @@ import { createStudioControlPlane } from "./application/create-studio-control-pl
 import { createNeonAuthBearerMiddleware } from "./http/create-neon-auth-bearer-middleware.js";
 import { createLegacyOfficeTokenMiddleware } from "./http/create-legacy-office-token-middleware.js";
 import { createGithubArtifactWriter } from "./artifacts/github-artifact-writer.js";
+import { createGithubWorkspaceTools } from "./agents/github-workspace-tools.js";
 import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.js";
 
 function requiredEnv(name) {
@@ -161,6 +162,15 @@ const artifactWriter = githubToken
       allowedPrefixes: ["studio/projects/"],
     })
   : null;
+const githubWorkspaceTools = githubToken
+  ? createGithubWorkspaceTools({
+      owner: "esv1312-crypto",
+      repo: "Office",
+      branch: process.env.STUDIO_GITHUB_WORKSPACE_BRANCH || "studio-ai-agent-workspace",
+      token: githubToken,
+      allowedPrefix: "studio/agent-workspace/",
+    })
+  : null;
 const controlPlane = createStudioControlPlane({
   express,
   pool,
@@ -175,6 +185,7 @@ const controlPlane = createStudioControlPlane({
     max: positiveIntegerEnv("STUDIO_RATE_LIMIT_PER_MINUTE", 60, 600),
   }),
   artifactWriter,
+  workerTools: githubWorkspaceTools,
   createSpecialistsForProfile,
   workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
 });
