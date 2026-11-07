@@ -306,7 +306,7 @@ async function runConfiguredOwnerExecution() {
 }
 
 const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
+  console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; workspaceTools=${githubWorkspaceTools ? "enabled" : "disabled"}; model=${defaultModel}`);
   void runConfiguredInitialBootstrap();
   void runConfiguredOwnerExecution();
 });
