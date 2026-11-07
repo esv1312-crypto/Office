@@ -42,8 +42,31 @@ export function createDirectorDispatch({
       const report = { planId: loaded.plan.id, status: "dispatched", assigned: [], blocked: [], skipped: [] };
 
       for (const task of loaded.tasks) {
-        if (task.status === "assigned" || task.status === "running" ||
-            task.status === "qa" || task.status === "completed") {
+        if (task.status === "assigned") {
+          // An assigned task has no active execution lease. Requeue it so a
+          // restarted Director can resume work after an expired worker lease.
+          const assignee = specialists.find(candidate =>
+            candidate.id === task.assigneeSpecialistId &&
+            candidate.status === "active" &&
+            candidate.organizationId === loaded.organizationId
+          );
+          if (!assignee) {
+            report.blocked.push({
+              taskId: task.id,
+              code: "ASSIGNED_SPECIALIST_UNAVAILABLE",
+              reason: "The task's assigned specialist is not active in this organization",
+            });
+          } else {
+            report.assigned.push({
+              taskId: task.id,
+              specialistId: assignee.id,
+              taskStatus: "assigned",
+              resumed: true,
+            });
+          }
+          continue;
+        }
+        if (task.status === "running" || task.status === "qa" || task.status === "completed") {
           report.skipped.push({ taskId: task.id, status: task.status });
           continue;
         }
