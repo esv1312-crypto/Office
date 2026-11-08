@@ -423,6 +423,95 @@ async function runConfiguredOwnerExecution() {
   }
 }
 
+async function runConfiguredOwnerTask() {
+  const taskKey = String(process.env.STUDIO_OWNER_TASK_ID || "").trim();
+  const brief = String(process.env.STUDIO_OWNER_TASK_BRIEF || "").trim();
+  const organizationId = String(process.env.STUDIO_OWNER_TASK_ORGANIZATION_ID || "").trim();
+  const configuredProjectId = String(process.env.STUDIO_OWNER_TASK_PROJECT_ID || "").trim();
+  if (!taskKey || !brief || !organizationId) return;
+
+  const lockClient = await pool.connect();
+  let locked = false;
+  let claimed = false;
+  try {
+    await lockClient.query("SELECT pg_advisory_lock(741920266)");
+    locked = true;
+    await lockClient.query(`
+      CREATE TABLE IF NOT EXISTS studio.owner_task_runs (
+        task_key text PRIMARY KEY,
+        status text NOT NULL,
+        plan_id uuid,
+        error_code text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    const claim = await lockClient.query(`
+      INSERT INTO studio.owner_task_runs (task_key, status)
+      VALUES ($1, 'running')
+      ON CONFLICT (task_key) DO UPDATE
+        SET status = 'running', error_code = NULL, updated_at = now()
+        WHERE studio.owner_task_runs.status = 'failed'
+      RETURNING task_key
+    `, [taskKey]);
+    if (!claim.rowCount) {
+      console.log(`[studio] owner task already claimed; taskKey=${taskKey}`);
+      return;
+    }
+    claimed = true;
+    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    let projectId = configuredProjectId;
+    if (!projectId) {
+      const projectResult = await lockClient.query(
+        "SELECT id FROM studio.projects WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [organizationId],
+      );
+      projectId = projectResult.rows?.[0]?.id;
+    }
+    if (!projectId) throw Object.assign(new Error("Owner task project was not found"), { code: "PROJECT_NOT_FOUND" });
+    const project = await controlPlane.access.loadProject({ projectId, actor });
+    if (!project) throw Object.assign(new Error("Owner task project could not be loaded"), { code: "PROJECT_NOT_FOUND" });
+    console.log(`[studio] owner task planning started; taskKey=${taskKey}; project=${projectId}`);
+    const plan = await controlPlane.runtime.director.plan({ request: brief, project, actor });
+    if (!plan?.id) throw Object.assign(new Error("Director did not create a plan"), { code: "PLAN_CREATION_FAILED" });
+    await lockClient.query(
+      "UPDATE studio.owner_task_runs SET plan_id = $2, updated_at = now() WHERE task_key = $1",
+      [taskKey, plan.id],
+    );
+    let executablePlan = plan;
+    if (executablePlan.status === "proposed") {
+      const approval = await controlPlane.runtime.approval.approve({ plan: executablePlan, actor });
+      executablePlan = approval.plan;
+    }
+    if (executablePlan.status !== "approved") {
+      throw Object.assign(new Error("Director plan is not approved for execution"), { code: "PLAN_NOT_APPROVED" });
+    }
+    let report = null;
+    for (let round = 1; round <= 3; round += 1) {
+      report = await controlPlane.runtime.workflow.run({ planId: plan.id, actor });
+      console.log(`[studio] owner task execution round=${round}; taskKey=${taskKey}; plan=${plan.id}; status=${report.status}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
+      const revisionsRequired = report.qaReviews?.some(review => review.verdict === "revision_required");
+      if (report.status === "completed" || !revisionsRequired || round === 3) break;
+    }
+    await lockClient.query(
+      "UPDATE studio.owner_task_runs SET status = $2, updated_at = now() WHERE task_key = $1",
+      [taskKey, report?.status === "completed" ? "completed" : "finished"],
+    );
+    console.log(`[studio] owner task finished; taskKey=${taskKey}; plan=${plan.id}; status=${report?.status || "unknown"}`);
+  } catch (error) {
+    if (claimed) {
+      await lockClient.query(
+        "UPDATE studio.owner_task_runs SET status = 'failed', error_code = $2, updated_at = now() WHERE task_key = $1",
+        [taskKey, String(error?.code || "OWNER_TASK_FAILED").slice(0, 120)],
+      ).catch(() => {});
+    }
+    console.error("[studio] owner task failed", error?.code || error?.status || "OWNER_TASK_FAILED");
+  } finally {
+    if (locked) await lockClient.query("SELECT pg_advisory_unlock(741920266)").catch(() => {});
+    lockClient.release();
+  }
+}
+
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
   void (async () => {
@@ -431,6 +520,7 @@ const server = app.listen(port, "0.0.0.0", () => {
     await runConfiguredSourceVerification();
     await runConfiguredProductPilot();
     await runConfiguredOwnerExecution();
+    await runConfiguredOwnerTask();
   })().catch(error => {
     console.error("[studio] startup orchestration failed", error?.code || error?.message || "STARTUP_FAILED");
   });
