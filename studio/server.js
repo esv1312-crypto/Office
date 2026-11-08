@@ -150,7 +150,7 @@ const models = {
   worker: {
     model: modelEnv("STUDIO_WORKER_MODEL"),
     temperature: 0.2,
-    maxTokens: 6000,
+    maxTokens: 12000,
     instructionVersion: "studio-v1",
   },
   qa: {
