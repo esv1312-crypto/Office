@@ -84,6 +84,8 @@ export function createSelfDevelopmentSourceVerification({ pool, controlPlane, cr
         ],
         at,
       });
+      // Keep this control task out of the production artifact repository.
+      task.externalArtifact = false;
       plan = {
         id: createId(),
         projectId,
