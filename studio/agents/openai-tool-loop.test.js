@@ -143,7 +143,7 @@ test("applies a bounded provider timeout to each tool-loop request", async () =>
 });
 
 
-test("includes exact content only for workspace verification-file read-backs", async () => {
+test("includes exact content for workspace verification-file read-backs", async () => {
   const client = clientFor(async request => {
     if (request.messages.length === 1) {
       return { choices: [{ message: { tool_calls: [
@@ -173,6 +173,37 @@ test("includes exact content only for workspace verification-file read-backs", a
   assert.equal(result.toolEvidence[0].sha, "readback-sha");
 });
 
+
+test("includes exact content for product workspace read-backs so QA can inspect persisted files", async () => {
+  const client = clientFor(async request => {
+    if (request.messages.length === 1) {
+      return { choices: [{ message: { tool_calls: [
+        { id: "product-readback-1", type: "function", function: { name: "read_repo_file", arguments: JSON.stringify({
+          path: "studio/agent-workspace/roblox-fan-district/Server/PointsSystem.server.lua",
+          branch: "studio-ai-agent-workspace",
+          start_line: 1,
+          end_line: 10,
+        }) } },
+      ] } }] };
+    }
+    return { choices: [{ message: { content: "Product file read back and inspected." } }] };
+  });
+  const readRepoTool = { type: "function", function: { name: "read_repo_file", parameters: { type: "object" } } };
+  const result = await runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "read back product source" }],
+    tools: [readRepoTool],
+    executeTool: async () => ({
+      path: "studio/agent-workspace/roblox-fan-district/Server/PointsSystem.server.lua",
+      branch: "studio-ai-agent-workspace",
+      sha: "product-source-sha",
+      range: { startLine: 1, endLine: 10, totalLines: 214 },
+      content: "-- server-owned points logic\\nlocal Players = game:GetService(\"Players\")",
+    }),
+  });
+  assert.equal(result.toolEvidence[0].contentKind, "workspace-product-readback");
+  assert.match(result.toolEvidence[0].content, /server-owned points logic/);
+  assert.equal(result.toolEvidence[0].sha, "product-source-sha");
+});
 
 test("includes exact source snippets for the three audit source files only", async () => {
   const client = clientFor(async request => {
