@@ -100,7 +100,7 @@ test("executes an approved plan and returns the workflow result", async () => {
   assert.equal(response.body.status, "completed");
   assert.deepEqual(response.body.recovery, { recovered: 0, tasks: [] });
   assert.deepEqual(calls.recover, [{ actor: { id: "owner-1" }, limit: 50 }]);
-  assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: { id: "owner-1" } }]);
+  assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: { id: "owner-1" }, maxAssignments: 3 }]);
 });
 
 
