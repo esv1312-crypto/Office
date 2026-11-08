@@ -356,8 +356,8 @@ const server = app.listen(port, "0.0.0.0", () => {
   console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
   void (async () => {
     await runConfiguredInitialBootstrap();
-    await runConfiguredOwnerExecution();
     await runConfiguredSelfDevelopmentLaunch();
+    await runConfiguredOwnerExecution();
   })().catch(error => {
     console.error("[studio] startup orchestration failed", error?.code || error?.message || "STARTUP_FAILED");
   });
