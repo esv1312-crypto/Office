@@ -141,3 +141,33 @@ test("applies a bounded provider timeout to each tool-loop request", async () =>
   assert.equal(result.text, "Finished.");
   assert.equal(options.timeout, 90_000);
 });
+
+
+test("includes exact content only for workspace verification-file read-backs", async () => {
+  const client = clientFor(async request => {
+    if (request.messages.length === 1) {
+      return { choices: [{ message: { tool_calls: [
+        { id: "readback-1", type: "function", function: { name: "read_repo_file", arguments: JSON.stringify({
+          path: "studio/agent-workspace/verification/audit.md",
+          branch: "studio-ai-agent-workspace",
+          start_line: 1,
+          end_line: 20,
+        }) } },
+      ] } }] };
+    }
+    return { choices: [{ message: { content: "Read-back checked." } }] };
+  });
+  const result = await runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "read back" }],
+    tools: [tool],
+    executeTool: async () => ({
+      path: "studio/agent-workspace/verification/audit.md",
+      branch: "studio-ai-agent-workspace",
+      sha: "readback-sha",
+      range: { startLine: 1, endLine: 2, totalLines: 2 },
+      content: "# Evidence\nExact persisted text.",
+    }),
+  });
+  assert.equal(result.toolEvidence[0].content, "# Evidence\nExact persisted text.");
+  assert.equal(result.toolEvidence[0].sha, "readback-sha");
+});
