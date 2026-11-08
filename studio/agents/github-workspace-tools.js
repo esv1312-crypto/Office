@@ -50,6 +50,16 @@ function safeWorkspacePath(value, allowedPrefix) {
   return safePath(scoped, allowedPrefix);
 }
 
+function safeWorkspaceOrReadPath(value, allowedPrefix) {
+  const normalized = normalizedPath(value);
+  if (normalized.startsWith("studio/") &&
+      normalized !== allowedPrefix.slice(0, -1) &&
+      !normalized.startsWith(allowedPrefix)) {
+    return safeReadPath(normalized);
+  }
+  return safeWorkspacePath(normalized, allowedPrefix);
+}
+
 async function parseResponse(response) {
   let body = {};
   try { body = await response.json(); } catch {}
@@ -144,7 +154,7 @@ export function createGithubWorkspaceTools({
       if (![sourceBranch, targetBranch].includes(readRef)) throw Object.assign(new Error("Repository read branch is not permitted"), { code: "WORKSPACE_BRANCH_REJECTED" });
       const rawPath = typeof args.path === "string" ? args.path.trim() : "";
       const path = readRef === targetBranch
-        ? (rawPath === "" || rawPath === "." ? prefix.slice(0, -1) : safeWorkspacePath(rawPath, prefix))
+        ? (rawPath === "" || rawPath === "." ? prefix.slice(0, -1) : safeWorkspaceOrReadPath(rawPath, prefix))
         : safeReadPath(rawPath);
       const items = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(readRef));
       if (!Array.isArray(items)) throw Object.assign(new Error("Expected a directory listing"), { code: "WORKSPACE_INVALID_RESPONSE" });
@@ -154,7 +164,7 @@ export function createGithubWorkspaceTools({
       const readRef = args.branch === undefined ? sourceBranch : required(args.branch, "branch");
       if (![sourceBranch, targetBranch].includes(readRef)) throw Object.assign(new Error("Repository read branch is not permitted"), { code: "WORKSPACE_BRANCH_REJECTED" });
       const path = readRef === targetBranch
-        ? safeWorkspacePath(args.path, prefix)
+        ? safeWorkspaceOrReadPath(args.path, prefix)
         : safeReadPath(args.path);
       const file = await fetchFile(path, readRef);
       const lines = file.content.split("\n");
