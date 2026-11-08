@@ -34,6 +34,7 @@ test("creates one scoped source-verification plan, approves it, and executes thr
   assert.equal(calls.created.length, 1);
   assert.equal(calls.created[0].tasks.length, 1);
   const task = calls.created[0].tasks[0];
+  assert.equal(task.externalArtifact, false);
   assert.ok(task.description.includes("studio/server.js"));
   assert.ok(task.description.includes("studio/agents/github-workspace-tools.js"));
   assert.ok(task.description.includes("studio/agents/worker-runtime.js"));
