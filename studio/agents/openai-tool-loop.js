@@ -17,6 +17,30 @@ function usageFrom(response) {
   return { promptTokens: prompt, completionTokens: completion, cachedInputTokens: cached, providerCost: cost };
 }
 
+function evidenceForTool({ name, arguments: rawArguments, result }) {
+  let args = {};
+  try {
+    args = typeof rawArguments === "string" ? JSON.parse(rawArguments) : (rawArguments || {});
+  } catch {}
+  const evidence = {
+    name,
+    status: result && typeof result === "object" && result.error ? "error" : "ok",
+  };
+  const path = typeof result?.path === "string" ? result.path : args.path;
+  if (typeof path === "string") evidence.path = path;
+  for (const key of ["branch", "sha", "blobSha", "commitSha"]) {
+    if (typeof result?.[key] === "string") evidence[key] = result[key];
+  }
+  if (result?.range && typeof result.range === "object") {
+    const { startLine, endLine, totalLines } = result.range;
+    if ([startLine, endLine, totalLines].every(Number.isInteger)) {
+      evidence.range = { startLine, endLine, totalLines };
+    }
+  }
+  if (typeof result?.error === "string") evidence.error = result.error;
+  return evidence;
+}
+
 function compactToolResult(result, maxBytes) {
   let serialized;
   try { serialized = JSON.stringify(result); }
@@ -67,6 +91,7 @@ export async function runOpenAiToolLoop({
   if (allowed.size !== tools.length) throw new TypeError("tool definitions must have unique function names");
   const conversation = [...messages];
   let executed = 0;
+  const toolEvidence = [];
   let totalToolResultBytes = 0;
   const usage = { promptTokens: 0, completionTokens: 0, cachedInputTokens: 0, providerCost: null, requests: 0 };
 
@@ -107,6 +132,7 @@ export async function runOpenAiToolLoop({
       return {
         text,
         toolCallsExecuted: executed,
+        toolEvidence,
         toolRounds: round,
         usage,
         budget: { maxToolCalls, maxToolResultBytes, maxTotalToolResultBytes, maxTotalOutputTokens, maxTotalPromptTokens }
@@ -135,6 +161,7 @@ export async function runOpenAiToolLoop({
           message: String(error?.message || "Tool execution failed").slice(0, 500)
         };
       }
+      toolEvidence.push(evidenceForTool({ name, arguments: call.function.arguments, result }));
       const content = compactToolResult(result, maxToolResultBytes);
       const resultBytes = Buffer.byteLength(content, "utf8");
       totalToolResultBytes += resultBytes;
