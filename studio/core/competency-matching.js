@@ -45,12 +45,15 @@ const ALIASES = {
   "material and texture application": ["environment.art", "worldbuilding"],
   "zone-specific design": ["level.design", "worldbuilding"],
   "interaction scripting": ["roblox.lua", "gameplay.systems"],
+  "qa": ["qa.review"],
+  "verification": ["acceptance.criteria", "qa.review"],
+  "testing": ["testing", "qa.review", "roblox.testing"],
 };
 function normalize(value) { return String(value || "").trim().toLowerCase().replace(/\\s+/g, " "); }
 export function competencyCoverage(task, specialist) {
-  const available = new Set(specialist?.competencies || []);
+  const available = new Set((specialist?.competencies || []).map(normalize));
   return (task?.requiredCompetencies || []).reduce((score, requirement) => {
-    const aliases = ALIASES[normalize(requirement)] || [requirement];
+    const aliases = [...new Set([normalize(requirement), ...(ALIASES[normalize(requirement)] || []).map(normalize)])];
     return score + (aliases.some(skill => available.has(skill)) ? 1 : 0);
   }, 0);
 }
