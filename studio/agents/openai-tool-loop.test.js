@@ -157,9 +157,10 @@ test("includes exact content only for workspace verification-file read-backs", a
     }
     return { choices: [{ message: { content: "Read-back checked." } }] };
   });
+  const readRepoTool = { type: "function", function: { name: "read_repo_file", parameters: { type: "object" } } };
   const result = await runOpenAiToolLoop({
     client, model: "m", messages: [{ role: "user", content: "read back" }],
-    tools: [tool],
+    tools: [readRepoTool],
     executeTool: async () => ({
       path: "studio/agent-workspace/verification/audit.md",
       branch: "studio-ai-agent-workspace",
