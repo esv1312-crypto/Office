@@ -109,7 +109,7 @@ export function createOpenAiCompatibleGateways({
   models,
   provider = "openai-compatible",
   workerTools = null,
-  maxToolRounds = 12,
+  maxToolRounds = 40,
   maxToolCalls = 24,
   maxToolResultBytes = 24 * 1024,
   maxTotalToolResultBytes = 256 * 1024,
