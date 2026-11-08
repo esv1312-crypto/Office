@@ -15,16 +15,18 @@ function required(value, field) {
 
 const SELF_DEVELOPMENT_PROJECT = "AI Office Self-Development";
 const SELF_DEVELOPMENT_PROFILE = "ai-office-platform";
+const SELF_DEVELOPMENT_PLAN_TITLE = "AI Office Self-Development — First Implementation Sprint";
 const SELF_DEVELOPMENT_BRIEF = [
-  "You are responsible for improving the Universal AI Office platform itself, not the Roblox product.",
-  "Perform an evidence-based audit of the current repository, runtime, database model, specialist system, model gateways, tool permissions, memory/context handling, orchestration, QA, deployment, observability, and cost controls.",
-  "Create a prioritized, dependency-aware roadmap to make the office a reliable autonomous general-purpose organization that can accept a goal, plan work, staff it dynamically, execute real tool actions, verify results, recover failures, and report evidence.",
-  "Start with a safe discovery and architecture phase. Inspect only the repository workspace and tools actually available to you. Do not claim access to files, services, credentials, or capabilities you cannot verify.",
-  "For each task define concrete outputs, acceptance criteria, risks, dependencies, and tests. Separate recommendations from implemented changes.",
-  "Respect the GitHub workspace allowlist and all tool/path restrictions. Do not modify production source, secrets, workflows, infrastructure, or live data. Produce proposed patches and implementation specifications only where write permissions do not permit direct changes.",
-  "Prefer small independently verifiable increments. Run available tests and report exact commands and outcomes. Never fabricate successful tests, commits, deployments, or results.",
-  "Keep model use within the currently enabled free-model policy. Do not enable paid models or change spend limits.",
-  "Deliver the audit, prioritized backlog, first implementation-ready work package, blockers, and evidence in structured artifacts."
+  "Create a plan titled exactly: AI Office Self-Development — First Implementation Sprint.",
+  "This is the first implementation sprint to improve Universal AI Studio / AI Office itself. The previous initial audit and roadmap are already complete. Do not repeat the audit and do not work on the Roblox Fan District product.",
+  "Use source-grounded repository inspection to investigate the observed orchestration defects: a plan reported completed with zero assigned tasks and zero executions; worker executions repeatedly expiring their leases; and QA tasks being retried repeatedly without producing verifiable source read-back.",
+  "Inspect the actual source files on studio-v1-foundation using only list_repo_directory and read_repo_file. Cite exact repository paths, relevant line ranges, observed behavior, and distinguish proven root causes from hypotheses. Do not infer source behavior from logs alone.",
+  "Create a dependency-aware plan with no more than four tasks: (1) architect identifies and documents the highest-priority verified root cause, (2) Implementation Specialist prepares a minimal proposed code patch and focused regression tests, (3) an independent Quality Engineer reads the exact persisted patch files back from GitHub and reviews correctness, safety, and test coverage, and (4) only if needed, a small follow-up integration task.",
+  "All proposed code and test files must be written only under studio/agent-workspace/ai-office-self-development/ on studio-ai-agent-workspace. Use write_repo_file, then read_repo_file on the exact returned path and verify the content. Do not modify studio-v1-foundation or any production path.",
+  "The current worker tools do not provide shell execution or automatic pull-request creation. Do not claim tests were run, production code was changed, or a PR was opened. Provide exact test commands and a reviewable patch/diff for owner review.",
+  "Every task must have concrete outputs, dependencies, and acceptance criteria. Require actual worker execution records, exact source read evidence, persisted workspace files, commit/blob identifiers, and an independent QA verdict.",
+  "Respect all path, branch, credential, and production safety restrictions. Do not change secrets, workflows, infrastructure, live data, or deployment configuration.",
+  "Use only the currently enabled free model policy. Do not enable paid models or incur unapproved costs."
 ].join("\n");
 
 export function createSelfDevelopmentLaunchHandler({
@@ -104,18 +106,21 @@ export function createSelfDevelopmentLaunchHandler({
       }
       const currentTools = Array.isArray(existing.payload?.allowedTools) ? existing.payload.allowedTools : [];
       const desiredTools = Array.isArray(specialist.allowedTools) ? specialist.allowedTools : [];
-      if (JSON.stringify([...currentTools].sort()) !== JSON.stringify([...desiredTools].sort())) {
+      const needsTools = JSON.stringify([...currentTools].sort()) !== JSON.stringify([...desiredTools].sort());
+      const desiredInstructions = specialist.role === "quality_engineer" ? specialist.instructions : existing.payload?.instructions;
+      const needsInstructions = typeof desiredInstructions === "string" && desiredInstructions !== existing.payload?.instructions;
+      if (needsTools || needsInstructions) {
         await controlPlane.runtime.stores.domain.updateSpecialist({
           specialistId: existing.id, expectedVersion: Number(existing.version),
-          patch: { allowedTools: desiredTools }, at,
+          patch: { ...(needsTools ? { allowedTools: desiredTools } : {}), ...(needsInstructions ? { instructions: desiredInstructions } : {}) }, at,
         });
         updatedSpecialists.push(specialist.role);
       }
     }
 
     const priorPlan = await pool.query(
-      "SELECT id, status, payload FROM studio.plans WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1",
-      [project.id],
+      "SELECT id, status, payload FROM studio.plans WHERE project_id = $1 AND payload->>'title' = $2 ORDER BY created_at DESC LIMIT 1",
+      [project.id, SELF_DEVELOPMENT_PLAN_TITLE],
     );
     if (priorPlan.rows?.[0]) {
       const row = priorPlan.rows[0];
@@ -162,7 +167,7 @@ export function createSelfDevelopmentLaunchHandler({
       proposed = await controlPlane.runtime.director.plan({
         request: SELF_DEVELOPMENT_BRIEF, project, actor,
         constraints: {
-          maxTasks: 12,
+          maxTasks: 4,
           requireEvidence: true,
           noProductionChanges: true,
           freeModelsOnly: true,
@@ -182,16 +187,16 @@ export function createSelfDevelopmentLaunchHandler({
         id: createId(),
         projectId: project.id,
         organizationId,
-        title: "AI Office Self-Development — Initial Audit and Roadmap",
-        objective: "Establish an evidence-based development roadmap for a reliable autonomous universal AI office.",
-        summary: "A bounded bootstrap plan created because the configured planner did not return a valid persisted plan. Specialists must distinguish verified facts from assumptions and must not claim repository access they do not have.",
+        title: SELF_DEVELOPMENT_PLAN_TITLE,
+        objective: "Prepare the first source-grounded, independently reviewed patch for improving the AI Office autonomous execution lifecycle.",
+        summary: "A bounded first implementation sprint. Workers must inspect current source, prepare proposed code and regression-test files in the isolated workspace only, and have QA read back and review the exact persisted files.",
         acceptanceCriteria: [
-          "Architecture and current runtime capabilities are mapped without unsupported claims",
-          "Autonomy lifecycle gaps and recovery risks are prioritized",
-          "Model reliability and structured-output failure modes are documented",
-          "GitHub worker access prerequisites and permission boundaries are explicit",
-          "A dependency-aware implementation backlog has owners and verifiable acceptance criteria",
-          "QA evidence requirements are defined for every implementation stage",
+          "The highest-priority orchestration defect is grounded in exact source paths and line ranges",
+          "A minimal proposed patch and focused regression tests are persisted in the isolated workspace branch",
+          "Every workspace write is followed by an exact read-back",
+          "Independent QA reviews the persisted patch and test files",
+          "No production source, secrets, workflows, infrastructure, or live data are modified",
+          "Unrun tests and unavailable capabilities are explicitly identified",
         ],
         planningSource: planSource,
         plannerFailure,
@@ -209,40 +214,22 @@ export function createSelfDevelopmentLaunchHandler({
       };
       const taskSpecs = [
         {
-          title: "Map the current AI Office architecture and capability boundaries",
-          description: "Produce a structured architecture map from the verified project context and known runtime behavior. Explicitly label what is verified, inferred, and still requires repository inspection. Do not claim to have read source files or run commands unless tools provide evidence.",
+          title: "Inspect orchestration completion and worker lease recovery",
+          description: "Read the current workflow, task-state, dispatch, execution lease, recovery, and QA source files. Identify one highest-priority proven defect using exact paths and line ranges. Do not infer source behavior or claim tests were run.",
           competencies: ["architecture", "system.design", "integration"],
-          criteria: ["Architecture map covers intake, planning, specialists, dispatch, workers, QA, persistence, recovery, models, and tools", "Every statement is labelled verified, inferred, or unverified", "Missing evidence is listed as concrete follow-up work"],
+          criteria: ["Exact source paths and line ranges are cited", "Observed code behavior is separated from hypotheses", "A minimal fix strategy and regression scenario are defined"],
         },
         {
-          title: "Audit the autonomous work lifecycle and failure recovery",
-          description: "Describe the complete lifecycle from owner request through planning, approval, task assignment, execution, QA, retry, and evidence. Identify failure states, recovery gaps, and safe stopping conditions using only verified context.",
-          competencies: ["architecture", "system.design", "integration"],
-          criteria: ["Lifecycle diagram or ordered state map is provided", "Failure modes and recovery paths are listed", "No unsupported claim of successful execution is made"],
+          title: "Prepare an isolated patch and regression tests for the verified defect",
+          description: "Prepare a reviewable unified diff and focused regression-test files for the verified orchestration defect. Write only under studio/agent-workspace/ai-office-self-development/ on studio-ai-agent-workspace. Read every written file back and include commit/blob identifiers. Do not claim the production source was modified or tests were executed.",
+          competencies: ["implementation", "coding"],
+          criteria: ["Patch is grounded in source read-back", "Regression test covers the reproduced failure mode", "All files are persisted in the allowed workspace and read back exactly", "No production path is modified"],
         },
         {
-          title: "Prioritize the universal AI Office product roadmap",
-          description: "Create a dependency-aware roadmap for making the office useful across software, design, construction, marketing, research, and other domains. Separate foundational platform work from domain-specific specialists.",
-          competencies: ["product.strategy", "task.decomposition", "requirements"],
-          criteria: ["Roadmap is divided into ordered milestones", "Each milestone has an observable completion condition", "Universal extension points are distinguished from product-specific features"],
-        },
-        {
-          title: "Document model reliability and structured-output risks",
-          description: "Analyze the observed empty, invalid-JSON, and access-error behavior in planner model calls. Recommend a bounded free-model routing, parsing, timeout, and fallback strategy. Do not request paid-model activation.",
-          competencies: ["product.strategy", "task.decomposition", "requirements"],
-          criteria: ["Observed failures are separated from hypotheses", "Retry/fallback behavior has explicit bounds", "No paid model or unapproved spending is proposed"],
-        },
-        {
-          title: "Audit GitHub execution readiness and permission boundaries",
-          description: "Document the runtime prerequisites for workers to read and write the approved GitHub workspace, including credential presence, allowed paths, branch restrictions, artifact persistence, and how to verify actual commits. Never ask for or print secret values.",
-          competencies: ["architecture", "system.design", "integration"],
-          criteria: ["Required runtime credentials are named without exposing values", "Workspace path and branch restrictions are documented", "A safe end-to-end GitHub tool verification checklist is provided"],
-        },
-        {
-          title: "Define independent QA and evidence gates for self-improvement",
-          description: "Create acceptance and QA rules that prevent plans, drafts, unrun tests, or unsupported model claims from being reported as completed work.",
+          title: "Independently review the persisted self-development patch",
+          description: "Use read-only repository tools to inspect the exact patch and test files from studio-ai-agent-workspace. Compare the proposed changes with source files on studio-v1-foundation, identify correctness and safety issues, and provide an independent verdict. Do not claim tests were run.",
           competencies: ["qa.review", "testing", "security.review", "acceptance.criteria"],
-          criteria: ["Every stage has evidence requirements", "QA independence and revision rules are defined", "Deployment and production changes require explicit gates"],
+          criteria: ["QA independently reads exact persisted files", "Patch and tests are checked against source and acceptance criteria", "Missing runtime or test execution evidence is clearly identified", "Reviewer is independent from the implementation specialist"],
         },
       ];
       const tasks = taskSpecs.map(spec => createTask({

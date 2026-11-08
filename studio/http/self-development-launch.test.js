@@ -9,7 +9,10 @@ function fixture({ owner = true, priorPlan = null, plannerError = null, existing
       if (sql.includes("JOIN studio.organization_memberships")) return { rows: owner ? [{ id: "org-1" }] : [] };
       if (sql.includes("FROM studio.projects")) return { rows: [] };
       if (sql.includes("FROM studio.specialists")) return { rows: existingSpecialists };
-      if (sql.includes("FROM studio.plans")) return { rows: priorPlan ? [priorPlan] : [] };
+      if (sql.includes("FROM studio.plans")) {
+        const matchesTitle = !sql.includes("payload->>'title' = $2") || params?.[1] === priorPlan?.payload?.title;
+        return { rows: priorPlan && matchesTitle ? [priorPlan] : [] };
+      }
       throw new Error("Unexpected query");
     },
   };
@@ -42,7 +45,7 @@ function fixture({ owner = true, priorPlan = null, plannerError = null, existing
   const createSpecialistsForProfile = ({ organizationId, createId, at }) => [
     { id: createId(), organizationId, name: "Solution Architect", role: "solution_architect", instructions: "Design", competencies: ["architecture"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
     { id: createId(), organizationId, name: "Platform Engineer", role: "implementation_specialist", instructions: "Implement", competencies: ["coding"], allowedTools: ["repo.read"], status: "active", version: 1, createdAt: at, updatedAt: at },
-    { id: createId(), organizationId, name: "Quality Engineer", role: "quality_engineer", instructions: "Review", competencies: ["qa.review"], allowedTools: [], status: "active", version: 1, createdAt: at, updatedAt: at },
+    { id: createId(), organizationId, name: "Quality Engineer", role: "quality_engineer", instructions: "Review deliverables and inspect persisted workspace files in studio-ai-agent-workspace.", competencies: ["qa.review"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
   ];
   const handler = createSelfDevelopmentLaunchHandler({
     pool, controlPlane, createId: (() => { let id = 0; return () => `id-${++id}`; })(),
@@ -73,7 +76,7 @@ test("rejects non-owner before creating anything", async () => {
 
 test("resumes an existing approved plan and recovers expired work without creating a duplicate", async () => {
   const { handler, calls } = fixture({
-    priorPlan: { id: "existing-plan", status: "approved", payload: { title: "Existing plan" } },
+    priorPlan: { id: "existing-plan", status: "approved", payload: { title: "AI Office Self-Development — First Implementation Sprint" } },
   });
   const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
   assert.equal(result.status, 202);
@@ -94,13 +97,24 @@ test("uses a deterministic, evidence-bounded bootstrap plan when planner output 
   assert.equal(result.status, 202);
   assert.equal(result.body.planSource, "deterministic-bootstrap-fallback");
   assert.equal(result.body.plannerFailure.code, "INVALID_MODEL_JSON");
-  assert.equal(calls.fallbackPlan.plan.title, "AI Office Self-Development — Initial Audit and Roadmap");
-  assert.equal(calls.fallbackPlan.tasks.length, 6);
+  assert.equal(calls.fallbackPlan.plan.title, "AI Office Self-Development — First Implementation Sprint");
+  assert.equal(calls.fallbackPlan.tasks.length, 3);
   assert.ok(calls.fallbackPlan.tasks.every(task => task.status === "draft" && task.assigneeSpecialistId === null));
   assert.equal(calls.approvals.length, 1);
   assert.equal(calls.executions[0].planId, calls.fallbackPlan.plan.id);
 });
 
+
+test("does not resume an unrelated product-pilot plan in the self-development project", async () => {
+  const { handler, calls } = fixture({
+    priorPlan: { id: "roblox-plan", status: "approved", payload: { title: "Roblox Fan District — First Playable Vertical Slice v1" } },
+  });
+  const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
+  assert.equal(result.status, 202);
+  assert.equal(calls.plans.length, 1);
+  assert.equal(calls.recoveries.length, 0);
+  assert.equal(calls.executions.length, 1);
+});
 
 test("updates existing Solution Architect permissions instead of skipping the existing role", async () => {
   const { handler, calls } = fixture({
@@ -119,4 +133,19 @@ test("updates existing Solution Architect permissions instead of skipping the ex
     at: "2026-11-08T00:00:00.000Z",
   }]);
   assert.deepEqual(result.body.updatedSpecialists, ["solution_architect"]);
+});
+
+
+test("grants the existing Quality Engineer read-only access to persisted workspace patches", async () => {
+  const { handler, calls } = fixture({
+    existingSpecialists: [{
+      id: "qa-1", role: "quality_engineer", version: 3,
+      payload: { allowedTools: [], instructions: "Review deliverables" },
+    }],
+  });
+  const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
+  assert.equal(result.status, 202);
+  const update = calls.updatedSpecialists.find(item => item.specialistId === "qa-1");
+  assert.deepEqual(update.patch.allowedTools, ["list_repo_directory", "read_repo_file"]);
+  assert.match(update.patch.instructions, /studio-ai-agent-workspace/);
 });

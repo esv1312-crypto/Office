@@ -82,7 +82,8 @@ function createSpecialistsForProfile({ productProfileId, organizationId, createI
       name: "Quality Engineer",
       role: "quality_engineer",
       competencies: ["qa.review", "testing", "security.review", "acceptance.criteria"],
-      instructions: "Independently review the deliverable against every acceptance criterion. Require revision if evidence is incomplete, ambiguous, or incorrect.",
+      allowedTools: ["list_repo_directory", "read_repo_file"],
+      instructions: "Independently review the deliverable against every acceptance criterion. Require revision if evidence is incomplete, ambiguous, or incorrect. For self-development tasks, use read-only repository tools to inspect the exact persisted patch and test files in studio-ai-agent-workspace; compare them with source files on studio-v1-foundation. Never claim tests ran unless execution evidence exists.",
     },
   ];
 
