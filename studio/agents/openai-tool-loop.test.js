@@ -126,3 +126,18 @@ test("stops when cumulative prompt tokens exceed the task budget and records pro
   }), error => error.code === "PROMPT_TOKEN_BUDGET" &&
     error.usage.promptTokens === 101 && error.usage.providerCost === 0.0004);
 });
+
+
+test("applies a bounded provider timeout to each tool-loop request", async () => {
+  let options;
+  const client = clientFor(async (_request, requestOptions) => {
+    options = requestOptions;
+    return { choices: [{ message: { content: "Finished." } }] };
+  });
+  const result = await runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "inspect" }],
+    tools: [tool], executeTool: async () => ({}),
+  });
+  assert.equal(result.text, "Finished.");
+  assert.equal(options.timeout, 90_000);
+});
