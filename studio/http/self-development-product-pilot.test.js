@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import { createSelfDevelopmentProductPilot } from "./self-development-product-pilot.js";
 
 function fixture({ existingPlan = null, taskStatuses = [] } = {}) {
-  const calls = { plans: [], approvals: [], recoveries: [], executions: [] };
+  const calls = { plans: [], approvals: [], recoveries: [], executions: [], specialistUpdates: [] };
   const pool = {
     async query(sql) {
       if (sql.includes("JOIN studio.organization_memberships")) return { rows: [{ id: "project-1" }] };
+      if (sql.includes("payload->>'role' = 'roblox_qa'")) return { rows: [{
+        id: "qa-specialist-1", version: 1,
+        payload: { role: "roblox_qa", allowedTools: [], instructions: "Review Roblox code." },
+      }] };
       if (sql.includes("payload->>'title'")) return { rows: existingPlan ? [existingPlan] : [] };
       if (sql.includes("FROM studio.tasks")) return { rows: taskStatuses.map((status, i) => ({ id: "task-" + i, status })) };
       throw new Error("Unexpected query: " + sql);
@@ -16,6 +20,7 @@ function fixture({ existingPlan = null, taskStatuses = [] } = {}) {
   const controlPlane = {
     access: { async loadProject(input) { return { id: input.projectId, name: "AI Office Self-Development" }; } },
     runtime: {
+      stores: { domain: { async updateSpecialist(input) { calls.specialistUpdates.push(input); return { specialist: { id: input.specialistId, version: input.expectedVersion + 1 } }; } } },
       director: { async plan(input) { calls.plans.push(input); return { plan }; } },
       approval: { async approve(input) { calls.approvals.push(input); return { plan: { ...input.plan, status: "approved" } }; } },
       recovery: { async recover(input) { calls.recoveries.push(input); return { recovered: 0 }; } },
@@ -41,6 +46,19 @@ test("asks the Director for a real Roblox implementation plan and runs the stand
   assert.equal(calls.approvals[0].plan.id, "plan-new");
   assert.equal(calls.approvals[0].actor.id, "legacy-office-owner");
   assert.deepEqual(calls.executions, [{ planId: "plan-new", actor: { id: "legacy-office-owner" } }]);
+});
+
+
+test("grants the existing Roblox QA specialist read-only access to the persisted workspace", async () => {
+  const { run, calls } = fixture();
+  await run({ organizationId: "org-1", actor: { id: "legacy-office-owner" } });
+  assert.equal(calls.specialistUpdates.length, 1);
+  const update = calls.specialistUpdates[0];
+  assert.equal(update.specialistId, "qa-specialist-1");
+  assert.equal(update.expectedVersion, 1);
+  assert.deepEqual(update.patch.allowedTools, ["list_repo_directory", "read_repo_file"]);
+  assert.match(update.patch.instructions, /independently use list_repo_directory and read_repo_file/);
+  assert.match(update.patch.instructions, /Roblox Studio playtesting/);
 });
 
 test("does not create a duplicate after the product pilot is completed", async () => {
