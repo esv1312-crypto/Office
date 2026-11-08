@@ -207,7 +207,7 @@ test("requeues a failed task for one bounded retry and records an audit event", 
           payload: { id: "specialist-1", competencies: ["architecture"], projectIds: [] },
         }] };
       }
-      if (sql.includes("COUNT(*)::int AS attempts")) return { rows: [{ attempts: 1 }] };
+      if (sql.includes("COUNT(*)::int AS attempts")) return { rows: [{ attempts: 2 }] };
       return { rows: [], rowCount: 1 };
     },
     release() {},
@@ -217,15 +217,15 @@ test("requeues a failed task for one bounded retry and records an audit event", 
     createId: () => "retry-event-1",
   });
   const result = await store.retryFailedTask({
-    taskId: "task-failed", expectedVersion: 5, maxAttempts: 2, at,
+    taskId: "task-failed", expectedVersion: 5, at,
     actorId: "owner-1",
   });
   assert.equal(result.task.status, "assigned");
   assert.equal(result.task.version, 6);
-  assert.equal(result.task.retryCount, 1);
+  assert.equal(result.task.retryCount, 2);
   assert.equal(result.task.previousFailureReason, "MODEL_EXECUTION_TIMEOUT");
   assert.equal("failureReason" in result.task, false);
-  assert.equal(result.attempt, 2);
+  assert.equal(result.attempt, 3);
   const update = calls.find(call => call.sql.includes("UPDATE studio.tasks SET status = 'assigned'"));
   assert.ok(update);
   const audit = calls.find(call => call.sql.includes("task.retry_scheduled"));

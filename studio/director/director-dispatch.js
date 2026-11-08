@@ -55,7 +55,7 @@ export function createDirectorDispatch({
             const retried = await store.retryFailedTask({
               taskId: task.id,
               expectedVersion: task.version,
-              maxAttempts: 2,
+              maxAttempts: 3,
               at: now(),
               actorId: actor?.id || null,
             });
