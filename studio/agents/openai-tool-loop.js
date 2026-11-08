@@ -37,6 +37,17 @@ function evidenceForTool({ name, arguments: rawArguments, result }) {
       evidence.range = { startLine, endLine, totalLines };
     }
   }
+  if (name === "read_repo_file" &&
+      typeof path === "string" &&
+      path.startsWith("studio/agent-workspace/verification/") &&
+      typeof result?.content === "string") {
+    const contentBytes = Buffer.byteLength(result.content, "utf8");
+    if (contentBytes <= 8192) evidence.content = result.content;
+    else {
+      evidence.contentTruncated = true;
+      evidence.contentBytes = contentBytes;
+    }
+  }
   if (typeof result?.error === "string") evidence.error = result.error;
   return evidence;
 }
