@@ -1,0 +1,130 @@
+--- a/src/runtime/task-executor.lua
++++ b/src/runtime/task-executor.lua
+@@ -1,15 +1,35 @@
+ local TaskExecutor = {}
+ TaskExecutor.__index = TaskExecutor
+ 
++-- Configuration for retry policy and worker budgets
++local RetryPolicy = {
++    maxRetries = 3,
++    baseDelayMs = 100,
++    maxDelayMs = 5000,
++    backoffMultiplier = 2.0,
++    retryableErrors = {
++        "timeout",
++        "network_error",
++        "rate_limited",
++        "temporary_failure"
++    }
++}
++
++local WorkerBudget = {
++    maxToolCallsPerTask = 50,
++    maxExecutionTimeMs = 30000,
++    maxMemoryBytes = 10 * 1024 * 1024, -- 10MB
++    toolCallCosts = {
++        read_file = 1,
++        write_file = 2,
++        list_directory = 1,
++        execute_code = 5,
++        network_request = 3
++    }
++}
++
+ function TaskExecutor.new(config)
+     local self = setmetatable({}, TaskExecutor)
+     self.config = config or {}
++    self.retryPolicy = mergeConfig(RetryPolicy, self.config.retryPolicy)
++    self.workerBudget = mergeConfig(WorkerBudget, self.config.workerBudget)
++    self.currentBudget = {
++        toolCalls = 0,
++        executionTimeMs = 0,
++        memoryBytes = 0
++    }
+     return self
+ end
+ 
++function mergeConfig(defaults, overrides)
++    local result = {}
++    for k, v in pairs(defaults) do
++        result[k] = v
++    end
++    if overrides then
++        for k, v in pairs(overrides) do
++            if type(v) == "table" and type(defaults[k]) == "table" then
++                result[k] = mergeConfig(defaults[k], v)
++            else
++                result[k] = v
++            end
++        end
++    end
++    return result
++end
++
++function TaskExecutor:resetBudget()
++    self.currentBudget = {
++        toolCalls = 0,
++        executionTimeMs = 0,
++        memoryBytes = 0
++    }
++end
++
++function TaskExecutor:checkBudget(toolName)
++    local cost = self.workerBudget.toolCallCosts[toolName] or 1
++    if self.currentBudget.toolCalls + cost > self.workerBudget.maxToolCallsPerTask then
++        return false, "Tool call budget exceeded"
++    end
++    self.currentBudget.toolCalls = self.currentBudget.toolCalls + cost
++    return true
++end
++
++function TaskExecutor:isRetryableError(errorType)
++    for _, retryable in ipairs(self.retryPolicy.retryableErrors) do
++        if errorType == retryable then
++            return true
++        end
++    end
++    return false
++end
++
++function TaskExecutor:calculateBackoff(attempt)
++    local delay = self.retryPolicy.baseDelayMs * (self.retryPolicy.backoffMultiplier ^ (attempt - 1))
++    return math.min(delay, self.retryPolicy.maxDelayMs)
++end
++
+ function TaskExecutor:execute(taskFn, context)
+     local attempt = 0
+     local lastError = nil
++    self:resetBudget()
+ 
+     while attempt <= self.retryPolicy.maxRetries do
+         attempt = attempt + 1
++        local startTime = os.clock() * 1000
+ 
+         local success, result = pcall(taskFn, context)
+ 
+         if success then
++            self.currentBudget.executionTimeMs = self.currentBudget.executionTimeMs + (os.clock() * 1000 - startTime)
+             return result
+         end
+ 
+         lastError = result
++        self.currentBudget.executionTimeMs = self.currentBudget.executionTimeMs + (os.clock() * 1000 - startTime)
+ 
+-        if attempt <= self.config.maxRetries then
+-            local delay = self.config.baseDelayMs * (2 ^ (attempt - 1))
+-            task.wait(delay / 1000)
++        local errorType = type(result) == "table" and result.errorType or "unknown"
++        if attempt <= self.retryPolicy.maxRetries and self:isRetryableError(errorType) then
++            local delay = self:calculateBackoff(attempt)
++            task.wait(delay / 1000)
+         else
+             break
+         end
+     end
+ 
+-    error("Task failed after " .. self.config.maxRetries .. " retries: " .. tostring(lastError))
++    error("Task failed after " .. self.retryPolicy.maxRetries .. " retries: " .. tostring(lastError) .. " (budget: " .. self.currentBudget.toolCalls .. " tool calls)")
+ end
+ 
+ return TaskExecutor
