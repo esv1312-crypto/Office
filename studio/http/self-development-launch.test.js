@@ -97,7 +97,7 @@ test("uses a deterministic, evidence-bounded bootstrap plan when planner output 
   assert.equal(result.status, 202);
   assert.equal(result.body.planSource, "deterministic-bootstrap-fallback");
   assert.equal(result.body.plannerFailure.code, "INVALID_MODEL_JSON");
-  assert.equal(calls.fallbackPlan.plan.title, "AI Office Self-Development — Initial Audit and Roadmap");
+  assert.equal(calls.fallbackPlan.plan.title, "AI Office Self-Development — First Implementation Sprint");
   assert.equal(calls.fallbackPlan.tasks.length, 3);
   assert.ok(calls.fallbackPlan.tasks.every(task => task.status === "draft" && task.assigneeSpecialistId === null));
   assert.equal(calls.approvals.length, 1);
