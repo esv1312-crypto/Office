@@ -23,8 +23,8 @@ function actorFrom(request) {
 }
 
 export function createStudioHttpHandlers({ runtime, loadProject, loadPlan }) {
-  if (!runtime?.director || !runtime?.approval || !runtime?.workflow) {
-    throw new TypeError("A composed Studio runtime is required");
+  if (!runtime?.director || !runtime?.approval || !runtime?.workflow || typeof runtime?.recovery?.recover !== "function") {
+    throw new TypeError("A composed Studio runtime with governed execution recovery is required");
   }
   if (typeof loadProject !== "function" || typeof loadPlan !== "function") {
     throw new TypeError("Secure project and plan lookup functions are required");
@@ -88,8 +88,16 @@ export function createStudioHttpHandlers({ runtime, loadProject, loadPlan }) {
           status: 409, code: "PLAN_NOT_APPROVED",
         });
       }
+      // This endpoint is the explicit, authenticated owner resume action.
+      // Reconcile expired Worker leases before dispatch so recovered assigned
+      // tasks can be retried by the normal bounded workflow. Recovery is
+      // owner-authorized and never calls a model or dispatches work itself.
+      const recovery = await runtime.recovery.recover({ actor, limit: 50 });
       const result = await runtime.workflow.run({ planId, actor });
-      return { status: result.status === "completed" ? 200 : 202, body: result };
+      return {
+        status: result.status === "completed" ? 200 : 202,
+        body: { ...result, recovery },
+      };
     },
   });
 }
