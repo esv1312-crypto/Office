@@ -111,10 +111,10 @@ export function createOpenAiCompatibleGateways({
   workerTools = null,
   maxToolRounds = 12,
   maxToolCalls = 24,
-  maxToolResultBytes = 12 * 1024,
-  maxTotalToolResultBytes = 48 * 1024,
-  maxTotalOutputTokens = 12000,
-  maxTotalPromptTokens = 120000,
+  maxToolResultBytes = 24 * 1024,
+  maxTotalToolResultBytes = 256 * 1024,
+  maxTotalOutputTokens = 24000,
+  maxTotalPromptTokens = 240000,
   modelBudget = null,
 }) {
   if (!client?.chat?.completions ||
