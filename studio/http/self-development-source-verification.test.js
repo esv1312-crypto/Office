@@ -38,16 +38,16 @@ test("creates one scoped source-verification plan, approves it, and executes thr
   assert.deepEqual(task.requiredCompetencies, ["implementation", "coding"]);
   assert.ok(task.description.includes("studio/server.js"));
   assert.ok(task.description.includes("studio/agents/github-workspace-tools.js"));
-  assert.ok(task.description.includes("studio/agents/worker-runtime.js lines 175-185 and 220-230"));
+  assert.ok(task.description.includes("studio/agents/worker-runtime.js lines 180-188 and 238-245"));
   assert.ok(task.description.includes("Do NOT put the evidence file's own blob SHA"));
-  assert.ok(task.description.includes("studio/agent-workspace/verification/post-pr81-source-audit-v5.md"));
+  assert.ok(task.description.includes("studio/agent-workspace/verification/post-pr81-source-audit-v6.md"));
   assert.deepEqual(calls.approved, [calls.created[0].plan.id]);
   assert.deepEqual(calls.executed, [{ planId: calls.created[0].plan.id, actor: { id: "legacy-office-owner" } }]);
 });
 
 test("does not create a duplicate when the verification task is already completed", async () => {
   const { run, calls } = fixture({
-    existingPlan: { id: "existing-plan", status: "approved", payload: { title: "AI Office — Live Source Read/Write Verification v5" } },
+    existingPlan: { id: "existing-plan", status: "approved", payload: { title: "AI Office — Live Source Read/Write Verification v6" } },
     taskStatuses: ["completed"],
   });
   const result = await run({ organizationId: "org-1", actor: { id: "legacy-office-owner" } });
