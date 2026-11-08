@@ -9,6 +9,7 @@ import { createGithubArtifactWriter } from "./artifacts/github-artifact-writer.j
 import { createGithubWorkspaceTools } from "./agents/github-workspace-tools.js";
 import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.js";
 import { createSelfDevelopmentLaunchHandler } from "./http/self-development-launch.js";
+import { createSelfDevelopmentSourceVerification } from "./http/self-development-source-verification.js";
 
 function requiredEnv(name) {
   const value = String(process.env[name] || "").trim();
@@ -202,6 +203,12 @@ const launchSelfDevelopment = createSelfDevelopmentLaunchHandler({
   createSpecialistsForProfile,
 });
 
+const runSourceVerification = createSelfDevelopmentSourceVerification({
+  pool,
+  controlPlane,
+  createId: randomUUID,
+});
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "256kb" }));
@@ -315,6 +322,29 @@ async function runConfiguredSelfDevelopmentLaunch() {
   }
 }
 
+async function runConfiguredSourceVerification() {
+  if (String(process.env.STUDIO_SELF_DEVELOPMENT_SOURCE_VERIFICATION || "").toLowerCase() !== "true") return;
+  const organizationId = String(process.env.STUDIO_SELF_DEVELOPMENT_ORGANIZATION_ID || "").trim();
+  if (!organizationId) {
+    console.error("[studio] source verification skipped; organization ID is not configured");
+    return;
+  }
+  const lockClient = await pool.connect();
+  let locked = false;
+  try {
+    await lockClient.query("SELECT pg_advisory_lock(741920264)");
+    locked = true;
+    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    const result = await runSourceVerification({ organizationId, actor });
+    console.log(`[studio] source verification; plan=${result.planId || "existing"}; status=${result.status}; created=${Boolean(result.created)}; executions=${result.execution?.executions?.length || 0}; qa=${result.execution?.qaReviews?.length || 0}; blocked=${result.execution?.blocked?.length || 0}`);
+  } catch (error) {
+    console.error("[studio] source verification failed", error?.code || error?.status || "SOURCE_VERIFICATION_FAILED");
+  } finally {
+    if (locked) await lockClient.query("SELECT pg_advisory_unlock(741920264)").catch(() => {});
+    lockClient.release();
+  }
+}
+
 async function runConfiguredOwnerExecution() {
   const planId = String(process.env.STUDIO_OWNER_EXECUTE_PLAN_ID || "").trim();
   if (!planId) return;
@@ -359,6 +389,7 @@ const server = app.listen(port, "0.0.0.0", () => {
   void (async () => {
     await runConfiguredInitialBootstrap();
     await runConfiguredSelfDevelopmentLaunch();
+    await runConfiguredSourceVerification();
     await runConfiguredOwnerExecution();
   })().catch(error => {
     console.error("[studio] startup orchestration failed", error?.code || error?.message || "STARTUP_FAILED");
