@@ -42,7 +42,7 @@
 
 Startup logs показывают повторный запуск Roblox product pilot plan `b45ca5c0-714f-42e8-9a70-c527dc5b4ab9` (Roblox Fan District) внутри AI Office Self-Development project. Он возвращает `needs_attention` и не является текущей задачей пользователя.
 
-Не удалять его историю и не продолжать. Исправить startup/owner flow так, чтобы он запускал self-development implementation plan, а не Roblox product pilot.
+Не удалять его историю и не продолжать. После подтверждения пользователя установить `STUDIO_SELF_DEVELOPMENT_PRODUCT_PILOT=false`, сохранив self-development startup trigger; затем исправить startup/owner flow так, чтобы он запускал self-development implementation plan, а не Roblox product pilot.
 
 ## Следующие действия
 
