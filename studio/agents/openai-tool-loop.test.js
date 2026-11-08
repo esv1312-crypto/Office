@@ -347,7 +347,7 @@ test("supports 50 tool rounds with a bounded 512 KiB cumulative tool-result budg
     maxTotalToolResultBytes: 512 * 1024,
     maxTotalPromptTokens: 10000,
   });
-  assert.equal(result.text, "Finished 40 rounds.");
+  assert.equal(result.text, "Finished 50 rounds.");
   assert.equal(result.toolCallsExecuted, 50);
   assert.equal(result.toolEvidence.length, 50);
   assert.equal(requests, 51);
