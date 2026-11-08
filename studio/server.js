@@ -515,12 +515,14 @@ async function runConfiguredOwnerTask() {
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
   void (async () => {
+    // The explicitly configured owner master task has priority over legacy startup jobs.
+    // Await it first so older self-development/pilot workflows cannot delay its handoff to Director.
+    await runConfiguredOwnerTask();
     await runConfiguredInitialBootstrap();
     await runConfiguredSelfDevelopmentLaunch();
     await runConfiguredSourceVerification();
     await runConfiguredProductPilot();
     await runConfiguredOwnerExecution();
-    await runConfiguredOwnerTask();
   })().catch(error => {
     console.error("[studio] startup orchestration failed", error?.code || error?.message || "STARTUP_FAILED");
   });
