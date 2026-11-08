@@ -97,6 +97,7 @@ export async function runOpenAiToolLoop({
   maxTotalOutputTokens = 12000,
   maxTotalPromptTokens = 120000,
   requestTimeoutMs = 90_000,
+  modelBudget = null,
   signal,
 }) {
   if (typeof client?.chat?.completions?.create !== "function") throw new TypeError("chat.completions.create is required");
@@ -127,14 +128,16 @@ export async function runOpenAiToolLoop({
     if (remainingOutput <= 0) {
       throw Object.assign(new Error("Worker reached its total output-token budget"), { code: "OUTPUT_TOKEN_BUDGET" });
     }
-    console.info("[studio-model] tool-loop request started", { model, round, executedTools: executed });
+    const requestMaxTokens = Math.min(maxTokens, remainingOutput);
+    const reservation = modelBudget ? await modelBudget.reserve({ model, role: "worker", messages: conversation, maxTokens: requestMaxTokens }) : null;
+    console.info("[studio-model] tool-loop request started", { model, round, executedTools: executed, budgetReservation: Boolean(reservation) });
     let response;
     try {
       response = await client.chat.completions.create({
         model,
         messages: conversation,
         temperature,
-        max_tokens: Math.min(maxTokens, remainingOutput),
+        max_tokens: requestMaxTokens,
         tools,
         tool_choice: "auto",
       }, { timeout: requestTimeoutMs, ...(signal ? { signal } : {}) });
@@ -146,6 +149,7 @@ export async function runOpenAiToolLoop({
       });
       throw error;
     }
+    if (reservation) await modelBudget.settle(reservation, { usage: response?.usage, response });
     const requestUsage = usageFrom(response);
     usage.promptTokens += requestUsage.promptTokens;
     usage.completionTokens += requestUsage.completionTokens;
