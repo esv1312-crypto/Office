@@ -27,6 +27,7 @@ export function createStudioControlPlane({
   createSpecialistsForProfile,
   now,
   workerConcurrency,
+  modelBudget = null,
 }) {
   if (!pool || typeof pool.connect !== "function" || typeof pool.query !== "function") {
     throw new TypeError("A dedicated migrated Studio PostgreSQL pool is required");
@@ -52,6 +53,7 @@ export function createStudioControlPlane({
     authorize: access.authorize,
     artifactWriter,
     workerTools,
+    modelBudget,
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
   });
