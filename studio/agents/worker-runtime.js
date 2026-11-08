@@ -188,7 +188,7 @@ export function createWorkerRuntime({
 
       const output = generated.text.trim();
       let externalArtifact = null;
-      if (artifactWriter) {
+      if (artifactWriter && started.task.externalArtifact !== false) {
         try {
           const path = artifactPathForTask({
             task: started.task,
