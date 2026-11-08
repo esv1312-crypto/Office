@@ -14,6 +14,13 @@ function nonEmptyStrings(value, field) {
   }
   return [...value];
 }
+function boundedStrings(value, field, min, max) {
+  const items = nonEmptyStrings(value, field);
+  if (items.length < min || items.length > max) {
+    throw new TypeError(`${field} must contain between ${min} and ${max} items`);
+  }
+  return items;
+}
 function validateProposal(proposal) {
   if (!proposal || typeof proposal !== "object" || Array.isArray(proposal)) {
     throw new TypeError("Planning gateway must return a plan object");
@@ -21,9 +28,9 @@ function validateProposal(proposal) {
   const title = required(proposal.title, "plan.title");
   const objective = required(proposal.objective, "plan.objective");
   const summary = required(proposal.summary, "plan.summary");
-  const acceptanceCriteria = nonEmptyStrings(proposal.acceptanceCriteria, "plan.acceptanceCriteria");
-  if (!Array.isArray(proposal.tasks) || proposal.tasks.length < 1 || proposal.tasks.length > 25) {
-    throw new TypeError("Plan must contain between 1 and 25 tasks");
+  const acceptanceCriteria = boundedStrings(proposal.acceptanceCriteria, "plan.acceptanceCriteria", 1, 8);
+  if (!Array.isArray(proposal.tasks) || proposal.tasks.length < 1 || proposal.tasks.length > 8) {
+    throw new TypeError("Plan must contain between 1 and 8 bounded stage tasks");
   }
   const tasks = proposal.tasks.map((task, index) => {
     if (!task || typeof task !== "object" || Array.isArray(task)) {
@@ -31,9 +38,9 @@ function validateProposal(proposal) {
     }
     return {
       title: required(task.title, `plan.tasks[${index}].title`),
-      description: required(task.description, `plan.tasks[${index}].description`),
-      requiredCompetencies: nonEmptyStrings(task.requiredCompetencies, `plan.tasks[${index}].requiredCompetencies`),
-      acceptanceCriteria: nonEmptyStrings(task.acceptanceCriteria, `plan.tasks[${index}].acceptanceCriteria`),
+      description: (() => { const value = required(task.description, `plan.tasks[${index}].description`); if (value.length > 1200) throw new TypeError(`plan.tasks[${index}].description must be 1200 characters or fewer`); return value; })(),
+      requiredCompetencies: boundedStrings(task.requiredCompetencies, `plan.tasks[${index}].requiredCompetencies`, 1, 6),
+      acceptanceCriteria: boundedStrings(task.acceptanceCriteria, `plan.tasks[${index}].acceptanceCriteria`, 1, 4),
     };
   });
   const modelSnapshot = proposal.modelSnapshot;

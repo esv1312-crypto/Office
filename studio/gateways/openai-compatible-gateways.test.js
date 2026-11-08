@@ -39,6 +39,10 @@ test("planner requests structured JSON and returns a provider/model snapshot", a
   });
   assert.deepEqual({ ...result, modelSnapshot: undefined }, { ...proposal, modelSnapshot: undefined });
   assert.deepEqual(calls[0].request.response_format, { type: "json_object" });
+  const plannerInstructions = calls[0].request.messages[0].content;
+  assert.match(plannerInstructions, /1 to 8 small, independently verifiable tasks/);
+  assert.match(plannerInstructions, /no more than 1 to 3 closely related files/);
+  assert.match(plannerInstructions, /smallest useful next milestone/);
   assert.equal(result.modelSnapshot.provider, "openrouter");
   assert.equal(result.modelSnapshot.model, "planner-model");
   assert.equal(result.modelSnapshot.instructionVersion, 2);
