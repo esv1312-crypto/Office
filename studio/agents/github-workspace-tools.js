@@ -7,17 +7,31 @@ function required(value, field) {
   return value.trim();
 }
 
-function safePath(value, allowedPrefix) {
+function normalizedPath(value) {
   const path = required(value, "path");
   const normalized = path.endsWith("/") ? path.slice(0, -1) : path;
   if (normalized.startsWith("/") || normalized.includes("\\") ||
       normalized.split("/").some(part => !part || part === "." || part === "..")) {
     throw Object.assign(new Error("Workspace path rejected"), { code: "WORKSPACE_PATH_REJECTED" });
   }
+  return normalized;
+}
+
+function safeReadPath(value) {
+  const normalized = normalizedPath(value);
+  if (/(^|\/)(\.env|secrets?|credentials?)(\/|$)/i.test(normalized) ||
+      /(^|\/)(\.git|\.github\/workflows|projects)(\/|$)/i.test(normalized)) {
+    throw Object.assign(new Error("Repository path is excluded from read access"), { code: "WORKSPACE_PATH_REJECTED" });
+  }
+  return normalized;
+}
+
+function safePath(value, allowedPrefix) {
+  const normalized = normalizedPath(value);
   if (!(normalized === allowedPrefix.slice(0, -1) || normalized.startsWith(allowedPrefix)) ||
       /(^|\/)(\.env|secrets?|credentials?)(\/|$)/i.test(normalized) ||
       /(^|\/)(\.git|\.github\/workflows)(\/|$)/i.test(normalized)) {
-    throw Object.assign(new Error("Workspace path is outside the permitted source area"), { code: "WORKSPACE_PATH_REJECTED" });
+    throw Object.assign(new Error("Workspace path is outside the permitted write area"), { code: "WORKSPACE_PATH_REJECTED" });
   }
   return normalized;
 }
@@ -110,13 +124,13 @@ export function createGithubWorkspaceTools({
 
   async function execute(name, args = {}) {
     if (name === "list_repo_directory") {
-      const path = safePath(args.path, prefix);
+      const path = safeReadPath(args.path);
       const items = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(targetBranch));
       if (!Array.isArray(items)) throw Object.assign(new Error("Expected a directory listing"), { code: "WORKSPACE_INVALID_RESPONSE" });
       return items.map(item => ({ name: item.name, path: item.path, type: item.type, size: item.size }));
     }
     if (name === "read_repo_file") {
-      const path = safePath(args.path, prefix);
+      const path = safeReadPath(args.path);
       const file = await fetchFile(path);
       const lines = file.content.split("\n");
       const start = args.start_line === undefined ? 1 : args.start_line;
