@@ -285,3 +285,35 @@ test("compacts older tool rounds while retaining valid recent tool-call pairs an
   assert.equal(result.toolEvidence.length, 6);
   assert.equal(result.toolCallsExecuted, 6);
 });
+
+
+test("supports the expanded 40-round worker budget", async () => {
+  let requests = 0;
+  const client = clientFor(async () => {
+    requests += 1;
+    if (requests <= 21) {
+      return {
+        choices: [{ message: { role: "assistant", content: null, tool_calls: [{
+          id: "round-" + requests,
+          type: "function",
+          function: { name: "read_file", arguments: JSON.stringify({ path: "src/round-" + requests + ".js" }) },
+        }] } }],
+        usage: { prompt_tokens: 5, completion_tokens: 1 },
+      };
+    }
+    return { choices: [{ message: { role: "assistant", content: "Completed after 21 rounds." } }] };
+  });
+  const result = await runOpenAiToolLoop({
+    client,
+    model: "m",
+    messages: [{ role: "system", content: "worker" }, { role: "user", content: "inspect" }],
+    tools: [tool],
+    executeTool: async () => ({ ok: true }),
+    maxRounds: 40,
+    maxToolCalls: 30,
+    maxTotalPromptTokens: 10000,
+  });
+  assert.equal(result.text, "Completed after 21 rounds.");
+  assert.equal(result.toolCallsExecuted, 21);
+  assert.equal(requests, 22);
+});
