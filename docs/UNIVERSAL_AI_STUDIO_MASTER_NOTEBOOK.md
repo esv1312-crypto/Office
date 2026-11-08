@@ -364,3 +364,13 @@ Never write “done” merely because a request was accepted or a plan says comp
 - **CI:** Four workflows were queued and then observed in progress: PostgreSQL integration (run 460), unit tests (run 962), isolated tests (run 277), runtime smoke integration (run 416). No pass/fail result is claimed yet.
 - **Next blocker to address:** Existing self-development tasks with status `failed` are not automatically retryable. Add an explicit, bounded retry transition with attempt limits and error classification; do not reset tasks by direct SQL. The existing plan cannot yet be truthfully claimed as restarted.
 - **Paid model policy:** Still unchanged; Runtime continues to use the free OpenRouter model. Do not enable paid DeepSeek until the pre-call hard USD spend cap is implemented and tested.
+
+
+### 2026-11-08 — PR #108 merged; CI green
+
+- **PR #108:** Marked ready after review of the exact diff and CI, then squash-merged to `studio-v1-foundation`.
+- **Merge commit:** `2e1835d9bb30ea59a52f8d0971bce76cc883f632`.
+- **CI evidence on PR head `9a89d03f8f846568cffaaa5912645aea31d0aa56`:** all four workflows passed — unit tests run 962, PostgreSQL integration run 460, isolated tests run 277, runtime smoke integration run 416.
+- **Render deployment:** Service `ai-office-runtime` is configured for auto-deploy on `studio-v1-foundation` with `autoDeployTrigger=checksPass`. The latest deployment listing still showed the previous live commit `196ef467263e08754792f42a8925ec9e74640b8a`; deployment of merge commit `2e1835d9bb30ea59a52f8d0971bce76cc883f632` is not yet confirmed. Do not claim the fix is live until Render shows the new commit as live and health is rechecked.
+- **Issue tracking:** Added the latest verified findings and follow-up to issue #107.
+- **Next action:** Confirm the merge commit's Render deployment. Then implement bounded retries / new sprint creation for failed self-development tasks and configurable worker tool budgets. Do not re-run the same three failed tasks unchanged; their attempts already reached 6–7. Paid models remain disabled.
