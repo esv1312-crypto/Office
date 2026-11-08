@@ -275,6 +275,14 @@ test("appends authoritative tool metadata to the persisted artifact", async () =
         branch: "studio-ai-agent-workspace",
         blobSha: "verified-workspace-blob",
         commitSha: "verified-commit",
+      }, {
+        name: "read_repo_file",
+        status: "ok",
+        path: "studio/agent-workspace/verification/audit.md",
+        branch: "studio-ai-agent-workspace",
+        sha: "verified-readback-sha",
+        range: { startLine: 1, endLine: 2, totalLines: 2 },
+        content: "# Evidence\\nExact persisted file text.",
       }],
     },
   });
@@ -285,5 +293,7 @@ test("appends authoritative tool metadata to the persisted artifact", async () =
   assert.match(result.output, /verified-workspace-blob/);
   assert.match(result.output, /studio-v1-foundation/);
   assert.match(result.output, /studio-ai-agent-workspace/);
+  assert.match(result.output, /verified-readback-sha/);
+  assert.match(result.output, /Exact persisted file text/);
   assert.equal(calls.completed[0].artifact.content, result.output);
 });
