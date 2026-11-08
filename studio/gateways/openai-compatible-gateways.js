@@ -337,18 +337,33 @@ export function createOpenAiCompatibleGateways({
           },
         ];
         let lastError;
-        for (const jsonMode of [true, false]) {
-          try {
-            const result = await complete("qa", messages, { signal, jsonMode });
-            return {
-              ...parseJson(result.content, "qa"),
-              modelSnapshot: { ...result.modelSnapshot, jsonMode, retryUsed: !jsonMode },
-            };
-          } catch (error) {
-            lastError = error;
-            const retryable = ["EMPTY_MODEL_OUTPUT", "INVALID_MODEL_JSON"].includes(error?.code) ||
-              [403, 429, 500, 502, 503, 504].includes(error?.status);
-            if (!retryable) throw error;
+        const candidates = [
+          { model: configs.qa.model, fallbackUsed: false },
+          { model: "nvidia/nemotron-3.5-lightning:free", fallbackUsed: true },
+        ].filter((candidate, index, all) =>
+          all.findIndex(item => item.model === candidate.model) === index
+        );
+        for (const candidate of candidates) {
+          for (const jsonMode of [true, false]) {
+            try {
+              const result = await complete("qa", messages, {
+                signal, jsonMode, modelOverride: candidate.model,
+              });
+              return {
+                ...parseJson(result.content, "qa"),
+                modelSnapshot: {
+                  ...result.modelSnapshot,
+                  jsonMode,
+                  retryUsed: !jsonMode,
+                  fallbackUsed: candidate.fallbackUsed,
+                },
+              };
+            } catch (error) {
+              lastError = error;
+              const retryable = ["EMPTY_MODEL_OUTPUT", "INVALID_MODEL_JSON"].includes(error?.code) ||
+                [403, 429, 500, 502, 503, 504].includes(error?.status);
+              if (!retryable) throw error;
+            }
           }
         }
         throw lastError || Object.assign(new Error("QA model returned no review"), {
