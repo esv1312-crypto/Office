@@ -246,3 +246,45 @@ test("completion reads the task fencing token before validating and persisting t
   assert.ok(calls.some(call => call.sql.includes("UPDATE studio.tasks") && call.sql.includes("SET status = 'qa'")));
   assert.equal(calls.at(-2).sql, "COMMIT");
 });
+
+
+test("failure persists when the current task fencing token matches the execution", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT * FROM studio.executions WHERE id = $1 FOR UPDATE")) {
+        return { rows: [{
+          id: "execution-1", task_id: "task-1", specialist_id: "specialist-1",
+          status: "running", fencing_token: 5, lease_token: "lease-5",
+          lease_expires_at: "2026-11-08T15:10:00.000Z",
+        }] };
+      }
+      if (sql.includes("SELECT t.id, t.project_id, t.status, t.version, t.fencing_token, t.payload")) {
+        return { rows: [{
+          id: "task-1", project_id: "project-1", status: "running", version: 4,
+          fencing_token: 5, payload: { id: "task-1", title: "Build lobby", status: "running" },
+          organization_id: "org-1",
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    release() { calls.push({ sql: "RELEASE", params: [] }); },
+  };
+  let nextId = 0;
+  const store = createPostgresExecutionStore({
+    pool: { async connect() { return client; } },
+    createId: () => `generated-${++nextId}`,
+  });
+  const result = await store.failExecution({
+    executionId: "execution-1", reason: "provider failed",
+    at: "2026-11-08T15:00:00.000Z", fencingToken: 5, leaseToken: "lease-5",
+  });
+  assert.equal(result.task.status, "failed");
+  assert.equal(result.task.failureReason, "provider failed");
+  assert.ok(calls.some(call => call.sql.includes("UPDATE studio.executions SET status = 'failed'")));
+  assert.ok(calls.some(call => call.sql.includes("UPDATE studio.tasks SET status = 'failed'")));
+  assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.events")));
+  assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.outbox_events")));
+  assert.equal(calls.at(-2).sql, "COMMIT");
+});
