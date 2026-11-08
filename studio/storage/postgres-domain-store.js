@@ -349,7 +349,7 @@ export function createPostgresDomainStore({ pool, createId }) {
       }));
     },
 
-    async retryFailedTask({ taskId, expectedVersion, at, actorId = null, maxAttempts = 2 }) {
+    async retryFailedTask({ taskId, expectedVersion, at, actorId = null, maxAttempts = 3 }) {
       const id = required(taskId, "taskId");
       const retryAt = timestamp(at);
       if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 5) {
