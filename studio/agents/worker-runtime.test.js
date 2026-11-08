@@ -93,6 +93,7 @@ test("claims an assigned task, invokes the gateway, stores an artifact, and hand
   assert.equal(calls.started[0].taskId, "task-1");
   assert.equal(calls.started[0].specialistId, specialist.id);
   assert.equal(calls.generated.length, 1);
+  assert.equal(calls.heartbeats.length, 1, "the worker must renew its lease before calling the model");
   assert.equal(calls.generated[0].task.status, "running");
   assert.equal(calls.generated[0].specialist.instructions, specialist.instructions);
   assert.equal(calls.completed.length, 1);
@@ -347,4 +348,17 @@ test("fails a worker execution when the model gateway exceeds its hard deadline"
   assert.equal(calls.failed.length, 1);
   assert.equal(calls.completed.length, 0);
   assert.equal(calls.generated[0].signal.aborted, true);
+});
+
+
+test("does not call the model when the initial lease renewal fails", async () => {
+  const leaseError = Object.assign(new Error("Lease lost before model start"), { code: "EXECUTION_LEASE_LOST" });
+  const { runtime, calls } = fixture({ heartbeatError: leaseError });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "lease_lost");
+  assert.equal(result.errorCode, "EXECUTION_LEASE_LOST");
+  assert.equal(calls.heartbeats.length, 1);
+  assert.equal(calls.generated.length, 0);
+  assert.equal(calls.completed.length, 0);
+  assert.equal(calls.failed.length, 0);
 });

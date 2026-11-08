@@ -89,7 +89,7 @@ export function createWorkerRuntime({
   artifactPathForTask = defaultArtifactPath,
   now = () => new Date().toISOString(),
   leaseMs = 300_000,
-  heartbeatIntervalMs = 60_000,
+  heartbeatIntervalMs = 20_000,
   modelTimeoutMs = 180_000,
 }) {
   if (!store ||
@@ -196,6 +196,10 @@ export function createWorkerRuntime({
       };
       let modelTimeoutTimer;
       try {
+        // Confirm lease ownership immediately; do not leave the first provider call
+        // running on a lease that has never been renewed by this worker.
+        await renewLease();
+        if (leaseError) throw leaseError;
         console.info("[studio-worker] model generation started", { executionId: started.executionId, taskId: id });
         const deadline = new Promise((_, reject) => {
           modelTimeoutTimer = setTimeout(() => {
