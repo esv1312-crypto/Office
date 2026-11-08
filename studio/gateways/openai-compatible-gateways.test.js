@@ -141,7 +141,7 @@ test("planner falls back to the free router after a model access error", async (
   const client = {
     chat: { completions: { create: async request => {
       calls.push(request);
-      if (calls.length === 1) throw Object.assign(new Error("model endpoint forbidden"), { status: 403 });
+      if (request.model === "google/gemma-4-26b-a4b-it:free") throw Object.assign(new Error("model endpoint forbidden"), { status: 403 });
       return { choices: [{ message: { content: "Plan follows: " + JSON.stringify(proposal) + " End." } }] };
     } } },
   };
@@ -159,7 +159,7 @@ test("planner falls back to the free router after a model access error", async (
   });
   assert.equal(result.title, "Fallback plan");
   assert.equal(calls[0].model, "google/gemma-4-26b-a4b-it:free");
-  assert.equal(calls[1].model, "openrouter/free");
+  assert.equal(calls[2].model, "openrouter/free");
   assert.equal(result.modelSnapshot.fallbackUsed, true);
 });
 
