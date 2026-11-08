@@ -122,7 +122,7 @@ export async function runOpenAiToolLoop({
   executeTool,
   temperature = 0.2,
   maxTokens = 6000,
-  maxRounds = 8,
+  maxRounds = 40,
   maxToolCalls = 12,
   maxToolResultBytes = 12 * 1024,
   maxTotalToolResultBytes = 48 * 1024,
@@ -137,7 +137,7 @@ export async function runOpenAiToolLoop({
   if (!Array.isArray(messages) || !messages.length) throw new TypeError("messages are required");
   if (!Array.isArray(tools) || !tools.length) throw new TypeError("at least one tool definition is required");
   if (typeof executeTool !== "function") throw new TypeError("executeTool is required");
-  if (!Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 20) throw new TypeError("maxRounds must be between 1 and 20");
+  if (!Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 50) throw new TypeError("maxRounds must be between 1 and 50");
   if (!Number.isInteger(maxToolCalls) || maxToolCalls < 1 || maxToolCalls > 100) throw new TypeError("maxToolCalls must be between 1 and 100");
   if (!Number.isInteger(maxToolResultBytes) || maxToolResultBytes < 256) throw new TypeError("maxToolResultBytes must be at least 256");
   if (!Number.isInteger(maxTotalToolResultBytes) || maxTotalToolResultBytes < maxToolResultBytes) throw new TypeError("maxTotalToolResultBytes must be at least maxToolResultBytes");
