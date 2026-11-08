@@ -88,7 +88,7 @@ test("allows read-only source inspection outside the write workspace", async () 
   });
   const result = await tools.execute({ name: "read_repo_file", arguments: { path: "studio/server.js" } });
   assert.equal(result.content, source);
-  assert.match(calls[0], /contents\\/studio\\/server\\.js/);
+  assert.ok(calls[0].includes("/contents/studio/server.js?"));
 });
 
 test("keeps repository reads away from secrets, project data, workflows, and traversal", async () => {
