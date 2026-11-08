@@ -207,6 +207,8 @@ const controlPlane = createStudioControlPlane({
   createSpecialistsForProfile,
   workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
   modelBudget,
+  maxToolRounds: 20,
+  maxToolCalls: 100,
 });
 
 const launchSelfDevelopment = createSelfDevelopmentLaunchHandler({
