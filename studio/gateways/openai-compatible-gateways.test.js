@@ -124,43 +124,31 @@ test("validates gateway client and all role model configurations up front", () =
 });
 
 
-test("planner falls back to the free router after a model access error", async () => {
-  const proposal = {
-    title: "Fallback plan",
-    objective: "Keep planning available",
-    summary: "Use a compatible free route when the pinned endpoint is unavailable.",
-    acceptanceCriteria: ["A valid plan is returned"],
-    tasks: [{
-      title: "Audit planner reliability",
-      description: "Record provider errors and improve recovery.",
-      requiredCompetencies: ["architecture"],
-      acceptanceCriteria: ["The failure mode is documented"],
-    }],
-  };
+test("planner does not switch models after a configured model access error", async () => {
   const calls = [];
   const client = {
     chat: { completions: { create: async request => {
       calls.push(request);
-      if (request.model === "google/gemma-4-26b-a4b-it:free") throw Object.assign(new Error("model endpoint forbidden"), { status: 403 });
-      return { choices: [{ message: { content: "Plan follows: " + JSON.stringify(proposal) + " End." } }] };
+      throw Object.assign(new Error("configured model endpoint forbidden"), { status: 403 });
     } } },
   };
   const gateways = createOpenAiCompatibleGateways({
     client,
     models: {
-      planner: "google/gemma-4-26b-a4b-it:free",
+      planner: "deepseek/deepseek-v4.1-flash-1017",
       worker: "openrouter/free",
       qa: "openrouter/free",
     },
   });
-  const result = await gateways.planningGateway.generatePlan({
-    request: "Create a self-development plan",
-    project: { id: "project-1" },
-  });
-  assert.equal(result.title, "Fallback plan");
-  assert.equal(calls[0].model, "google/gemma-4-26b-a4b-it:free");
-  assert.equal(calls[2].model, "openrouter/free");
-  assert.equal(result.modelSnapshot.fallbackUsed, true);
+  await assert.rejects(
+    gateways.planningGateway.generatePlan({
+      request: "Create a self-development plan",
+      project: { id: "project-1" },
+    }),
+    error => error.status === 403,
+  );
+  assert.equal(calls.length, 2, "the planner may retry the same configured model without JSON mode");
+  assert.ok(calls.every(call => call.model === "deepseek/deepseek-v4.1-flash-1017"));
 });
 
 test("planner extracts a balanced JSON object surrounded by explanatory prose", async () => {
@@ -205,36 +193,31 @@ test("QA retries an empty structured response without JSON mode", async () => {
 });
 
 
-test("QA falls back to an explicit free model after empty primary responses", async () => {
-  const review = { verdict: "revision_required", findings: ["The inspected source range does not support the claim."] };
-  const { gateways, calls } = fixture({ contents: ["", "", JSON.stringify(review)] });
-  const result = await gateways.qaGateway.review({
-    task: { id: "task-qa-fallback", acceptanceCriteria: ["Source claims match inspected lines"] },
-    artifact: { id: "artifact-qa-fallback", content: "Runtime-verified tool evidence" },
-    reviewer: { id: "qa-reviewer" },
-  });
-  assert.equal(result.verdict, "revision_required");
-  assert.deepEqual(result.findings, review.findings);
-  assert.equal(calls.length, 3);
-  assert.equal(calls[0].request.model, "qa-model");
-  assert.equal(calls[1].request.model, "qa-model");
-  assert.equal(calls[2].request.model, "nvidia/nemotron-3.5-lightning:free");
-  assert.equal(result.modelSnapshot.fallbackUsed, true);
+test("QA fails closed after both response modes from the configured model are empty", async () => {
+  const { gateways, calls } = fixture({ contents: ["", "", JSON.stringify({ verdict: "accepted", findings: [] })] });
+  await assert.rejects(
+    gateways.qaGateway.review({
+      task: { id: "task-qa-no-fallback", acceptanceCriteria: ["Source claims match inspected lines"] },
+      artifact: { id: "artifact-qa-no-fallback", content: "Runtime-verified tool evidence" },
+      reviewer: { id: "qa-reviewer" },
+    }),
+    error => error.code === "EMPTY_MODEL_OUTPUT",
+  );
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.request.model === "qa-model"));
 });
 
 
-test("QA tries a second free model when the first fallback is also empty", async () => {
-  const review = { verdict: "revision_required", findings: ["The source snippet does not show the claimed guard."] };
-  const { gateways, calls } = fixture({ contents: ["", "", "", JSON.stringify(review)] });
-  const result = await gateways.qaGateway.review({
-    task: { id: "task-qa-second-fallback", acceptanceCriteria: ["Claims match source snippets"] },
-    artifact: { id: "artifact-qa-second-fallback", content: "Runtime-verified tool evidence" },
-    reviewer: { id: "qa-reviewer" },
-  });
-  assert.equal(result.verdict, "revision_required");
-  assert.equal(calls.length, 4);
-  assert.equal(calls[2].request.model, "nvidia/nemotron-3.5-lightning:free");
-  assert.equal(calls[2].request.response_format, undefined);
-  assert.equal(calls[3].request.model, "google/gemma-4-31b-it:free");
-  assert.equal(result.modelSnapshot.fallbackUsed, true);
+test("QA never cascades through unapproved free models after empty output", async () => {
+  const { gateways, calls } = fixture({ contents: ["", "", "", ""] });
+  await assert.rejects(
+    gateways.qaGateway.review({
+      task: { id: "task-qa-no-cascade", acceptanceCriteria: ["Claims match source snippets"] },
+      artifact: { id: "artifact-qa-no-cascade", content: "Runtime-verified tool evidence" },
+      reviewer: { id: "qa-reviewer" },
+    }),
+    error => error.code === "EMPTY_MODEL_OUTPUT",
+  );
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.request.model === "qa-model"));
 });

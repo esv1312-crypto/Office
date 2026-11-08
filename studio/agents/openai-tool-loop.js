@@ -82,6 +82,38 @@ function compactToolResult(result, maxBytes) {
   });
 }
 
+function compactedConversation({ baseMessages, rounds, keepRecentRounds = 4 }) {
+  const compactedCount = Math.max(0, rounds.length - keepRecentRounds);
+  if (!compactedCount) return [...baseMessages, ...rounds.flatMap(round => round.messages)];
+  const compactedEvidence = rounds.slice(0, compactedCount)
+    .flatMap(round => round.evidence)
+    .slice(-30)
+    .map(item => ({
+      name: item.name,
+      status: item.status,
+      ...(item.path ? { path: item.path } : {}),
+      ...(item.branch ? { branch: item.branch } : {}),
+      ...(item.sha ? { sha: item.sha } : {}),
+      ...(item.blobSha ? { blobSha: item.blobSha } : {}),
+      ...(item.commitSha ? { commitSha: item.commitSha } : {}),
+      ...(item.error ? { error: item.error } : {}),
+    }));
+  const summary = {
+    role: "system",
+    content: [
+      "Earlier tool rounds were compacted to keep the active context bounded.",
+      "This is a summary of verified operations, not a substitute for reading source content.",
+      "Re-read any file whose exact content is needed. Do not infer content from this summary.",
+      JSON.stringify({ compactedRounds: compactedCount, verifiedToolOperations: compactedEvidence }),
+    ].join("\\n"),
+  };
+  return [
+    ...baseMessages,
+    summary,
+    ...rounds.slice(compactedCount).flatMap(round => round.messages),
+  ];
+}
+
 export async function runOpenAiToolLoop({
   client,
   model,
@@ -117,7 +149,9 @@ export async function runOpenAiToolLoop({
 
   const allowed = new Set(tools.map(item => item?.function?.name).filter(name => typeof name === "string"));
   if (allowed.size !== tools.length) throw new TypeError("tool definitions must have unique function names");
-  const conversation = [...messages];
+  const baseMessages = [...messages];
+  let conversation = [...baseMessages];
+  const roundHistory = [];
   let executed = 0;
   const toolEvidence = [];
   let totalToolResultBytes = 0;
@@ -193,7 +227,8 @@ export async function runOpenAiToolLoop({
       throw Object.assign(new Error("Worker reached its total tool-call budget"), { code: "TOOL_CALL_BUDGET" });
     }
 
-    conversation.push({ role: "assistant", content: message.content ?? null, tool_calls: calls });
+    const roundMessages = [{ role: "assistant", content: message.content ?? null, tool_calls: calls }];
+    const roundEvidence = [];
     for (const call of calls) {
       const name = call?.function?.name;
       const callId = call?.id;
@@ -209,7 +244,9 @@ export async function runOpenAiToolLoop({
           message: String(error?.message || "Tool execution failed").slice(0, 500)
         };
       }
-      toolEvidence.push(evidenceForTool({ name, arguments: call.function.arguments, result }));
+      const evidence = evidenceForTool({ name, arguments: call.function.arguments, result });
+      toolEvidence.push(evidence);
+      roundEvidence.push(evidence);
       const content = compactToolResult(result, maxToolResultBytes);
       const resultBytes = Buffer.byteLength(content, "utf8");
       totalToolResultBytes += resultBytes;
@@ -220,9 +257,11 @@ export async function runOpenAiToolLoop({
           toolCallsExecuted: executed
         });
       }
-      conversation.push({ role: "tool", tool_call_id: callId, content });
+      roundMessages.push({ role: "tool", tool_call_id: callId, content });
       executed += 1;
     }
+    roundHistory.push({ messages: roundMessages, evidence: roundEvidence });
+    conversation = compactedConversation({ baseMessages, rounds: roundHistory, keepRecentRounds: 4 });
   }
   throw Object.assign(new Error("Worker tool loop ended without a final answer"), { code: "TOOL_LOOP_INCOMPLETE" });
 }

@@ -234,3 +234,54 @@ test("includes exact source snippets for the three audit source files only", asy
   assert.equal(result.toolEvidence[0].contentKind, "source-snippet");
   assert.equal(result.toolEvidence[0].content, "line 184: allowedTools is forwarded");
 });
+
+
+test("compacts older tool rounds while retaining valid recent tool-call pairs and verified history", async () => {
+  let requestCount = 0;
+  const client = clientFor(async request => {
+    requestCount += 1;
+    if (requestCount > 1) {
+      const messages = request.messages;
+      for (let i = 0; i < messages.length; i += 1) {
+        const item = messages[i];
+        if (item.role === "assistant" && Array.isArray(item.tool_calls)) {
+          const expected = item.tool_calls.map(call => call.id);
+          const actual = messages.slice(i + 1, i + 1 + expected.length)
+            .filter(message => message.role === "tool")
+            .map(message => message.tool_call_id);
+          assert.deepEqual(actual, expected, "compaction must preserve complete tool-call/result groups");
+        }
+      }
+    }
+    if (requestCount <= 6) {
+      return {
+        choices: [{ message: { role: "assistant", content: null, tool_calls: [{
+          id: "call-" + requestCount,
+          type: "function",
+          function: { name: "read_file", arguments: JSON.stringify({ path: "src/file-" + requestCount + ".js" }) },
+        }] } }],
+        usage: { prompt_tokens: 10, completion_tokens: 2 },
+      };
+    }
+    const summary = request.messages.find(message =>
+      message.role === "system" && String(message.content).includes("Earlier tool rounds were compacted"));
+    assert.ok(summary, "older rounds should be summarized after the rolling window fills");
+    assert.match(summary.content, /src\/file-1\.js/);
+    assert.equal(request.messages.filter(message =>
+      message.role === "assistant" && Array.isArray(message.tool_calls)).length, 4);
+    return { choices: [{ message: { role: "assistant", content: "Finished after compaction." } }] };
+  });
+  const result = await runOpenAiToolLoop({
+    client,
+    model: "m",
+    messages: [{ role: "system", content: "You are a worker." }, { role: "user", content: "Inspect six files." }],
+    tools: [tool],
+    executeTool: async ({ arguments: raw }) => ({ content: "read " + JSON.parse(raw).path }),
+    maxRounds: 10,
+    maxToolCalls: 10,
+    maxTotalPromptTokens: 10000,
+  });
+  assert.equal(result.text, "Finished after compaction.");
+  assert.equal(result.toolEvidence.length, 6);
+  assert.equal(result.toolCallsExecuted, 6);
+});

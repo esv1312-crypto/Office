@@ -30,6 +30,7 @@ export function createStudioControlPlane({
   modelBudget = null,
   maxToolRounds = 20,
   maxToolCalls = 100,
+  modelTimeoutMs = 300_000,
 }) {
   if (!pool || typeof pool.connect !== "function" || typeof pool.query !== "function") {
     throw new TypeError("A dedicated migrated Studio PostgreSQL pool is required");
@@ -58,6 +59,7 @@ export function createStudioControlPlane({
     modelBudget,
     maxToolRounds,
     maxToolCalls,
+    modelTimeoutMs,
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
   });

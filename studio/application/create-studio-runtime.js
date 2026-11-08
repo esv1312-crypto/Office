@@ -25,6 +25,7 @@ export function createStudioRuntime({
   artifactWriter = null, artifactPathForTask,
   now = () => new Date().toISOString(),
   workerConcurrency = 2,
+  modelTimeoutMs = 300_000,
 }) {
   if (!pool || typeof pool.connect !== "function") throw new TypeError("A migrated Studio PostgreSQL pool is required");
   if (typeof createId !== "function" || typeof createWorkerId !== "function") {
@@ -49,7 +50,7 @@ export function createStudioRuntime({
     store: domainStore, assignment, authorize, now,
   });
   const worker = createWorkerRuntime({
-    store: executionStore, modelGateway: workerModelGateway, artifactWriter,
+    store: executionStore, modelGateway: workerModelGateway, artifactWriter, modelTimeoutMs,
     ...(artifactPathForTask ? { artifactPathForTask } : {}), now,
   });
   const workerPool = createWorkerPool({

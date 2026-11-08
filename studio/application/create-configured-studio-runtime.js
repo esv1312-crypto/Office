@@ -25,6 +25,7 @@ export function createConfiguredStudioRuntime({
   modelBudget = null,
   maxToolRounds = 20,
   maxToolCalls = 100,
+  modelTimeoutMs = 300_000,
 }) {
   if (!pool || typeof pool.connect !== "function") {
     throw new TypeError("A migrated Studio PostgreSQL pool is required");
@@ -48,6 +49,7 @@ export function createConfiguredStudioRuntime({
     ...(artifactPathForTask ? { artifactPathForTask } : {}),
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
+    modelTimeoutMs,
   });
   return Object.freeze({ ...runtime, gateways });
 }

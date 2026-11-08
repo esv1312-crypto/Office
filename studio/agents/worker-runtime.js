@@ -90,7 +90,7 @@ export function createWorkerRuntime({
   now = () => new Date().toISOString(),
   leaseMs = 300_000,
   heartbeatIntervalMs = 20_000,
-  modelTimeoutMs = 180_000,
+  modelTimeoutMs = 300_000,
 }) {
   if (!store ||
       typeof store.startExecution !== "function" ||
