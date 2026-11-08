@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createStudioHttpHandlers } from "./studio-http-handlers.js";
 
 function fixture({ planStatus = "proposed" } = {}) {
-  const calls = { bootstrap: [], create: [], approve: [], execute: [], projectLookup: [], planLookup: [] };
+  const calls = { bootstrap: [], create: [], approve: [], recover: [], execute: [], order: [], projectLookup: [], planLookup: [] };
   const runtime = {
     bootstrap: { bootstrap: async value => { calls.bootstrap.push(value); return { status: "plan_proposed" }; } },
     director: { plan: async value => {
@@ -14,7 +14,13 @@ function fixture({ planStatus = "proposed" } = {}) {
       calls.approve.push(value);
       return { plan: { ...value.plan, status: "approved" }, tasks: [] };
     } },
+    recovery: { recover: async value => {
+      calls.order.push("recover");
+      calls.recover.push(value);
+      return { recovered: 1, tasks: [{ taskId: "task-recovered" }] };
+    } },
     workflow: { run: async value => {
+      calls.order.push("workflow");
       calls.execute.push(value);
       return { planId: value.planId, status: "completed", blocked: [] };
     } },
@@ -83,10 +89,33 @@ test("executes an approved plan and returns the workflow report", async () => {
   });
   assert.equal(result.status, 200);
   assert.equal(result.body.status, "completed");
+  assert.deepEqual(result.body.recovery, { recovered: 1, tasks: [{ taskId: "task-recovered" }] });
+  assert.deepEqual(calls.recover, [{ actor: ownerRequest.auth.actor, limit: 50 }]);
+  assert.deepEqual(calls.order, ["recover", "workflow"]);
   assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: ownerRequest.auth.actor }]);
 });
 
 
+test("does not dispatch when owner-authorized recovery is denied", async () => {
+  const calls = { execute: [] };
+  const deniedHandlers = createStudioHttpHandlers({
+    runtime: {
+      director: { plan: async () => ({}) },
+      approval: { approve: async () => ({}) },
+      recovery: { recover: async () => {
+        throw Object.assign(new Error("forbidden"), { code: "EXECUTION_RECOVERY_FORBIDDEN" });
+      } },
+      workflow: { run: async value => { calls.execute.push(value); return { status: "completed" }; } },
+    },
+    loadProject: async () => null,
+    loadPlan: async value => ({ id: value.planId, status: "approved" }),
+  });
+  await assert.rejects(
+    deniedHandlers.executeApprovedPlan({ ...ownerRequest, params: { planId: "plan-1" } }),
+    error => error.code === "EXECUTION_RECOVERY_FORBIDDEN",
+  );
+  assert.equal(calls.execute.length, 0);
+});
 test("bootstraps a workspace using only the verified request actor", async () => {
   const { handlers, calls } = fixture();
   const result = await handlers.bootstrapWorkspace({
