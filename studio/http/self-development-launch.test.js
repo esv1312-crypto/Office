@@ -45,7 +45,7 @@ function fixture({ owner = true, priorPlan = null, plannerError = null, existing
   const createSpecialistsForProfile = ({ organizationId, createId, at }) => [
     { id: createId(), organizationId, name: "Solution Architect", role: "solution_architect", instructions: "Design", competencies: ["architecture"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
     { id: createId(), organizationId, name: "Platform Engineer", role: "implementation_specialist", instructions: "Implement", competencies: ["coding"], allowedTools: ["repo.read"], status: "active", version: 1, createdAt: at, updatedAt: at },
-    { id: createId(), organizationId, name: "Quality Engineer", role: "quality_engineer", instructions: "Review", competencies: ["qa.review"], allowedTools: [], status: "active", version: 1, createdAt: at, updatedAt: at },
+    { id: createId(), organizationId, name: "Quality Engineer", role: "quality_engineer", instructions: "Review deliverables and inspect persisted workspace files in studio-ai-agent-workspace.", competencies: ["qa.review"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
   ];
   const handler = createSelfDevelopmentLaunchHandler({
     pool, controlPlane, createId: (() => { let id = 0; return () => `id-${++id}`; })(),
