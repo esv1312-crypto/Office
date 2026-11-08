@@ -112,7 +112,7 @@ export function createOpenAiCompatibleGateways({
   maxToolRounds = 40,
   maxToolCalls = 24,
   maxToolResultBytes = 24 * 1024,
-  maxTotalToolResultBytes = 256 * 1024,
+  maxTotalToolResultBytes = 512 * 1024,
   maxTotalOutputTokens = 24000,
   maxTotalPromptTokens = 600000,
   modelBudget = null,
