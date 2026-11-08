@@ -66,6 +66,7 @@ function createSpecialistsForProfile({ productProfileId, organizationId, createI
       name: "Solution Architect",
       role: "solution_architect",
       competencies: ["architecture", "system.design", "integration"],
+      allowedTools: ["list_repo_directory", "read_repo_file"],
       instructions: "Design a maintainable solution for the assigned product. Define boundaries, interfaces, security assumptions, and implementation steps.",
     },
     {
