@@ -111,3 +111,48 @@ test("keeps repository reads away from secrets, project data, workflows, and tra
   }
   assert.equal(calls, 0);
 });
+
+
+test("reads current source from readBranch while writes remain on workspace branch", async () => {
+  const calls = [];
+  const source = "export const current = true;";
+  let wrote = false;
+  const tools = createTools(async (url, options = {}) => {
+    calls.push({ url, method: options.method || "GET", body: options.body });
+    if (options.method === "PUT") {
+      wrote = true;
+      return response(200, {
+        content: { sha: "workspace-blob", html_url: "https://github.com/example/office" },
+        commit: { sha: "workspace-commit" },
+      });
+    }
+    if (url.includes("/studio/server.js?ref=studio-v1-foundation")) {
+      return response(200, { type: "file", content: Buffer.from(source).toString("base64"), sha: "main-source-sha" });
+    }
+    if (url.includes("/studio/agent-workspace/report.md?ref=studio-ai-agent-workspace")) {
+      return wrote
+        ? response(200, { type: "file", content: Buffer.from("verified").toString("base64"), sha: "workspace-read-sha" })
+        : response(404);
+    }
+    return response(404);
+  }, { readBranch: "studio-v1-foundation" });
+
+  const read = await tools.execute({ name: "read_repo_file", arguments: { path: "studio/server.js" } });
+  assert.equal(read.content, source);
+  assert.equal(read.sha, "main-source-sha");
+  assert.ok(calls[0].url.includes("ref=studio-v1-foundation"));
+
+  const written = await tools.execute({ name: "write_repo_file", arguments: {
+    path: "studio/agent-workspace/report.md", content: "verified", message: "Save verification",
+  } });
+  assert.equal(written.commitSha, "workspace-commit");
+  const readBack = await tools.execute({ name: "read_repo_file", arguments: {
+    path: "studio/agent-workspace/report.md", branch: "studio-ai-agent-workspace",
+  } });
+  assert.equal(readBack.content, "verified");
+  assert.equal(readBack.sha, "workspace-read-sha");
+  assert.ok(calls.some(call => call.url.includes("/studio/agent-workspace/report.md?ref=studio-ai-agent-workspace")));
+  const put = calls.find(call => call.method === "PUT");
+  assert.ok(put.url.includes("/studio/agent-workspace/report.md"));
+  assert.equal(JSON.parse(put.body).branch, "studio-ai-agent-workspace");
+});

@@ -232,3 +232,25 @@ test("fails the execution instead of handing off to QA when repository artifact 
   assert.equal(calls.failed.length, 1);
   assert.equal(calls.completed.length, 0);
 });
+
+
+test("skips the external artifact repository when the task explicitly opts out", async () => {
+  const startResult = {
+    executionId: "execution-1",
+    task: {
+      id: "task-1", projectId: "project-1", title: "Verify source",
+      description: "Write only to isolated workspace.", status: "running",
+      assigneeSpecialistId: specialist.id, version: 1, externalArtifact: false,
+    },
+    execution: { attempt: 1, fencingToken: 1, leaseToken: "lease-1" },
+  };
+  const { runtime, calls } = fixture({
+    startResult,
+    artifactWriter: async () => ({ commitSha: "must-not-be-written" }),
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "qa");
+  assert.equal(calls.artifacts.length, 0);
+  assert.equal(calls.completed.length, 1);
+  assert.equal(calls.completed[0].artifact.external, undefined);
+});
