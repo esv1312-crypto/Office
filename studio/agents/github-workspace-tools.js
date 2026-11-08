@@ -52,6 +52,7 @@ async function parseResponse(response) {
 export function createGithubWorkspaceTools({
   owner, repo, branch, token,
   allowedPrefix = "studio/agent-workspace/",
+  readBranch = branch,
   fetchImpl = globalThis.fetch,
   maxFileBytes = 256 * 1024,
   maxReadLines = 500,
@@ -59,6 +60,7 @@ export function createGithubWorkspaceTools({
   const repositoryOwner = required(owner, "owner");
   const repositoryName = required(repo, "repo");
   const targetBranch = required(branch, "branch");
+  const sourceBranch = required(readBranch, "readBranch");
   const credential = required(token, "token");
   const prefix = required(allowedPrefix, "allowedPrefix");
   if (!prefix.endsWith("/")) throw new TypeError("allowedPrefix must end with /");
@@ -88,8 +90,8 @@ export function createGithubWorkspaceTools({
   function encodedPath(path) {
     return path.split("/").map(encodeURIComponent).join("/");
   }
-  async function fetchFile(path) {
-    const file = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(targetBranch));
+  async function fetchFile(path, ref = targetBranch) {
+    const file = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(ref));
     if (file.type !== "file" || typeof file.content !== "string") {
       throw Object.assign(new Error("Workspace path is not a readable file"), { code: "WORKSPACE_INVALID_FILE" });
     }
@@ -125,13 +127,13 @@ export function createGithubWorkspaceTools({
   async function execute(name, args = {}) {
     if (name === "list_repo_directory") {
       const path = safeReadPath(args.path);
-      const items = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(targetBranch));
+      const items = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(sourceBranch));
       if (!Array.isArray(items)) throw Object.assign(new Error("Expected a directory listing"), { code: "WORKSPACE_INVALID_RESPONSE" });
       return items.map(item => ({ name: item.name, path: item.path, type: item.type, size: item.size }));
     }
     if (name === "read_repo_file") {
       const path = safeReadPath(args.path);
-      const file = await fetchFile(path);
+      const file = await fetchFile(path, sourceBranch);
       const lines = file.content.split("\n");
       const start = args.start_line === undefined ? 1 : args.start_line;
       const end = args.end_line === undefined ? lines.length : args.end_line;
