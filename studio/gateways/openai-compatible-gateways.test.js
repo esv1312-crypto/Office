@@ -122,3 +122,64 @@ test("validates gateway client and all role model configurations up front", () =
     models: { planner: "p", worker: "w" },
   }), /models.qa/);
 });
+
+
+test("planner falls back to the free router after a model access error", async () => {
+  const proposal = {
+    title: "Fallback plan",
+    objective: "Keep planning available",
+    summary: "Use a compatible free route when the pinned endpoint is unavailable.",
+    acceptanceCriteria: ["A valid plan is returned"],
+    tasks: [{
+      title: "Audit planner reliability",
+      description: "Record provider errors and improve recovery.",
+      requiredCompetencies: ["architecture"],
+      acceptanceCriteria: ["The failure mode is documented"],
+    }],
+  };
+  const calls = [];
+  const client = {
+    chat: { completions: { create: async request => {
+      calls.push(request);
+      if (calls.length === 1) throw Object.assign(new Error("model endpoint forbidden"), { status: 403 });
+      return { choices: [{ message: { content: "Plan follows: " + JSON.stringify(proposal) + " End." } }] };
+    } } },
+  };
+  const gateways = createOpenAiCompatibleGateways({
+    client,
+    models: {
+      planner: "google/gemma-4-26b-a4b-it:free",
+      worker: "openrouter/free",
+      qa: "openrouter/free",
+    },
+  });
+  const result = await gateways.planningGateway.generatePlan({
+    request: "Create a self-development plan",
+    project: { id: "project-1" },
+  });
+  assert.equal(result.title, "Fallback plan");
+  assert.equal(calls[0].model, "google/gemma-4-26b-a4b-it:free");
+  assert.equal(calls[1].model, "openrouter/free");
+  assert.equal(result.modelSnapshot.fallbackUsed, true);
+});
+
+test("planner extracts a balanced JSON object surrounded by explanatory prose", async () => {
+  const proposal = {
+    title: "Extracted plan",
+    objective: "Parse robustly",
+    summary: "Ignore harmless surrounding text.",
+    acceptanceCriteria: ["The plan is parsed"],
+    tasks: [{
+      title: "Test parsing",
+      description: "Include braces inside a quoted string: {not a nested object}",
+      requiredCompetencies: ["testing"],
+      acceptanceCriteria: ["JSON object is recovered"],
+    }],
+  };
+  const { gateways } = fixture({ contents: ["Here is the result:\\n" + JSON.stringify(proposal) + "\\nThat is all."] });
+  const result = await gateways.planningGateway.generatePlan({
+    request: "Create a plan",
+    project: { id: "project-1" },
+  });
+  assert.equal(result.title, "Extracted plan");
+});
