@@ -127,20 +127,37 @@ export async function runOpenAiToolLoop({
     if (remainingOutput <= 0) {
       throw Object.assign(new Error("Worker reached its total output-token budget"), { code: "OUTPUT_TOKEN_BUDGET" });
     }
-    const response = await client.chat.completions.create({
-      model,
-      messages: conversation,
-      temperature,
-      max_tokens: Math.min(maxTokens, remainingOutput),
-      tools,
-      tool_choice: "auto",
-    }, { timeout: requestTimeoutMs, ...(signal ? { signal } : {}) });
+    console.info("[studio-model] tool-loop request started", { model, round, executedTools: executed });
+    let response;
+    try {
+      response = await client.chat.completions.create({
+        model,
+        messages: conversation,
+        temperature,
+        max_tokens: Math.min(maxTokens, remainingOutput),
+        tools,
+        tool_choice: "auto",
+      }, { timeout: requestTimeoutMs, ...(signal ? { signal } : {}) });
+    } catch (error) {
+      console.warn("[studio-model] tool-loop request failed", {
+        model, round,
+        code: error?.code || "MODEL_REQUEST_FAILED",
+        status: Number.isInteger(error?.status) ? error.status : null,
+      });
+      throw error;
+    }
     const requestUsage = usageFrom(response);
     usage.promptTokens += requestUsage.promptTokens;
     usage.completionTokens += requestUsage.completionTokens;
     usage.cachedInputTokens += requestUsage.cachedInputTokens;
     if (requestUsage.providerCost !== null) usage.providerCost = (usage.providerCost || 0) + requestUsage.providerCost;
     usage.requests += 1;
+    console.info("[studio-model] tool-loop response received", {
+      model, round, toolCalls: Array.isArray(response?.choices?.[0]?.message?.tool_calls)
+        ? response.choices[0].message.tool_calls.length : 0,
+      promptTokens: requestUsage.promptTokens,
+      completionTokens: requestUsage.completionTokens,
+    });
     if (usage.promptTokens > maxTotalPromptTokens) {
       throw Object.assign(new Error("Worker reached its cumulative prompt-token budget"), {
         code: "PROMPT_TOKEN_BUDGET", usage

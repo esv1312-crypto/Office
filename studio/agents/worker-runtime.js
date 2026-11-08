@@ -251,13 +251,28 @@ export function createWorkerRuntime({
           };
         }
         const reason = String(error?.message || error).slice(0, 1000);
-        await store.failExecution({
+        console.warn("[studio-worker] model execution failed", {
           executionId: started.executionId,
-          reason,
-          fencingToken: started.execution.fencingToken,
-          leaseToken: started.execution.leaseToken,
-          at: now(),
+          taskId: id,
+          code: error?.code || "MODEL_EXECUTION_FAILED",
+          status: Number.isInteger(error?.status) ? error.status : null,
         });
+        try {
+          await store.failExecution({
+            executionId: started.executionId,
+            reason,
+            fencingToken: started.execution.fencingToken,
+            leaseToken: started.execution.leaseToken,
+            at: now(),
+          });
+        } catch (persistenceError) {
+          console.error("[studio-worker] failure persistence failed", {
+            executionId: started.executionId,
+            taskId: id,
+            code: persistenceError?.code || "FAILURE_PERSISTENCE_FAILED",
+          });
+          throw persistenceError;
+        }
         return {
           executionId: started.executionId,
           taskId: id,
@@ -361,6 +376,13 @@ export function createWorkerRuntime({
           leaseToken: started.execution.leaseToken,
           at: now(),
         });
+      } catch (error) {
+        console.warn("[studio-worker] durable completion failed", {
+          executionId: started.executionId,
+          taskId: id,
+          code: error?.code || "COMPLETION_PERSISTENCE_FAILED",
+        });
+        throw error;
       } finally {
         await stopHeartbeat();
       }
