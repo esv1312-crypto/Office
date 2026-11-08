@@ -171,6 +171,7 @@ const githubWorkspaceTools = githubWorkspaceToken
       owner: "esv1312-crypto",
       repo: "Office",
       branch: "studio-ai-agent-workspace",
+      readBranch: "studio-v1-foundation",
       token: githubWorkspaceToken,
       allowedPrefix: "studio/agent-workspace/",
     })
