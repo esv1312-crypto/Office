@@ -9,7 +9,7 @@ const specialist = {
   modelProfile: { preferredProvider: "openrouter", preferredModel: "configured-by-gateway" },
 };
 
-function fixture({ generated, startResult, completeResult, gatewayError, gatewayDelayMs = 0, heartbeatIntervalMs = 60_000, heartbeatError, artifactWriter } = {}) {
+function fixture({ generated, startResult, completeResult, gatewayError, gatewayDelayMs = 0, heartbeatIntervalMs = 60_000, modelTimeoutMs, heartbeatError, artifactWriter } = {}) {
   const calls = { started: [], generated: [], completed: [], failed: [], heartbeats: [], artifacts: [] };
   const store = {
     async startExecution(value) {
@@ -57,6 +57,7 @@ function fixture({ generated, startResult, completeResult, gatewayError, gateway
     modelGateway,
     now: () => "2026-11-07T01:00:00.000Z",
     heartbeatIntervalMs,
+    ...(modelTimeoutMs !== undefined ? { modelTimeoutMs } : {}),
     ...(artifactWriter ? { artifactWriter: { async writeTextArtifact(value) { calls.artifacts.push(value); return artifactWriter(value); } } } : {}),
   });
   return { runtime, calls };
@@ -296,4 +297,22 @@ test("appends authoritative tool metadata to the persisted artifact", async () =
   assert.match(result.output, /verified-readback-sha/);
   assert.match(result.output, /Exact persisted file text/);
   assert.equal(calls.completed[0].artifact.content, result.output);
+});
+
+
+test("fails a worker execution when the model gateway exceeds its hard deadline", async () => {
+  const { runtime, calls } = fixture({
+    gatewayDelayMs: 1_200,
+    modelTimeoutMs: 1_000,
+  });
+  const result = await runtime.execute({
+    taskId: "task-1",
+    specialist,
+    workerId: "worker-1",
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(result.errorCode, "MODEL_EXECUTION_TIMEOUT");
+  assert.equal(calls.failed.length, 1);
+  assert.equal(calls.completed.length, 0);
+  assert.equal(calls.generated[0].signal.aborted, true);
 });
