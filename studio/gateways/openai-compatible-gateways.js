@@ -142,10 +142,26 @@ export function createOpenAiCompatibleGateways({
       max_tokens: config.maxTokens,
       ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     };
-    const response = await client.chat.completions.create(
-      request,
-      { timeout: 90_000, ...(signal ? { signal } : {}) },
-    );
+    console.info("[studio-model] completion request started", { role, model });
+    let response;
+    try {
+      response = await client.chat.completions.create(
+        request,
+        { timeout: 90_000, ...(signal ? { signal } : {}) },
+      );
+    } catch (error) {
+      console.warn("[studio-model] completion request failed", {
+        role, model,
+        code: error?.code || "MODEL_REQUEST_FAILED",
+        status: Number.isInteger(error?.status) ? error.status : null,
+      });
+      throw error;
+    }
+    console.info("[studio-model] completion response received", {
+      role, model,
+      promptTokens: Number(response?.usage?.prompt_tokens || response?.usage?.input_tokens || 0),
+      completionTokens: Number(response?.usage?.completion_tokens || response?.usage?.output_tokens || 0),
+    });
     const content = responseText(response);
     if (!content) {
       throw Object.assign(new Error(`${role} model returned empty content`), {
