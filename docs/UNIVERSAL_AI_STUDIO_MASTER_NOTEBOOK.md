@@ -425,3 +425,16 @@ Never write “done” merely because a request was accepted or a plan says comp
 - **Final launch error:** Render logged `[studio] self-development launch failed INVALID_QA_VERDICT` at 2026-11-08T14:43:03Z. The QA gateway requested JSON and tried its configured fallback models, but the final review response still failed the QA runtime's strict verdict normalization. Inspect the raw structured QA response and parser path before retrying.
 - **Latest task state:** Implementation and QA-report tasks have returned to `ready` after revision-required verdicts; Architect task is still `qa` with no QA review row at the latest check. The plan remains `approved`; it is not completed.
 - **Next action:** Fix the QA output/normalization failure and add a regression test; implement dependency-aware dispatch or simplify the next plan to one implementation task plus the existing independent QA hand-off; constrain worker patches to real JavaScript files proven by source read-back. No additional deployment/restart should be used to blindly retry Sprint 2. Keep paid models disabled.
+
+
+### 2026-11-08 — Secure one-shot owner task trigger (PR #110)
+
+- **User request:** Stop making the owner manually navigate protected API calls just to give the existing Director one master task. Deliver a simple owner-controlled way to invoke the already deployed cloud Runtime without disabling authentication.
+- **Implementation branch:** `feat/owner-task-startup-trigger`.
+- **PR:** #110 — https://github.com/esv1312-crypto/Office/pull/110
+- **Commit:** `c88f8fb69c1794644a41de8efac264e06b8f1b77`.
+- **Change:** Adds an environment-configured, one-shot owner task startup trigger to the existing `studio/server.js`. It reuses the existing Director, current project, approval service, workflow/worker pool, OpenRouter model client, Neon persistence, and GitHub artifact/workspace integrations.
+- **Safety:** No public unauthenticated endpoint is added; existing owner auth remains intact. Task execution is gated by a unique task key persisted in `studio.owner_task_runs`, so ordinary restarts do not duplicate a claimed task. Failed runs can be retried with the same key. The brief and secrets are not printed to logs or committed to Git.
+- **Configuration required on the existing Render service after merge:** `STUDIO_OWNER_TASK_ID` (unique one-shot key), `STUDIO_OWNER_TASK_ORGANIZATION_ID` (existing organization UUID), optional `STUDIO_OWNER_TASK_PROJECT_ID` (existing project UUID), and `STUDIO_OWNER_TASK_BRIEF` (full master prompt). The task is then invoked by restarting/deploying the existing Runtime.
+- **Current status:** PR is open and not merged. No task prompt has been sent to DeepSeek/OpenRouter by this change yet. CI and live deployment are still unverified. Do not set the trigger variables or restart production until PR checks pass and the branch is merged/deployed.
+- **Next:** Verify PR #110 checks and schema assumptions; merge only after green checks; deploy existing Render service; set the one-shot task variables using the known organization `67ae686f-fc54-40f0-988b-9b8f5a8a1dc9` and project `d8a125e7-bacb-41a5-854a-cc34fe97e516`; then verify logs and persisted plan/task rows. Keep paid models disabled.
