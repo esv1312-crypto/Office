@@ -472,13 +472,13 @@ async function runConfiguredOwnerTask() {
     const project = await controlPlane.access.loadProject({ projectId, actor });
     if (!project) throw Object.assign(new Error("Owner task project could not be loaded"), { code: "PROJECT_NOT_FOUND" });
     console.log(`[studio] owner task planning started; taskKey=${taskKey}; project=${projectId}`);
-    const plan = await controlPlane.runtime.director.plan({ request: brief, project, actor });
-    if (!plan?.id) throw Object.assign(new Error("Director did not create a plan"), { code: "PLAN_CREATION_FAILED" });
+    const proposal = await controlPlane.runtime.director.plan({ request: brief, project, actor });
+    let executablePlan = proposal?.plan || proposal;
+    if (!executablePlan?.id) throw Object.assign(new Error("Director did not create a plan"), { code: "PLAN_CREATION_FAILED" });
     await lockClient.query(
       "UPDATE studio.owner_task_runs SET plan_id = $2, updated_at = now() WHERE task_key = $1",
-      [taskKey, plan.id],
+      [taskKey, executablePlan.id],
     );
-    let executablePlan = plan;
     if (executablePlan.status === "proposed") {
       const approval = await controlPlane.runtime.approval.approve({ plan: executablePlan, actor });
       executablePlan = approval.plan;
@@ -488,8 +488,8 @@ async function runConfiguredOwnerTask() {
     }
     let report = null;
     for (let round = 1; round <= 3; round += 1) {
-      report = await controlPlane.runtime.workflow.run({ planId: plan.id, actor });
-      console.log(`[studio] owner task execution round=${round}; taskKey=${taskKey}; plan=${plan.id}; status=${report.status}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
+      report = await controlPlane.runtime.workflow.run({ planId: executablePlan.id, actor });
+      console.log(`[studio] owner task execution round=${round}; taskKey=${taskKey}; plan=${executablePlan.id}; status=${report.status}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
       const revisionsRequired = report.qaReviews?.some(review => review.verdict === "revision_required");
       if (report.status === "completed" || !revisionsRequired || round === 3) break;
     }
@@ -497,7 +497,7 @@ async function runConfiguredOwnerTask() {
       "UPDATE studio.owner_task_runs SET status = $2, updated_at = now() WHERE task_key = $1",
       [taskKey, report?.status === "completed" ? "completed" : "finished"],
     );
-    console.log(`[studio] owner task finished; taskKey=${taskKey}; plan=${plan.id}; status=${report?.status || "unknown"}`);
+    console.log(`[studio] owner task finished; taskKey=${taskKey}; plan=${executablePlan.id}; status=${report?.status || "unknown"}`);
   } catch (error) {
     if (claimed) {
       await lockClient.query(
