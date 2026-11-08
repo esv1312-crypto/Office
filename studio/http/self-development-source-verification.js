@@ -1,9 +1,9 @@
 import { createTask } from "../core/create-task.js";
 
 const PROJECT_NAME = "AI Office Self-Development";
-const PLAN_TITLE = "AI Office — Live Source Read/Write Verification v5";
+const PLAN_TITLE = "AI Office — Live Source Read/Write Verification v6";
 const TASK_TITLE = "Inspect deployed source and publish verifiable workspace evidence";
-const EVIDENCE_PATH = "studio/agent-workspace/verification/post-pr81-source-audit-v5.md";
+const EVIDENCE_PATH = "studio/agent-workspace/verification/post-pr81-source-audit-v6.md";
 
 function required(value, field) {
   if (typeof value !== "string" || !value.trim()) throw new TypeError(field + " is required");
@@ -67,9 +67,9 @@ export function createSelfDevelopmentSourceVerification({ pool, controlPlane, cr
         title: TASK_TITLE,
         description: [
           "Perform a real, evidence-backed live inspection of the current repository source. The read_repo_file and list_repo_directory tools read from studio-v1-foundation; write_repo_file writes only to studio-ai-agent-workspace.",
-          "Read source files only from branch=studio-v1-foundation by passing branch=studio-v1-foundation explicitly to every read_repo_file call. Use these bounded inclusive ranges: studio/server.js lines 160-180; studio/agents/github-workspace-tools.js lines 50-70 and 128-170; studio/agents/worker-runtime.js lines 175-185 and 220-230. The returned result includes path, branch, sha, and range.totalLines.",
+          "Read source files only from branch=studio-v1-foundation by passing branch=studio-v1-foundation explicitly to every read_repo_file call. Use these bounded inclusive ranges: studio/server.js lines 160-180; studio/agents/github-workspace-tools.js lines 50-70 and 128-170; studio/agents/worker-runtime.js lines 180-188 and 238-245. The returned result includes path, branch, sha, and range.totalLines.",
           "Record each source file's SHA directly from that file's own tool result. Keep the three source-file records separate. Record the actual returned branch, totalLines, startLine, and endLine. Do not claim that a source behavior was inspected unless it is visible in the exact ranges listed for that file.",
-          "Use the returned source snippets to verify: server.js configures branch=studio-ai-agent-workspace and readBranch=studio-v1-foundation; github-workspace-tools.js routes default reads to readBranch, explicit workspace read-back to studio-ai-agent-workspace, and writes/patches to the workspace branch; worker-runtime.js passes specialist.allowedTools to modelGateway.generate at lines 175-185 and honors externalArtifact=false at lines 220-230.",
+          "Use the returned source snippets to verify: server.js configures branch=studio-ai-agent-workspace and readBranch=studio-v1-foundation; github-workspace-tools.js routes default reads to readBranch, explicit workspace read-back to studio-ai-agent-workspace, and writes/patches to the workspace branch; worker-runtime.js passes specialist.allowedTools to modelGateway.generate at lines 180-188 and honors externalArtifact=false at lines 238-245.",
           "Create exactly this evidence file with write_repo_file: " + EVIDENCE_PATH + ". The file must contain only source-file evidence: separate rows with path, branch, actual SHA, actual totalLines, exact inspected inclusive ranges, and facts visible in those ranges. Do NOT put the evidence file's own blob SHA, commit SHA, write result, read-back SHA, or read-back metadata inside the file; those values are self-referential and must be reported only in the final worker response and the system-generated Runtime-verified tool evidence.",
           "After writing, read the same evidence file back using read_repo_file with branch=studio-ai-agent-workspace, start_line=1, end_line=200. In the final worker response, report the exact returned branch, sha, range.startLine, range.endLine, range.totalLines, plus the actual write result's branch, commitSha, and blobSha. Do not copy values from source-file reads. The system will attach the exact read-back file content to the QA artifact; do not invent or paraphrase it as if it were the tool result.",
           "If any source read, write, or read-back fails, report the precise error and do not claim success.",
