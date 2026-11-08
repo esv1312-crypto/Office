@@ -183,3 +183,23 @@ test("planner extracts a balanced JSON object surrounded by explanatory prose", 
   });
   assert.equal(result.title, "Extracted plan");
 });
+
+
+test("QA retries an empty structured response without JSON mode", async () => {
+  const review = { verdict: "revision_required", findings: ["The evidence needs one correction."] };
+  const { gateways, calls } = fixture({
+    contents: ["", JSON.stringify(review)],
+  });
+  const result = await gateways.qaGateway.review({
+    task: { id: "task-qa-retry", acceptanceCriteria: ["Evidence is verifiable"] },
+    artifact: { id: "artifact-qa-retry", content: "Evidence with runtime tool trace" },
+    reviewer: { id: "qa-reviewer" },
+  });
+  assert.equal(result.verdict, "revision_required");
+  assert.deepEqual(result.findings, review.findings);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].request.response_format, { type: "json_object" });
+  assert.equal("response_format" in calls[1].request, false);
+  assert.equal(result.modelSnapshot.retryUsed, true);
+  assert.equal(result.modelSnapshot.jsonMode, false);
+});
