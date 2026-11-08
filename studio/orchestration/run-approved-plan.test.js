@@ -102,3 +102,33 @@ test("does not mark a zero-task, zero-dispatch plan as completed", async () => {
   assert.deepEqual(calls.worker, [[]]);
   assert.equal(calls.qa.length, 0);
 });
+
+test("keeps a bounded stage in needs_attention while runnable tasks remain deferred", async () => {
+  const calls = { assignments: [], worker: [] };
+  const workflow = createPlanExecutionWorkflow({
+    dispatch: { dispatch: async input => {
+      calls.assignments.push(input);
+      return {
+        planId: "plan-1", status: "partially_dispatched",
+        assigned: [{ taskId: task.id, specialistId: builder.id }],
+        blocked: [], skipped: [], deferred: [{ taskId: "task-2", status: "planned", code: "EXECUTION_BATCH_LIMIT" }],
+      };
+    } },
+    workerPool: { executeAssignments: async assignments => {
+      calls.worker.push(assignments);
+      return [{ executionId: "exec-1", taskId: task.id, specialistId: builder.id, status: "qa", artifactId: "artifact-1", output: "Build result" }];
+    } },
+    qa: { review: async () => ({ taskId: task.id, verdict: "accepted", taskStatus: "completed" }) },
+    directory: {
+      getTask: async () => ({ ...task, status: "assigned", assigneeSpecialistId: builder.id }),
+      getSpecialist: async () => builder,
+      getLatestArtifactForTask: async () => null,
+      listActiveSpecialists: async () => [builder, qaSpecialist],
+    },
+  });
+  const result = await workflow.run({ planId: "plan-1", actor: { id: "owner" }, maxAssignments: 1 });
+  assert.equal(calls.assignments[0].maxAssignments, 1);
+  assert.equal(result.status, "needs_attention");
+  assert.deepEqual(result.deferred, [{ taskId: "task-2", status: "planned", code: "EXECUTION_BATCH_LIMIT" }]);
+  assert.equal(calls.worker[0].length, 1);
+});
