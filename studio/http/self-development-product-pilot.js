@@ -43,6 +43,34 @@ export function createSelfDevelopmentProductPilot({ pool, controlPlane, now = ()
       [projectId, PLAN_TITLE],
     );
 
+    // Keep the existing Roblox QA specialist capable of independently
+    // inspecting the isolated product workspace. Older persisted profiles
+    // may predate the read-only tool grant in starter-team.js.
+    const qaSpecialistRows = await pool.query(
+      "SELECT id, version, payload FROM studio.specialists WHERE organization_id = $1 AND status = 'active' AND payload->>'role' = 'roblox_qa' ORDER BY created_at DESC LIMIT 1",
+      [orgId],
+    );
+    const qaSpecialist = qaSpecialistRows.rows?.[0];
+    if (qaSpecialist && typeof runtime.stores?.domain?.updateSpecialist === "function") {
+      const allowedTools = Array.isArray(qaSpecialist.payload?.allowedTools)
+        ? qaSpecialist.payload.allowedTools : [];
+      const requiredTools = ["list_repo_directory", "read_repo_file"];
+      const mergedTools = [...new Set([...allowedTools, ...requiredTools])];
+      const instructions = [
+        typeof qaSpecialist.payload?.instructions === "string" ? qaSpecialist.payload.instructions : "",
+        "For every assigned verification task, independently use list_repo_directory and read_repo_file on studio-ai-agent-workspace to inspect the actual persisted product files. Cite exact paths and report static inspection separately from Roblox Studio playtesting, which you cannot claim unless it was actually performed.",
+      ].filter(Boolean).join(" ");
+      if (requiredTools.some(tool => !allowedTools.includes(tool)) ||
+          instructions !== qaSpecialist.payload?.instructions) {
+        await runtime.stores.domain.updateSpecialist({
+          specialistId: qaSpecialist.id,
+          expectedVersion: Number(qaSpecialist.version),
+          patch: { allowedTools: mergedTools, instructions },
+          at: now(),
+        });
+      }
+    }
+
     let plan;
     let created = false;
     if (existing.rows?.[0]) {
