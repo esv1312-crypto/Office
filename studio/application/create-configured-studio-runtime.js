@@ -23,8 +23,8 @@ export function createConfiguredStudioRuntime({
   now,
   workerConcurrency,
   modelBudget = null,
-  maxToolRounds = 50,
-  maxToolCalls = 100,
+  maxToolRounds = 8,
+  maxToolCalls = 16,
   modelTimeoutMs = 300_000,
 }) {
   if (!pool || typeof pool.connect !== "function") {
