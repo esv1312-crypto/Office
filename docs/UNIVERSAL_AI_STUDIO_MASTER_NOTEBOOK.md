@@ -467,3 +467,14 @@ Never write “done” merely because a request was accepted or a plan says comp
 - **Budget snapshot at 15:10:10Z:** cap USD 2.00; spent USD 0.016228686; reserved USD 0.012042000. Remaining spend is therefore approximately USD 1.9717, including outstanding reservations.
 - **Task state at last check:** `studio.owner_task_runs` for `owner-master-build-universal-ai-studio-2026-11-08-v1` was `running`. A planner call on the latest instance was still in progress; do not claim the full office has been built or that QA passed until the run finishes and artifacts/tests are independently verified.
 - **Next:** Monitor the latest Director run; verify plan/task IDs, worker artifacts, QA and PRs. Confirm the final PostgreSQL budget totals. Keep the same budget key and do not reset it.
+
+
+### 2026-11-08 — DeepSeek worker limits and planner JSON output corrections
+
+- **PR #114:** https://github.com/esv1312-crypto/Office/pull/114 — merged as `f12b156c55771710bd8d60a35508308abb1b2c2d`. Increased worker tool-result ceiling from 48 KiB cumulative to 256 KiB, per-result limit to 24 KiB, cumulative output tokens to 24,000, and cumulative prompt tokens to 240,000. The previous live run stopped with `TOOL_CONTEXT_BUDGET` after 22 tool calls.
+- **PR #115:** https://github.com/esv1312-crypto/Office/pull/115 — merged as `31bd124e748dcf63a7d2748073625a0711d97a29`. Raised Director planner output limit from 3,000 to 8,000 tokens. The previous planner attempts both returned exactly 3,000 completion tokens and then failed `INVALID_MODEL_JSON`, consistent with truncated plan JSON.
+- **Latest deploy:** `dep-dbo93bvf3r2c73agmkk0` deployed commit `31bd124e748dcf63a7d2748073625a0711d97a29`. Runtime startup log again confirms `deepseek/deepseek-v4.1-flash-1017` and `budget=2USD`.
+- **Latest owner-task attempt:** At 15:14:16Z the existing owner task key was claimed again and a new planner request began with a pre-call budget reservation. At the last check the task remained `running`; its plan ID had not yet been replaced with a new result.
+- **Budget snapshot at 15:14:16Z:** cap USD 2.00; settled spend USD 0.022717259; outstanding reservations USD 0.019338000. No model request is allowed to start unless its reservation fits within the remaining shared cap.
+- **Startup cleanup:** Legacy self-development, source-verification, product-pilot, owner-execution, and bootstrap-on-start triggers were disabled on the Runtime so they do not consume this master-task budget or compete with the Director.
+- **Next:** Verify that the 8,000-token planner returns valid JSON, that the new plan is persisted, and that worker execution proceeds past the former tool-call and context ceilings. Then verify QA, GitHub artifacts/PRs, and final budget totals. Do not describe the master office as completed until those checks pass.
