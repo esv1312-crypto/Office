@@ -118,8 +118,8 @@ export function createGithubWorkspaceTools({
   }
 
   const definitions = Object.freeze([
-    { type: "function", function: { name: "list_repo_directory", description: "List files and directories in an allowed workspace directory.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"], additionalProperties: false } } },
-    { type: "function", function: { name: "read_repo_file", description: "Read a UTF-8 file, optionally returning only a bounded inclusive line range. Prefer narrow ranges over whole-file reads.", parameters: { type: "object", properties: { path: { type: "string" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 1 } }, required: ["path"], additionalProperties: false } } },
+    { type: "function", function: { name: "list_repo_directory", description: "List files and directories in an allowed workspace directory.", parameters: { type: "object", properties: { path: { type: "string" }, branch: { type: "string", enum: [sourceBranch, targetBranch] } }, required: ["path"], additionalProperties: false } } },
+    { type: "function", function: { name: "read_repo_file", description: "Read a UTF-8 file, optionally returning only a bounded inclusive line range. Prefer narrow ranges over whole-file reads.", parameters: { type: "object", properties: { path: { type: "string" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 1 }, branch: { type: "string", enum: [sourceBranch, targetBranch] } }, required: ["path"], additionalProperties: false } } },
     { type: "function", function: { name: "write_repo_file", description: "Create or replace a UTF-8 source file in the isolated workspace branch. Use patch_repo_file for small edits to existing files.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "message"], additionalProperties: false } } },
     { type: "function", function: { name: "patch_repo_file", description: "Replace only an inclusive line range (or insert at a line) in an existing file. Supply the blob SHA from the latest read to prevent overwriting concurrent changes.", parameters: { type: "object", properties: { path: { type: "string" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 0 }, replacement: { type: "string" }, expected_sha: { type: "string" }, message: { type: "string" } }, required: ["path", "start_line", "end_line", "replacement", "expected_sha", "message"], additionalProperties: false } } },
   ]);
@@ -127,13 +127,17 @@ export function createGithubWorkspaceTools({
   async function execute(name, args = {}) {
     if (name === "list_repo_directory") {
       const path = safeReadPath(args.path);
-      const items = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(sourceBranch));
+      const readRef = args.branch === undefined ? sourceBranch : required(args.branch, "branch");
+      if (![sourceBranch, targetBranch].includes(readRef)) throw Object.assign(new Error("Repository read branch is not permitted"), { code: "WORKSPACE_BRANCH_REJECTED" });
+      const items = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(readRef));
       if (!Array.isArray(items)) throw Object.assign(new Error("Expected a directory listing"), { code: "WORKSPACE_INVALID_RESPONSE" });
       return items.map(item => ({ name: item.name, path: item.path, type: item.type, size: item.size }));
     }
     if (name === "read_repo_file") {
       const path = safeReadPath(args.path);
-      const file = await fetchFile(path, sourceBranch);
+      const readRef = args.branch === undefined ? sourceBranch : required(args.branch, "branch");
+      if (![sourceBranch, targetBranch].includes(readRef)) throw Object.assign(new Error("Repository read branch is not permitted"), { code: "WORKSPACE_BRANCH_REJECTED" });
+      const file = await fetchFile(path, readRef);
       const lines = file.content.split("\n");
       const start = args.start_line === undefined ? 1 : args.start_line;
       const end = args.end_line === undefined ? lines.length : args.end_line;
