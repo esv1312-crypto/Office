@@ -115,6 +115,7 @@ export function createOpenAiCompatibleGateways({
   maxTotalToolResultBytes = 48 * 1024,
   maxTotalOutputTokens = 12000,
   maxTotalPromptTokens = 120000,
+  modelBudget = null,
 }) {
   if (!client?.chat?.completions ||
       typeof client.chat.completions.create !== "function") {
@@ -142,7 +143,8 @@ export function createOpenAiCompatibleGateways({
       max_tokens: config.maxTokens,
       ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
     };
-    console.info("[studio-model] completion request started", { role, model });
+    const reservation = modelBudget ? await modelBudget.reserve({ model, role, messages, maxTokens: config.maxTokens }) : null;
+    console.info("[studio-model] completion request started", { role, model, budgetReservation: Boolean(reservation) });
     let response;
     try {
       response = await client.chat.completions.create(
@@ -157,6 +159,7 @@ export function createOpenAiCompatibleGateways({
       });
       throw error;
     }
+    if (reservation) await modelBudget.settle(reservation, { usage: response?.usage, response });
     console.info("[studio-model] completion response received", {
       role, model,
       promptTokens: Number(response?.usage?.prompt_tokens || response?.usage?.input_tokens || 0),
@@ -204,10 +207,7 @@ export function createOpenAiCompatibleGateways({
           },
         ];
         const configuredModel = configs.planner.model;
-        const modelCandidates = [...new Set([
-          configuredModel,
-          "openrouter/free",
-        ])];
+        const modelCandidates = [configuredModel];
         let lastError;
         for (const model of modelCandidates) {
           for (const jsonMode of [true, false]) {
@@ -310,6 +310,7 @@ export function createOpenAiCompatibleGateways({
             maxTotalToolResultBytes,
             maxTotalOutputTokens,
             maxTotalPromptTokens,
+            modelBudget,
             signal,
           });
           return {
@@ -353,13 +354,7 @@ export function createOpenAiCompatibleGateways({
           },
         ];
         let lastError;
-        const candidates = [
-          { model: configs.qa.model, fallbackUsed: false },
-          { model: "nvidia/nemotron-3.5-lightning:free", fallbackUsed: true },
-          { model: "google/gemma-4-31b-it:free", fallbackUsed: true },
-        ].filter((candidate, index, all) =>
-          all.findIndex(item => item.model === candidate.model) === index
-        );
+        const candidates = [{ model: configs.qa.model, fallbackUsed: false }];
         for (const candidate of candidates) {
           const responseModes = candidate.fallbackUsed ? [false] : [true, false];
           for (const jsonMode of responseModes) {
