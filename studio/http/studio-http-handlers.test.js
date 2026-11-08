@@ -92,10 +92,30 @@ test("executes an approved plan and returns the workflow report", async () => {
   assert.deepEqual(result.body.recovery, { recovered: 1, tasks: [{ taskId: "task-recovered" }] });
   assert.deepEqual(calls.recover, [{ actor: ownerRequest.auth.actor, limit: 50 }]);
   assert.deepEqual(calls.order, ["recover", "workflow"]);
-  assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: ownerRequest.auth.actor }]);
+  assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: ownerRequest.auth.actor, maxAssignments: 3 }]);
 });
 
 
+test("allows an owner to choose a smaller execution batch but never exceed three tasks", async () => {
+  const { handlers, calls } = fixture({ planStatus: "approved" });
+  const result = await handlers.executeApprovedPlan({
+    ...ownerRequest, params: { planId: "plan-1" }, body: { maxAssignments: 1 },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(calls.execute[0].maxAssignments, 1);
+});
+
+test("rejects oversized owner execution batches before recovery or dispatch", async () => {
+  const { handlers, calls } = fixture({ planStatus: "approved" });
+  await assert.rejects(
+    handlers.executeApprovedPlan({
+      ...ownerRequest, params: { planId: "plan-1" }, body: { maxAssignments: 4 },
+    }),
+    error => error.code === "INVALID_EXECUTION_BATCH_SIZE" && error.status === 400,
+  );
+  assert.equal(calls.recover.length, 0);
+  assert.equal(calls.execute.length, 0);
+});
 test("does not dispatch when owner-authorized recovery is denied", async () => {
   const calls = { execute: [] };
   const deniedHandlers = createStudioHttpHandlers({
