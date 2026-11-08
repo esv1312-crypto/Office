@@ -298,6 +298,7 @@ export function createOpenAiCompatibleGateways({
           });
           return {
             text: result.text,
+            toolEvidence: result.toolEvidence,
             modelSnapshot: {
               ...makeSnapshot(providerName, "worker", configs.worker),
               toolCallsExecuted: result.toolCallsExecuted,
