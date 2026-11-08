@@ -29,6 +29,17 @@ function positiveIntegerEnv(name, fallback, max) {
   return value;
 }
 
+
+function positiveNumberEnv(name, fallback, max) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value > max) {
+    throw new Error(`${name} must be a positive number no greater than ${max}`);
+  }
+  return value;
+}
+
 function createRateLimiter({ windowMs = 60_000, max = 60 } = {}) {
   const buckets = new Map();
   return function studioRateLimit(request, response, next) {
@@ -135,6 +146,8 @@ const modelBudget = modelBudgetCap > 0 ? createPostgresModelBudget({
   pool,
   capUsd: modelBudgetCap,
   budgetKey: process.env.STUDIO_MODEL_BUDGET_KEY || "universal-ai-studio-launch-budget-v1",
+  inputUsdPerMillion: positiveNumberEnv("STUDIO_MODEL_INPUT_USD_PER_MILLION", 0.30, 1000),
+  outputUsdPerMillion: positiveNumberEnv("STUDIO_MODEL_OUTPUT_USD_PER_MILLION", 1.20, 1000),
 }) : null;
 const client = new OpenAI({
   apiKey: modelApiKey,
@@ -208,8 +221,10 @@ const controlPlane = createStudioControlPlane({
   workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
   modelTimeoutMs: positiveIntegerEnv("STUDIO_WORKER_MODEL_TIMEOUT_MS", 300000, 600000),
   modelBudget,
-  maxToolRounds: 50,
-  maxToolCalls: 100,
+  // A normal task should finish in a handful of tool rounds. Large jobs must
+  // be decomposed by the Director instead of being allowed to consume a huge loop.
+  maxToolRounds: positiveIntegerEnv("STUDIO_MAX_TOOL_ROUNDS", 8, 20),
+  maxToolCalls: positiveIntegerEnv("STUDIO_MAX_TOOL_CALLS", 16, 40),
 });
 
 const launchSelfDevelopment = createSelfDevelopmentLaunchHandler({
@@ -463,18 +478,11 @@ async function runConfiguredOwnerTask() {
     const claim = await lockClient.query(`
       INSERT INTO studio.owner_task_runs (task_key, status)
       VALUES ($1, 'running')
-      ON CONFLICT (task_key) DO UPDATE
-        SET status = 'running', error_code = NULL, updated_at = now()
-        WHERE studio.owner_task_runs.status IN ('failed', 'running', 'needs_attention')
-           OR (
-             studio.owner_task_runs.status = 'finished'
-             AND studio.owner_task_runs.plan_id IS NOT NULL
-             AND EXISTS (
-               SELECT 1 FROM studio.tasks t
-                WHERE t.plan_id = studio.owner_task_runs.plan_id::text
-                  AND t.status NOT IN ('completed', 'cancelled')
-             )
-           )
+      -- Startup owner tasks are one-shot. Re-running a row that is already
+      -- 'running' after every deploy caused the same plan to be dispatched
+      -- repeatedly and spend model budget again. Resume must be an explicit,
+      -- separately governed operation, never an implicit deploy side effect.
+      ON CONFLICT (task_key) DO NOTHING
       RETURNING task_key, plan_id
     `, [taskKey]);
     if (!claim.rowCount) {

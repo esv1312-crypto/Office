@@ -122,12 +122,12 @@ export async function runOpenAiToolLoop({
   executeTool,
   temperature = 0.2,
   maxTokens = 6000,
-  maxRounds = 50,
-  maxToolCalls = 12,
+  maxRounds = 8,
+  maxToolCalls = 16,
   maxToolResultBytes = 12 * 1024,
-  maxTotalToolResultBytes = 512 * 1024,
+  maxTotalToolResultBytes = 128 * 1024,
   maxTotalOutputTokens = 12000,
-  maxTotalPromptTokens = 600000,
+  maxTotalPromptTokens = 100000,
   requestTimeoutMs = 90_000,
   modelBudget = null,
   signal,
@@ -181,6 +181,22 @@ export async function runOpenAiToolLoop({
         code: error?.code || "MODEL_REQUEST_FAILED",
         status: Number.isInteger(error?.status) ? error.status : null,
       });
+      // The provider may have accepted the request before a timeout or
+      // connection failure. Conservatively settle the reservation at its
+      // maximum reserved value so it cannot remain pending or hide a charge.
+      if (reservation) {
+        const rejectedWithoutBilling = [400, 401, 403, 404, 422, 429].includes(error?.status);
+        const settleMethod = rejectedWithoutBilling && typeof modelBudget?.release === "function"
+          ? modelBudget.release
+          : modelBudget?.settleFailure;
+        if (typeof settleMethod === "function") {
+          await settleMethod.call(modelBudget, reservation).catch(settlementError => {
+            console.error("[studio-model] failed-request budget settlement failed", {
+              model, round, code: settlementError?.code || "BUDGET_SETTLEMENT_FAILED",
+            });
+          });
+        }
+      }
       throw error;
     }
     if (reservation) await modelBudget.settle(reservation, { usage: response?.usage, response });

@@ -221,3 +221,28 @@ test("QA never cascades through unapproved free models after empty output", asyn
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.request.model === "qa-model"));
 });
+
+
+test("settles a failed planner request conservatively so its reservation cannot remain pending", async () => {
+  const events = [];
+  const client = {
+    chat: { completions: { create: async () => {
+      throw Object.assign(new Error("provider unavailable"), { status: 400 });
+    } } },
+  };
+  const modelBudget = {
+    reserve: async () => ({ id: "planner-reservation", amountUsd: 0.01 }),
+    settleFailure: async reservation => events.push("worst-case:" + reservation.id),
+    release: async reservation => events.push("released:" + reservation.id),
+    settle: async () => {},
+  };
+  const gateways = createOpenAiCompatibleGateways({
+    client, modelBudget,
+    models: { planner: "planner", worker: "worker", qa: "qa" },
+  });
+  await assert.rejects(
+    gateways.planningGateway.generatePlan({ request: "Plan", project: {} }),
+    error => error.status === 400,
+  );
+  assert.deepEqual(events, ["released:planner-reservation"]);
+});

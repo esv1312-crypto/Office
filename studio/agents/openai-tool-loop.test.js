@@ -352,3 +352,40 @@ test("supports 50 tool rounds with a bounded 512 KiB cumulative tool-result budg
   assert.equal(result.toolEvidence.length, 50);
   assert.equal(requests, 51);
 });
+
+
+test("settles a failed provider request conservatively instead of leaving a pending reservation", async () => {
+  const events = [];
+  const modelBudget = {
+    reserve: async () => ({ id: "reservation-1", amountUsd: 0.02 }),
+    settleFailure: async reservation => events.push(["failed", reservation.id]),
+    settle: async () => events.push(["settled"]),
+  };
+  const client = clientFor(async () => {
+    throw Object.assign(new Error("provider timeout"), { code: "ETIMEDOUT" });
+  });
+  await assert.rejects(runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "inspect" }],
+    tools: [tool], executeTool: async () => ({}), modelBudget,
+  }), error => error.code === "ETIMEDOUT");
+  assert.deepEqual(events, [["failed", "reservation-1"]]);
+});
+
+test("default worker limits stop an unproductive tool loop after eight rounds", async () => {
+  let requests = 0;
+  let executed = 0;
+  const client = clientFor(async () => {
+    requests += 1;
+    return { choices: [{ message: { tool_calls: [{
+      id: "default-" + requests,
+      type: "function",
+      function: { name: "read_file", arguments: "{}" },
+    }] } }] };
+  });
+  await assert.rejects(runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "loop" }],
+    tools: [tool], executeTool: async () => { executed += 1; return {}; },
+  }), error => error.code === "TOOL_ROUND_LIMIT");
+  assert.equal(requests, 9);
+  assert.equal(executed, 8);
+});
