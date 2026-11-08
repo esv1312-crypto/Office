@@ -464,34 +464,55 @@ async function runConfiguredOwnerTask() {
       VALUES ($1, 'running')
       ON CONFLICT (task_key) DO UPDATE
         SET status = 'running', error_code = NULL, updated_at = now()
-        WHERE studio.owner_task_runs.status IN ('failed', 'running')
-      RETURNING task_key
+        WHERE studio.owner_task_runs.status IN ('failed', 'running', 'needs_attention')
+           OR (
+             studio.owner_task_runs.status = 'finished'
+             AND studio.owner_task_runs.plan_id IS NOT NULL
+             AND EXISTS (
+               SELECT 1 FROM studio.tasks t
+                WHERE t.plan_id = studio.owner_task_runs.plan_id
+                  AND t.status NOT IN ('completed', 'cancelled')
+             )
+           )
+      RETURNING task_key, plan_id
     `, [taskKey]);
     if (!claim.rowCount) {
-      console.log(`[studio] owner task already claimed; taskKey=${taskKey}`);
+      console.log(`[studio] owner task already claimed or complete; taskKey=${taskKey}`);
       return;
     }
     claimed = true;
+    const existingPlanId = claim.rows?.[0]?.plan_id || null;
     const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
-    let projectId = configuredProjectId;
-    if (!projectId) {
-      const projectResult = await lockClient.query(
-        "SELECT id FROM studio.projects WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 1",
-        [organizationId],
+    let executablePlan;
+
+    if (existingPlanId) {
+      executablePlan = await controlPlane.access.loadPlan({ planId: existingPlanId, actor });
+      if (!executablePlan) {
+        throw Object.assign(new Error("Previously created owner plan could not be loaded"), { code: "PLAN_NOT_FOUND" });
+      }
+      console.log(`[studio] owner task resuming existing plan; taskKey=${taskKey}; plan=${existingPlanId}`);
+    } else {
+      let projectId = configuredProjectId;
+      if (!projectId) {
+        const projectResult = await lockClient.query(
+          "SELECT id FROM studio.projects WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 1",
+          [organizationId],
+        );
+        projectId = projectResult.rows?.[0]?.id;
+      }
+      if (!projectId) throw Object.assign(new Error("Owner task project was not found"), { code: "PROJECT_NOT_FOUND" });
+      const project = await controlPlane.access.loadProject({ projectId, actor });
+      if (!project) throw Object.assign(new Error("Owner task project could not be loaded"), { code: "PROJECT_NOT_FOUND" });
+      console.log(`[studio] owner task planning started; taskKey=${taskKey}; project=${projectId}`);
+      const proposal = await controlPlane.runtime.director.plan({ request: brief, project, actor });
+      executablePlan = proposal?.plan || proposal;
+      if (!executablePlan?.id) throw Object.assign(new Error("Director did not create a plan"), { code: "PLAN_CREATION_FAILED" });
+      await lockClient.query(
+        "UPDATE studio.owner_task_runs SET plan_id = $2, updated_at = now() WHERE task_key = $1",
+        [taskKey, executablePlan.id],
       );
-      projectId = projectResult.rows?.[0]?.id;
     }
-    if (!projectId) throw Object.assign(new Error("Owner task project was not found"), { code: "PROJECT_NOT_FOUND" });
-    const project = await controlPlane.access.loadProject({ projectId, actor });
-    if (!project) throw Object.assign(new Error("Owner task project could not be loaded"), { code: "PROJECT_NOT_FOUND" });
-    console.log(`[studio] owner task planning started; taskKey=${taskKey}; project=${projectId}`);
-    const proposal = await controlPlane.runtime.director.plan({ request: brief, project, actor });
-    let executablePlan = proposal?.plan || proposal;
-    if (!executablePlan?.id) throw Object.assign(new Error("Director did not create a plan"), { code: "PLAN_CREATION_FAILED" });
-    await lockClient.query(
-      "UPDATE studio.owner_task_runs SET plan_id = $2, updated_at = now() WHERE task_key = $1",
-      [taskKey, executablePlan.id],
-    );
+
     if (executablePlan.status === "proposed") {
       const approval = await controlPlane.runtime.approval.approve({ plan: executablePlan, actor });
       executablePlan = approval.plan;
@@ -499,18 +520,24 @@ async function runConfiguredOwnerTask() {
     if (executablePlan.status !== "approved") {
       throw Object.assign(new Error("Director plan is not approved for execution"), { code: "PLAN_NOT_APPROVED" });
     }
+
     let report = null;
     for (let round = 1; round <= 3; round += 1) {
       report = await controlPlane.runtime.workflow.run({ planId: executablePlan.id, actor });
-      console.log(`[studio] owner task execution round=${round}; taskKey=${taskKey}; plan=${executablePlan.id}; status=${report.status}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
+      console.log(`[studio] owner task execution round=${round}; taskKey=${taskKey}; plan=${executablePlan.id}; status=${report.status}; assigned=${report.dispatch?.assigned?.length || 0}; executions=${report.executions?.length || 0}; qa=${report.qaReviews?.length || 0}; blocked=${report.blocked?.length || 0}`);
       const revisionsRequired = report.qaReviews?.some(review => review.verdict === "revision_required");
       if (report.status === "completed" || !revisionsRequired || round === 3) break;
     }
+
+    const finalStatus = report?.status === "completed" ? "completed" : "needs_attention";
+    const errorCode = finalStatus === "completed"
+      ? null
+      : (report?.blocked?.[0]?.code || report?.executions?.find(item => item.status !== "qa")?.errorCode || "EXECUTION_NEEDS_ATTENTION");
     await lockClient.query(
-      "UPDATE studio.owner_task_runs SET status = $2, updated_at = now() WHERE task_key = $1",
-      [taskKey, report?.status === "completed" ? "completed" : "finished"],
+      "UPDATE studio.owner_task_runs SET status = $2, error_code = $3, updated_at = now() WHERE task_key = $1",
+      [taskKey, finalStatus, errorCode],
     );
-    console.log(`[studio] owner task finished; taskKey=${taskKey}; plan=${executablePlan.id}; status=${report?.status || "unknown"}`);
+    console.log(`[studio] owner task finished; taskKey=${taskKey}; plan=${executablePlan.id}; status=${finalStatus}; error=${errorCode || "none"}`);
   } catch (error) {
     if (claimed) {
       await lockClient.query(
