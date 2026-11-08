@@ -89,6 +89,7 @@ export function createWorkerRuntime({
   now = () => new Date().toISOString(),
   leaseMs = 300_000,
   heartbeatIntervalMs = 60_000,
+  modelTimeoutMs = 180_000,
 }) {
   if (!store ||
       typeof store.startExecution !== "function" ||
@@ -109,6 +110,9 @@ export function createWorkerRuntime({
   if (!Number.isInteger(leaseMs) || leaseMs < 1_000) throw new TypeError("leaseMs must be an integer of at least 1000");
   if (!Number.isInteger(heartbeatIntervalMs) || heartbeatIntervalMs < 100 || heartbeatIntervalMs >= leaseMs) {
     throw new TypeError("heartbeatIntervalMs must be at least 100 and shorter than leaseMs");
+  }
+  if (!Number.isInteger(modelTimeoutMs) || modelTimeoutMs < 1_000 || modelTimeoutMs > 600_000) {
+    throw new TypeError("modelTimeoutMs must be between 1000 and 600000");
   }
 
   return Object.freeze({
@@ -168,8 +172,9 @@ export function createWorkerRuntime({
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         if (heartbeatInFlight) await heartbeatInFlight;
       };
+      let modelTimeoutTimer;
       try {
-        generated = await modelGateway.generate({
+        const generation = modelGateway.generate({
           task: started.task,
           specialist: {
             id: specialistId,
@@ -182,6 +187,17 @@ export function createWorkerRuntime({
           execution: started.execution,
           signal: abortController.signal,
         });
+        const deadline = new Promise((_, reject) => {
+          modelTimeoutTimer = setTimeout(() => {
+            const error = Object.assign(new Error("Worker model execution exceeded its deadline"), {
+              code: "MODEL_EXECUTION_TIMEOUT",
+            });
+            abortController.abort(error);
+            reject(error);
+          }, modelTimeoutMs);
+        });
+        generated = await Promise.race([generation, deadline]);
+        clearTimeout(modelTimeoutTimer);
         await stopHeartbeat();
         if (leaseError) throw leaseError;
         if (!generated || typeof generated.text !== "string" || !generated.text.trim()) {
@@ -191,6 +207,7 @@ export function createWorkerRuntime({
         }
         safeModelSnapshot(generated.modelSnapshot);
       } catch (error) {
+        if (modelTimeoutTimer) clearTimeout(modelTimeoutTimer);
         await stopHeartbeat();
         if (leaseError || error?.code === "EXECUTION_LEASE_LOST") {
           const lost = leaseError || error;
