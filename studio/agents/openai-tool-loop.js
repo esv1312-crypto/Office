@@ -37,11 +37,19 @@ function evidenceForTool({ name, arguments: rawArguments, result }) {
       evidence.range = { startLine, endLine, totalLines };
     }
   }
+  const sourceEvidencePaths = new Set([
+    "studio/server.js",
+    "studio/agents/github-workspace-tools.js",
+    "studio/agents/worker-runtime.js",
+  ]);
+  const isWorkspaceEvidenceReadback = typeof path === "string" &&
+    path.startsWith("studio/agent-workspace/verification/");
+  const isAllowlistedSourceRead = typeof path === "string" && sourceEvidencePaths.has(path);
   if (name === "read_repo_file" &&
-      typeof path === "string" &&
-      path.startsWith("studio/agent-workspace/verification/") &&
+      (isWorkspaceEvidenceReadback || isAllowlistedSourceRead) &&
       typeof result?.content === "string") {
     const contentBytes = Buffer.byteLength(result.content, "utf8");
+    evidence.contentKind = isWorkspaceEvidenceReadback ? "workspace-verification-readback" : "source-snippet";
     if (contentBytes <= 8192) evidence.content = result.content;
     else {
       evidence.contentTruncated = true;
