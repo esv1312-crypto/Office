@@ -211,3 +211,32 @@ test("relative workspace writes still reject traversal and explicit production p
     } }), error => error.code === "WORKSPACE_PATH_REJECTED");
   }
 });
+
+
+test("times out stalled GitHub workspace requests", async () => {
+  const tools = createTools((_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => {
+      reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    }, { once: true });
+  }), { requestTimeoutMs: 1_000 });
+  await assert.rejects(
+    tools.execute({ name: "read_repo_file", arguments: { path: "studio/server.js" } }),
+    error => error.code === "WORKSPACE_TIMEOUT",
+  );
+});
+
+test("aborts an in-flight workspace request when the worker execution is cancelled", async () => {
+  const tools = createTools((_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => {
+      reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    }, { once: true });
+  }));
+  const controller = new AbortController();
+  const pending = tools.execute({
+    name: "read_repo_file",
+    arguments: { path: "studio/server.js" },
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assert.rejects(pending, error => error.code === "WORKSPACE_ABORTED");
+});

@@ -152,7 +152,12 @@ export function createWorkerRuntime({
       let leaseError = null;
       let heartbeatInFlight = null;
       let heartbeatStopped = false;
+      let firstHeartbeatLogged = false;
       const abortController = new AbortController();
+      console.info("[studio-worker] execution started", {
+        executionId: started.executionId, taskId: id, specialistId, attempt: started.execution.attempt,
+        heartbeatEnabled: typeof store.heartbeatExecution === "function",
+      });
       const renewLease = async () => {
         if (heartbeatInFlight || leaseError) return heartbeatInFlight;
         heartbeatInFlight = store.heartbeatExecution({
@@ -161,8 +166,21 @@ export function createWorkerRuntime({
           leaseToken: started.execution.leaseToken,
           leaseMs,
           at: now(),
+        }).then(result => {
+          if (!firstHeartbeatLogged) {
+            firstHeartbeatLogged = true;
+            console.info("[studio-worker] lease heartbeat confirmed", {
+              executionId: started.executionId,
+              leaseExpiresAt: result?.leaseExpiresAt || null,
+            });
+          }
+          return result;
         }).catch(error => {
           leaseError = error;
+          console.warn("[studio-worker] lease heartbeat failed", {
+            executionId: started.executionId,
+            code: error?.code || "HEARTBEAT_FAILED",
+          });
           abortController.abort(error);
         }).finally(() => { heartbeatInFlight = null; });
         return heartbeatInFlight;
@@ -178,7 +196,18 @@ export function createWorkerRuntime({
       };
       let modelTimeoutTimer;
       try {
-        const generation = modelGateway.generate({
+        console.info("[studio-worker] model generation started", { executionId: started.executionId, taskId: id });
+        const deadline = new Promise((_, reject) => {
+          modelTimeoutTimer = setTimeout(() => {
+            const error = Object.assign(new Error("Worker model execution exceeded its deadline"), {
+              code: "MODEL_EXECUTION_TIMEOUT",
+            });
+            console.warn("[studio-worker] model deadline reached", { executionId: started.executionId });
+            abortController.abort(error);
+            reject(error);
+          }, modelTimeoutMs);
+        });
+        const generation = Promise.resolve().then(() => modelGateway.generate({
           task: started.task,
           specialist: {
             id: specialistId,
@@ -190,18 +219,13 @@ export function createWorkerRuntime({
           },
           execution: started.execution,
           signal: abortController.signal,
-        });
-        const deadline = new Promise((_, reject) => {
-          modelTimeoutTimer = setTimeout(() => {
-            const error = Object.assign(new Error("Worker model execution exceeded its deadline"), {
-              code: "MODEL_EXECUTION_TIMEOUT",
-            });
-            abortController.abort(error);
-            reject(error);
-          }, modelTimeoutMs);
-        });
+        }));
         generated = await Promise.race([generation, deadline]);
         clearTimeout(modelTimeoutTimer);
+        console.info("[studio-worker] model generation completed", {
+          executionId: started.executionId,
+          toolCalls: Array.isArray(generated?.toolEvidence) ? generated.toolEvidence.length : 0,
+        });
         if (leaseError) throw leaseError;
         if (!generated || typeof generated.text !== "string" || !generated.text.trim()) {
           throw Object.assign(new Error("Model gateway returned an empty result"), {
@@ -248,6 +272,7 @@ export function createWorkerRuntime({
             specialistId,
             executionId: started.executionId,
           });
+          console.info("[studio-worker] artifact persistence started", { executionId: started.executionId, path });
           externalArtifact = await artifactWriter.writeTextArtifact({
             path,
             content: output,
@@ -258,6 +283,10 @@ export function createWorkerRuntime({
               specialistId,
             },
             signal: abortController.signal,
+          });
+          console.info("[studio-worker] artifact persistence completed", {
+            executionId: started.executionId,
+            commitSha: externalArtifact?.commitSha || null,
           });
         } catch (error) {
           if (leaseError || error?.code === "ARTIFACT_REPOSITORY_ABORTED" ||
