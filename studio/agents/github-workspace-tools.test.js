@@ -31,6 +31,7 @@ test("reads only a requested inclusive line range and returns SHA metadata", asy
   assert.equal(result.content, "two\nthree");
   assert.deepEqual(result.range, { startLine: 2, endLine: 3, totalLines: 5 });
   assert.equal(result.sha, "blob-sha");
+  assert.equal(result.branch, "studio-ai-agent-workspace");
 });
 
 test("bounds range reads to maxReadLines", async () => {
@@ -140,6 +141,7 @@ test("reads current source from readBranch while writes remain on workspace bran
   const read = await tools.execute({ name: "read_repo_file", arguments: { path: "studio/server.js" } });
   assert.equal(read.content, source);
   assert.equal(read.sha, "main-source-sha");
+  assert.equal(read.branch, "studio-v1-foundation");
   assert.ok(calls[0].url.includes("ref=studio-v1-foundation"));
 
   const written = await tools.execute({ name: "write_repo_file", arguments: {
@@ -151,6 +153,7 @@ test("reads current source from readBranch while writes remain on workspace bran
   } });
   assert.equal(readBack.content, "verified");
   assert.equal(readBack.sha, "workspace-read-sha");
+  assert.equal(readBack.branch, "studio-ai-agent-workspace");
   assert.ok(calls.some(call => call.url.includes("/studio/agent-workspace/report.md?ref=studio-ai-agent-workspace")));
   const put = calls.find(call => call.method === "PUT");
   assert.ok(put.url.includes("/studio/agent-workspace/report.md"));

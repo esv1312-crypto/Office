@@ -1,9 +1,9 @@
 import { createTask } from "../core/create-task.js";
 
 const PROJECT_NAME = "AI Office Self-Development";
-const PLAN_TITLE = "AI Office — Live Source Read/Write Verification v2";
+const PLAN_TITLE = "AI Office — Live Source Read/Write Verification v3";
 const TASK_TITLE = "Inspect deployed source and publish verifiable workspace evidence";
-const EVIDENCE_PATH = "studio/agent-workspace/verification/post-pr81-source-audit.md";
+const EVIDENCE_PATH = "studio/agent-workspace/verification/post-pr81-source-audit-v3.md";
 
 function required(value, field) {
   if (typeof value !== "string" || !value.trim()) throw new TypeError(field + " is required");
@@ -67,10 +67,11 @@ export function createSelfDevelopmentSourceVerification({ pool, controlPlane, cr
         title: TASK_TITLE,
         description: [
           "Perform a real, evidence-backed live inspection of the current repository source. The read_repo_file and list_repo_directory tools read from studio-v1-foundation; write_repo_file writes only to studio-ai-agent-workspace.",
-          "Read these exact source files using read_repo_file: studio/server.js, studio/agents/github-workspace-tools.js, and studio/agents/worker-runtime.js. Use bounded inclusive line ranges where useful. Do not substitute memory, prior chat context, or the workspace branch for source reads.",
-          "For every file record the returned blob SHA, totalLines, exact inclusive line ranges inspected, and the actual behavior found. Verify that server.js configures readBranch=studio-v1-foundation while branch=studio-ai-agent-workspace; verify read operations use readBranch and write/patch operations remain on the workspace branch; verify worker-runtime passes specialist allowedTools to the model gateway.",
-          "Create exactly this evidence file with write_repo_file: " + EVIDENCE_PATH + ". Include a concise source map, evidence table for all three files, tool-call outcomes, and any failures. Do not invent SHA values, line numbers, tool results, commits, or deployments.",
-          "After writing, read the same evidence file back using read_repo_file with branch=studio-ai-agent-workspace. Record the returned workspace blob SHA and read-back confirmation. If any required source read, write, or read-back fails, report the precise error and do not claim success.",
+          "Read source files only from branch=studio-v1-foundation by passing branch=studio-v1-foundation explicitly to every read_repo_file call. Do not read full files. Use these bounded inclusive ranges: studio/server.js lines 160-180; studio/agents/github-workspace-tools.js lines 50-70 and 128-170; studio/agents/worker-runtime.js lines 135-150 and 185-205. The returned result includes path, branch, sha, and range.totalLines.",
+          "Record each file's SHA directly from that file's own tool result. Keep the three source-file records separate; do not copy a SHA or line count from one file to another. Record the actual returned branch and totalLines. If any SHA values are unexpectedly identical, re-read the affected files separately and report the discrepancy rather than claiming success.",
+          "Use the returned source snippets to verify: server.js sets branch=studio-ai-agent-workspace and readBranch=studio-v1-foundation; github-workspace-tools.js routes default reads to readBranch, explicit workspace read-back to studio-ai-agent-workspace, and writes/patches to the workspace branch; worker-runtime.js passes specialist.allowedTools to modelGateway.generate and honors externalArtifact=false.",
+          "Create exactly this evidence file with write_repo_file: " + EVIDENCE_PATH + ". Include a separate evidence row for each source file, exact returned SHA, totalLines, actual inclusive ranges, and the specific source facts visible in those ranges. Include the write_repo_file result fields (branch, commitSha, blobSha). Do not invent SHA values, line numbers, tool results, commits, or deployments.",
+          "After writing, read the same evidence file back using read_repo_file with branch=studio-ai-agent-workspace, start_line=1, end_line=200. Record the returned branch, SHA, range, totalLines, and a short exact excerpt proving the file was read back. If any required source read, write, or read-back fails, report the precise error and do not claim success.",
           "Do not modify any source file, settings, secrets, workflows, infrastructure, or production data. The only permitted write is the single evidence markdown file under studio/agent-workspace/verification/."
         ].join("\n\n"),
         requiredCompetencies: ["implementation", "coding"],

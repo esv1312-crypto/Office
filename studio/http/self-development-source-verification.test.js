@@ -39,14 +39,14 @@ test("creates one scoped source-verification plan, approves it, and executes thr
   assert.ok(task.description.includes("studio/server.js"));
   assert.ok(task.description.includes("studio/agents/github-workspace-tools.js"));
   assert.ok(task.description.includes("studio/agents/worker-runtime.js"));
-  assert.ok(task.description.includes("studio/agent-workspace/verification/post-pr81-source-audit.md"));
+  assert.ok(task.description.includes("studio/agent-workspace/verification/post-pr81-source-audit-v3.md"));
   assert.deepEqual(calls.approved, [calls.created[0].plan.id]);
   assert.deepEqual(calls.executed, [{ planId: calls.created[0].plan.id, actor: { id: "legacy-office-owner" } }]);
 });
 
 test("does not create a duplicate when the verification task is already completed", async () => {
   const { run, calls } = fixture({
-    existingPlan: { id: "existing-plan", status: "approved", payload: { title: "AI Office — Live Source Read/Write Verification v2" } },
+    existingPlan: { id: "existing-plan", status: "approved", payload: { title: "AI Office — Live Source Read/Write Verification v3" } },
     taskStatuses: ["completed"],
   });
   const result = await run({ organizationId: "org-1", actor: { id: "legacy-office-owner" } });
