@@ -348,6 +348,93 @@ export function createPostgresDomainStore({ pool, createId }) {
       }));
     },
 
+    async retryFailedTask({ taskId, expectedVersion, at, actorId = null, maxAttempts = 2 }) {
+      const id = required(taskId, "taskId");
+      const retryAt = timestamp(at);
+      if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 5) {
+        throw new TypeError("maxAttempts must be an integer between 1 and 5");
+      }
+      return transaction(pool, async client => {
+        const taskResult = await client.query(
+          `SELECT t.*, p.organization_id
+             FROM studio.tasks t JOIN studio.projects p ON p.id = t.project_id
+            WHERE t.id = $1 FOR UPDATE OF t`, [id]);
+        const row = taskResult.rows[0];
+        if (!row) throw Object.assign(new Error("Task not found"), { code: "TASK_NOT_FOUND" });
+        if (row.status !== "failed") throw Object.assign(new Error("Only failed tasks can be retried"), { code: "TASK_NOT_FAILED" });
+        if (expectedVersion !== undefined && Number(row.version) !== expectedVersion) {
+          throw Object.assign(new Error("Task version conflict"), { code: "TASK_VERSION_CONFLICT" });
+        }
+        if (!row.assignee_specialist_id) {
+          throw Object.assign(new Error("Failed task has no previous specialist assignment"), { code: "TASK_RETRY_SPECIALIST_MISSING" });
+        }
+        const specialistResult = await client.query(
+          "SELECT id, organization_id, status, payload FROM studio.specialists WHERE id = $1 FOR SHARE",
+          [row.assignee_specialist_id]);
+        const specialist = specialistResult.rows[0];
+        if (!specialist || specialist.status !== "active" || specialist.organization_id !== row.organization_id) {
+          throw Object.assign(new Error("Previous specialist is unavailable for retry"), { code: "TASK_RETRY_SPECIALIST_UNAVAILABLE" });
+        }
+        const specialistPayload = specialist.payload || {};
+        const projectIds = Array.isArray(specialistPayload.projectIds) ? specialistPayload.projectIds : [];
+        if (projectIds.length && !projectIds.includes(row.project_id)) {
+          throw Object.assign(new Error("Previous specialist is outside the task project scope"), { code: "TASK_RETRY_PROJECT_SCOPE_MISMATCH" });
+        }
+        if (!hasCompetencyCoverage(row.payload || {}, specialistPayload)) {
+          throw Object.assign(new Error("Previous specialist no longer covers the task"), { code: "TASK_RETRY_COMPETENCY_MISMATCH" });
+        }
+        const attemptsResult = await client.query(
+          "SELECT COUNT(*)::int AS attempts FROM studio.executions WHERE task_id = $1",
+          [id]);
+        const attempts = Number(attemptsResult.rows?.[0]?.attempts || 0);
+        if (attempts >= maxAttempts) {
+          throw Object.assign(new Error("Task retry limit reached"), {
+            code: "TASK_RETRY_LIMIT_REACHED",
+            attempts,
+            maxAttempts,
+          });
+        }
+        const previousFailure = row.payload?.failureReason || null;
+        const nextTask = {
+          ...(row.payload || {}),
+          status: "assigned",
+          version: Number(row.version) + 1,
+          updatedAt: retryAt,
+          retryCount: attempts,
+          previousFailureReason: previousFailure,
+        };
+        delete nextTask.failureReason;
+        await client.query(
+          "UPDATE studio.tasks SET status = 'assigned', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
+          [id, nextTask.version, JSON.stringify(nextTask), retryAt]);
+        const retryEventId = eventId(createId);
+        const retryPayload = {
+          from: "failed",
+          to: "assigned",
+          specialistId: row.assignee_specialist_id,
+          attempt: attempts + 1,
+          maxAttempts,
+          actorId,
+        };
+        await client.query(
+          `INSERT INTO studio.events
+             (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
+           VALUES ($1,$2,$3,'task',$4,'task.retry_scheduled',$5::jsonb,$6)`,
+          [retryEventId, row.organization_id, row.project_id, id, JSON.stringify(retryPayload), retryAt]);
+        await insertOutboxEvent(client, {
+          eventId: retryEventId,
+          organizationId: row.organization_id,
+          projectId: row.project_id,
+          aggregateType: "task",
+          aggregateId: id,
+          eventType: "task.retry_scheduled",
+          payload: retryPayload,
+          occurredAt: retryAt,
+        });
+        return { task: nextTask, eventId: retryEventId, attempt: attempts + 1 };
+      });
+    },
+
     async markTaskReady({ taskId, expectedVersion, at, actorId = null }) {
       const id = required(taskId, "taskId");
       const readyAt = timestamp(at);
