@@ -17,6 +17,30 @@ function usageFrom(response) {
   return { promptTokens: prompt, completionTokens: completion, cachedInputTokens: cached, providerCost: cost };
 }
 
+function evidenceForTool({ name, arguments: rawArguments, result }) {
+  let args = {};
+  try {
+    args = typeof rawArguments === "string" ? JSON.parse(rawArguments) : (rawArguments || {});
+  } catch {}
+  const evidence = {
+    name,
+    status: result && typeof result === "object" && result.error ? "error" : "ok",
+  };
+  const path = typeof result?.path === "string" ? result.path : args.path;
+  if (typeof path === "string") evidence.path = path;
+  for (const key of ["branch", "sha", "blobSha", "commitSha"]) {
+    if (typeof result?.[key] === "string") evidence[key] = result[key];
+  }
+  if (result?.range && typeof result.range === "object") {
+    const { startLine, endLine, totalLines } = result.range;
+    if ([startLine, endLine, totalLines].every(Number.isInteger)) {
+      evidence.range = { startLine, endLine, totalLines };
+    }
+  }
+  if (typeof result?.error === "string") evidence.error = result.error;
+  return evidence;
+}
+
 function compactToolResult(result, maxBytes) {
   let serialized;
   try { serialized = JSON.stringify(result); }
@@ -49,6 +73,7 @@ export async function runOpenAiToolLoop({
   maxTotalToolResultBytes = 48 * 1024,
   maxTotalOutputTokens = 12000,
   maxTotalPromptTokens = 120000,
+  requestTimeoutMs = 90_000,
   signal,
 }) {
   if (typeof client?.chat?.completions?.create !== "function") throw new TypeError("chat.completions.create is required");
@@ -62,11 +87,15 @@ export async function runOpenAiToolLoop({
   if (!Number.isInteger(maxTotalToolResultBytes) || maxTotalToolResultBytes < maxToolResultBytes) throw new TypeError("maxTotalToolResultBytes must be at least maxToolResultBytes");
   if (!Number.isInteger(maxTotalOutputTokens) || maxTotalOutputTokens < 1) throw new TypeError("maxTotalOutputTokens must be positive");
   if (!Number.isInteger(maxTotalPromptTokens) || maxTotalPromptTokens < 1) throw new TypeError("maxTotalPromptTokens must be positive");
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1_000 || requestTimeoutMs > 300_000) {
+    throw new TypeError("requestTimeoutMs must be between 1000 and 300000");
+  }
 
   const allowed = new Set(tools.map(item => item?.function?.name).filter(name => typeof name === "string"));
   if (allowed.size !== tools.length) throw new TypeError("tool definitions must have unique function names");
   const conversation = [...messages];
   let executed = 0;
+  const toolEvidence = [];
   let totalToolResultBytes = 0;
   const usage = { promptTokens: 0, completionTokens: 0, cachedInputTokens: 0, providerCost: null, requests: 0 };
 
@@ -82,7 +111,7 @@ export async function runOpenAiToolLoop({
       max_tokens: Math.min(maxTokens, remainingOutput),
       tools,
       tool_choice: "auto",
-    }, signal ? { signal } : undefined);
+    }, { timeout: requestTimeoutMs, ...(signal ? { signal } : {}) });
     const requestUsage = usageFrom(response);
     usage.promptTokens += requestUsage.promptTokens;
     usage.completionTokens += requestUsage.completionTokens;
@@ -107,6 +136,7 @@ export async function runOpenAiToolLoop({
       return {
         text,
         toolCallsExecuted: executed,
+        toolEvidence,
         toolRounds: round,
         usage,
         budget: { maxToolCalls, maxToolResultBytes, maxTotalToolResultBytes, maxTotalOutputTokens, maxTotalPromptTokens }
@@ -135,6 +165,7 @@ export async function runOpenAiToolLoop({
           message: String(error?.message || "Tool execution failed").slice(0, 500)
         };
       }
+      toolEvidence.push(evidenceForTool({ name, arguments: call.function.arguments, result }));
       const content = compactToolResult(result, maxToolResultBytes);
       const resultBytes = Buffer.byteLength(content, "utf8");
       totalToolResultBytes += resultBytes;

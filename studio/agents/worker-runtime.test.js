@@ -254,3 +254,36 @@ test("skips the external artifact repository when the task explicitly opts out",
   assert.equal(calls.completed.length, 1);
   assert.equal(calls.completed[0].artifact.external, undefined);
 });
+
+
+test("appends authoritative tool metadata to the persisted artifact", async () => {
+  const { runtime, calls } = fixture({
+    generated: {
+      text: "Source inspection report.",
+      modelSnapshot: { provider: "openrouter", model: "test-model", instructionVersion: 1 },
+      toolEvidence: [{
+        name: "read_repo_file",
+        status: "ok",
+        path: "studio/server.js",
+        branch: "studio-v1-foundation",
+        sha: "verified-source-sha",
+        range: { startLine: 160, endLine: 180, totalLines: 409 },
+      }, {
+        name: "write_repo_file",
+        status: "ok",
+        path: "studio/agent-workspace/verification/audit.md",
+        branch: "studio-ai-agent-workspace",
+        blobSha: "verified-workspace-blob",
+        commitSha: "verified-commit",
+      }],
+    },
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "qa");
+  assert.match(result.output, /## Runtime-verified tool evidence/);
+  assert.match(result.output, /verified-source-sha/);
+  assert.match(result.output, /verified-workspace-blob/);
+  assert.match(result.output, /studio-v1-foundation/);
+  assert.match(result.output, /studio-ai-agent-workspace/);
+  assert.equal(calls.completed[0].artifact.content, result.output);
+});

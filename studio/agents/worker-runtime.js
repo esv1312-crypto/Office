@@ -25,6 +25,32 @@ function requiredString(value, field) {
   return value.trim();
 }
 
+function runtimeToolEvidenceSection(value) {
+  if (!Array.isArray(value) || value.length === 0) return "";
+  const allowedNames = new Set(["list_repo_directory", "read_repo_file", "write_repo_file", "patch_repo_file"]);
+  const records = value.filter(item =>
+    item && typeof item === "object" && allowedNames.has(item.name) &&
+    (item.status === "ok" || item.status === "error")
+  ).map(item => {
+    const record = { name: item.name, status: item.status };
+    for (const key of ["path", "branch", "sha", "blobSha", "commitSha", "error"]) {
+      if (typeof item[key] === "string") record[key] = item[key];
+    }
+    if (item.range && typeof item.range === "object" &&
+        [item.range.startLine, item.range.endLine, item.range.totalLines].every(Number.isInteger)) {
+      record.range = {
+        startLine: item.range.startLine,
+        endLine: item.range.endLine,
+        totalLines: item.range.totalLines,
+      };
+    }
+    return record;
+  });
+  if (!records.length) return "";
+  return "\n\n## Runtime-verified tool evidence\n\n\x60\x60\x60json\n" +
+    JSON.stringify(records, null, 2) + "\n\x60\x60\x60";
+}
+
 function safeModelSnapshot(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Model gateway must return a modelSnapshot object");
@@ -186,7 +212,7 @@ export function createWorkerRuntime({
         };
       }
 
-      const output = generated.text.trim();
+      const output = generated.text.trim() + runtimeToolEvidenceSection(generated.toolEvidence);
       let externalArtifact = null;
       if (artifactWriter && started.task.externalArtifact !== false) {
         try {
