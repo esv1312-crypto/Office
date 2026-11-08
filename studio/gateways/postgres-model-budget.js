@@ -9,9 +9,10 @@ function usd(value) {
 
 function estimateMaximumCost({ messages, maxTokens, inputUsdPerMillion, outputUsdPerMillion }) {
   const serialized = JSON.stringify(messages ?? []);
-  // UTF-8 bytes are deliberately treated as two tokens each. This is a
-  // conservative upper bound for multilingual prompts and avoids tokenizer drift.
-  const estimatedInputTokens = Buffer.byteLength(serialized, "utf8") * 2;
+  // A conservative tokenizer-independent estimate: one token per two UTF-8
+  // bytes. The old two-tokens-per-byte rule reserved up to 8x more than
+  // ordinary English/JSON prompts and starved useful work before the cap.
+  const estimatedInputTokens = Math.ceil(Buffer.byteLength(serialized, "utf8") / 2);
   const inputCost = estimatedInputTokens * inputUsdPerMillion / 1_000_000;
   const outputCost = maxTokens * outputUsdPerMillion / 1_000_000;
   return {
@@ -27,10 +28,14 @@ export function createPostgresModelBudget({
   budgetKey = "owner-master-build-universal-ai-studio-2026-11-08-v1",
   inputUsdPerMillion = DEFAULT_INPUT_USD_PER_MILLION,
   outputUsdPerMillion = DEFAULT_OUTPUT_USD_PER_MILLION,
+  reservationTtlMs = 15 * 60 * 1000,
 }) {
   if (!pool || typeof pool.connect !== "function") throw new TypeError("A PostgreSQL pool is required");
   if (!Number.isFinite(capUsd) || capUsd <= 0) throw new TypeError("capUsd must be positive");
   if (typeof budgetKey !== "string" || !budgetKey.trim()) throw new TypeError("budgetKey is required");
+  if (!Number.isInteger(reservationTtlMs) || reservationTtlMs < 60_000) {
+    throw new TypeError("reservationTtlMs must be at least 60000");
+  }
 
   let schemaReady;
   async function ensureSchema() {
@@ -77,6 +82,24 @@ export function createPostgresModelBudget({
     return schemaReady;
   }
 
+  async function refreshAccountFromLedger(db) {
+    const ledger = await db.query(`
+      SELECT
+        COALESCE(SUM(actual_usd) FILTER (WHERE status = 'settled'), 0) AS spent_usd,
+        COALESCE(SUM(reserved_usd) FILTER (WHERE status = 'reserved'), 0) AS reserved_usd
+      FROM studio.model_budget_reservations
+      WHERE budget_key = $1
+    `, [budgetKey]);
+    const spent = Number(ledger.rows?.[0]?.spent_usd || 0);
+    const reserved = Number(ledger.rows?.[0]?.reserved_usd || 0);
+    await db.query(`
+      UPDATE studio.model_budget_accounts
+      SET spent_usd = $2, reserved_usd = $3, updated_at = now()
+      WHERE budget_key = $1
+    `, [budgetKey, spent, reserved]);
+    return { spent, reserved };
+  }
+
   async function reserve({ model, role, messages, maxTokens }) {
     await ensureSchema();
     const estimate = estimateMaximumCost({ messages, maxTokens, inputUsdPerMillion, outputUsdPerMillion });
@@ -85,15 +108,33 @@ export function createPostgresModelBudget({
     try {
       await db.query("BEGIN");
       const account = await db.query(
-        "SELECT cap_usd, spent_usd, reserved_usd FROM studio.model_budget_accounts WHERE budget_key = $1 FOR UPDATE",
+        "SELECT cap_usd FROM studio.model_budget_accounts WHERE budget_key = $1 FOR UPDATE",
         [budgetKey],
       );
-      const row = account.rows[0];
-      const cap = Number(row.cap_usd);
-      const spent = Number(row.spent_usd);
-      const reserved = Number(row.reserved_usd);
+      const cap = Number(account.rows?.[0]?.cap_usd);
+      if (!Number.isFinite(cap)) throw new Error("Model budget account is missing");
+
+      // A crashed process may leave a reservation behind. Since the provider
+      // may have accepted the request before the crash, expire it conservatively
+      // as fully spent instead of silently releasing money that may be charged.
+      await db.query(`
+        UPDATE studio.model_budget_reservations
+        SET status = 'settled', actual_usd = reserved_usd, settled_at = now()
+        WHERE budget_key = $1 AND status = 'reserved'
+          AND created_at < now() - ($2 * interval '1 millisecond')
+      `, [budgetKey, reservationTtlMs]);
+
+      const ledger = await db.query(`
+        SELECT
+          COALESCE(SUM(actual_usd) FILTER (WHERE status = 'settled'), 0) AS spent_usd,
+          COALESCE(SUM(reserved_usd) FILTER (WHERE status = 'reserved'), 0) AS reserved_usd
+        FROM studio.model_budget_reservations
+        WHERE budget_key = $1
+      `, [budgetKey]);
+      const spent = Number(ledger.rows?.[0]?.spent_usd || 0);
+      const reserved = Number(ledger.rows?.[0]?.reserved_usd || 0);
       if (spent + reserved + estimate.amountUsd > cap + 1e-9) {
-        const error = Object.assign(new Error("The shared $2 model budget is exhausted"), {
+        const error = Object.assign(new Error("The shared model budget is exhausted"), {
           code: "MODEL_BUDGET_EXHAUSTED",
           status: 402,
           budget: { capUsd: cap, spentUsd: spent, reservedUsd: reserved, requestedUsd: estimate.amountUsd },
@@ -105,11 +146,7 @@ export function createPostgresModelBudget({
           (id, budget_key, model, role, reserved_usd, status, estimated_input_tokens, max_output_tokens)
         VALUES ($1, $2, $3, $4, $5, 'reserved', $6, $7)
       `, [reservationId, budgetKey, model, role, estimate.amountUsd, estimate.estimatedInputTokens, maxTokens]);
-      await db.query(`
-        UPDATE studio.model_budget_accounts
-        SET reserved_usd = reserved_usd + $2, updated_at = now()
-        WHERE budget_key = $1
-      `, [budgetKey, estimate.amountUsd]);
+      await refreshAccountFromLedger(db);
       await db.query("COMMIT");
       return { id: reservationId, ...estimate };
     } catch (error) {
@@ -127,10 +164,11 @@ export function createPostgresModelBudget({
     const outputTokens = Number(usage?.completion_tokens ?? usage?.output_tokens ?? 0) || 0;
     const providerCost = Number(usage?.cost ?? response?.cost);
     const calculated = (promptTokens * inputUsdPerMillion + outputTokens * outputUsdPerMillion) / 1_000_000;
-    // Never settle above the amount reserved before the request. The reserve
-    // uses deliberately inflated token and price assumptions.
-    const actualUsd = usd(Math.min(reservation.amountUsd,
-      Number.isFinite(providerCost) && providerCost >= 0 ? providerCost : calculated));
+    // Record the provider's reported cost even if it exceeds the estimate.
+    // Hiding an overrun by clamping to the reservation would corrupt the ledger.
+    const actualUsd = usd(
+      Number.isFinite(providerCost) && providerCost >= 0 ? providerCost : calculated
+    );
     const db = await pool.connect();
     try {
       await db.query("BEGIN");
@@ -141,14 +179,29 @@ export function createPostgresModelBudget({
         WHERE id = $1 AND status = 'reserved'
         RETURNING reserved_usd
       `, [reservation.id, actualUsd, promptTokens, outputTokens]);
-      if (result.rowCount) {
-        await db.query(`
-          UPDATE studio.model_budget_accounts
-          SET reserved_usd = GREATEST(0, reserved_usd - $2),
-              spent_usd = spent_usd + $3, updated_at = now()
-          WHERE budget_key = $1
-        `, [budgetKey, result.rows[0].reserved_usd, actualUsd]);
-      }
+      if (result.rowCount) await refreshAccountFromLedger(db);
+      await db.query("COMMIT");
+    } catch (error) {
+      await db.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      db.release();
+    }
+  }
+
+  async function settleFailure(reservation) {
+    if (!reservation?.id) return;
+    await ensureSchema();
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      const result = await db.query(`
+        UPDATE studio.model_budget_reservations
+        SET status = 'settled', actual_usd = reserved_usd, settled_at = now()
+        WHERE id = $1 AND budget_key = $2 AND status = 'reserved'
+        RETURNING reserved_usd
+      `, [reservation.id, budgetKey]);
+      if (result.rowCount) await refreshAccountFromLedger(db);
       await db.query("COMMIT");
     } catch (error) {
       await db.query("ROLLBACK").catch(() => {});
@@ -160,18 +213,27 @@ export function createPostgresModelBudget({
 
   async function snapshot() {
     await ensureSchema();
-    const result = await pool.query(
-      "SELECT cap_usd, spent_usd, reserved_usd FROM studio.model_budget_accounts WHERE budget_key = $1",
-      [budgetKey],
-    );
+    const result = await pool.query(`
+      SELECT
+        a.cap_usd,
+        COALESCE(SUM(r.actual_usd) FILTER (WHERE r.status = 'settled'), 0) AS spent_usd,
+        COALESCE(SUM(r.reserved_usd) FILTER (WHERE r.status = 'reserved'), 0) AS reserved_usd
+      FROM studio.model_budget_accounts a
+      LEFT JOIN studio.model_budget_reservations r ON r.budget_key = a.budget_key
+      WHERE a.budget_key = $1
+      GROUP BY a.cap_usd
+    `, [budgetKey]);
     const row = result.rows[0];
+    const capUsd = Number(row.cap_usd);
+    const spentUsd = Number(row.spent_usd);
+    const reservedUsd = Number(row.reserved_usd);
     return {
-      capUsd: Number(row.cap_usd),
-      spentUsd: Number(row.spent_usd),
-      reservedUsd: Number(row.reserved_usd),
-      remainingUsd: Math.max(0, Number(row.cap_usd) - Number(row.spent_usd) - Number(row.reserved_usd)),
+      capUsd,
+      spentUsd,
+      reservedUsd,
+      remainingUsd: Math.max(0, capUsd - spentUsd - reservedUsd),
     };
   }
 
-  return Object.freeze({ reserve, settle, snapshot, ensureSchema });
+  return Object.freeze({ reserve, settle, settleFailure, snapshot, ensureSchema });
 }
