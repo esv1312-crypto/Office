@@ -123,7 +123,7 @@ Six completed tasks:
 5. Define independent QA and evidence gates for self-improvement — accepted.
 6. Audit GitHub execution readiness and permission boundaries — accepted.
 
-These tasks generated persisted artifacts in Neon. The roadmap/audit phase is done. **The next correct task is not to repeat the audit; it is to convert the accepted roadmap into an implementation plan for the office to improve its own code.**
+These tasks generated persisted artifacts in Neon. The accepted roadmap artifact is `11eec2d2-7ff7-4615-afd0-ff91351f9ac5`. It describes a domain-agnostic office shell: core workspace/multi-tenant infrastructure, universal knowledge/connectors, collaboration core, agent orchestrator/LLM gateway/tool registry, plugin SDK/sandbox, then installable vertical specialists (software, design, construction, marketing, research). The roadmap/audit phase is done. **The next correct task is not to repeat the audit; it is to convert the accepted roadmap into an implementation plan for the office to improve its own code.**
 
 ## 7. Critical misrouting discovered on 2026-11-08
 
@@ -141,7 +141,9 @@ Render logs show that after the self-development roadmap had completed, startup 
 
 The Roblox tasks and their stale executions are separate from the self-development mission. Do not resume or create more Roblox tasks unless the user explicitly requests that product.
 
-**Required correction:** make the startup/owner workflow prioritize actual AI Office self-development and remove/disable automatic Roblox product-pilot startup for this self-development project. Do not delete existing Roblox records; preserve history.
+The deployed startup function is gated by environment variable `STUDIO_SELF_DEVELOPMENT_PRODUCT_PILOT`; Render logs prove that this gate was active because the product-pilot runner executed at startup.
+
+**Required correction:** set `STUDIO_SELF_DEVELOPMENT_PRODUCT_PILOT=false` for the AI Office runtime (after owner confirmation), and keep the self-development startup path. Do not delete existing Roblox records; preserve history.
 
 ## 8. Current model and execution evidence
 
