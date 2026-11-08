@@ -24,16 +24,14 @@ test("recovers expired leases before checking the one-shot owner-task claim", as
   assert.equal(result.alreadyClaimed, true);
 });
 
-test("does not dispatch work or call model gateways during recovery and claim", async () => {
-  let dispatchCalls = 0;
-  let modelCalls = 0;
+test("keeps recovery and owner-task claim as the only operations in the startup gate", async () => {
+  const calls = [];
   const result = await recoverBeforeOwnerTaskClaim({
     actor: { id: "legacy-office-owner" },
-    recovery: { async recover() { return { recovered: 0, tasks: [] }; } },
-    async claim() { return { rowCount: 1, rows: [{ task_key: "owner-task", plan_id: null }] }; },
+    recovery: { async recover() { calls.push("recovery"); return { recovered: 0, tasks: [] }; } },
+    async claim() { calls.push("claim"); return { rowCount: 1, rows: [{ task_key: "owner-task", plan_id: null }] }; },
   });
 
+  assert.deepEqual(calls, ["recovery", "claim"]);
   assert.equal(result.alreadyClaimed, false);
-  assert.equal(dispatchCalls, 0);
-  assert.equal(modelCalls, 0);
 });
