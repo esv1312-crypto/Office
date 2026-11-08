@@ -287,6 +287,32 @@ async function runConfiguredInitialBootstrap() {
   }
 }
 
+async function runConfiguredSelfDevelopmentLaunch() {
+  if (String(process.env.STUDIO_SELF_DEVELOPMENT_ON_START || "").toLowerCase() !== "true") return;
+  const organizationId = String(process.env.STUDIO_SELF_DEVELOPMENT_ORGANIZATION_ID || "").trim();
+  if (!organizationId) {
+    console.error("[studio] self-development launch skipped; organization ID is not configured");
+    return;
+  }
+  const lockClient = await pool.connect();
+  let locked = false;
+  try {
+    await lockClient.query("SELECT pg_advisory_lock(741920263)");
+    locked = true;
+    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    const result = await launchSelfDevelopment({
+      auth: { actor },
+      params: { organizationId },
+    });
+    console.log(`[studio] self-development launch; project=${result.body?.projectId || "unknown"}; plan=${result.body?.planId || "existing"}; status=${result.body?.execution?.status || result.body?.planStatus || "unknown"}`);
+  } catch (error) {
+    console.error("[studio] self-development launch failed", error?.code || error?.status || "SELF_DEVELOPMENT_LAUNCH_FAILED");
+  } finally {
+    if (locked) await lockClient.query("SELECT pg_advisory_unlock(741920263)").catch(() => {});
+    lockClient.release();
+  }
+}
+
 async function runConfiguredOwnerExecution() {
   const planId = String(process.env.STUDIO_OWNER_EXECUTE_PLAN_ID || "").trim();
   if (!planId) return;
@@ -330,6 +356,7 @@ const server = app.listen(port, "0.0.0.0", () => {
   console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
   void runConfiguredInitialBootstrap();
   void runConfiguredOwnerExecution();
+  void runConfiguredSelfDevelopmentLaunch();
 });
 
 async function shutdown(signal) {
