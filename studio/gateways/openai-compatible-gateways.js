@@ -46,18 +46,39 @@ function responseText(response) {
   return "";
 }
 
+function firstJsonObject(text) {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
 function parseJson(content, role) {
   if (!content || !content.trim()) {
-    throw Object.assign(new Error(`${role} model returned empty content`), {
+    throw Object.assign(new Error(role + " model returned empty content"), {
       code: "EMPTY_MODEL_OUTPUT",
     });
   }
 
-  const text = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const candidates = [text];
-  const start = text.indexOf("{");
-  if (start >= 0 && text !== text.slice(start)) candidates.push(text.slice(start));
-
+  const text = content.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
+  const candidates = [text, firstJsonObject(text)].filter(Boolean);
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate);
@@ -65,7 +86,7 @@ function parseJson(content, role) {
     } catch {}
   }
 
-  throw Object.assign(new Error(`${role} model returned invalid JSON`), {
+  throw Object.assign(new Error(role + " model returned invalid JSON"), {
     code: "INVALID_MODEL_JSON",
   });
 }
@@ -109,10 +130,13 @@ export function createOpenAiCompatibleGateways({
     qa: normalizeModelConfig(models.qa, "qa"),
   });
 
-  async function complete(role, messages, { signal, jsonMode = role !== "worker" } = {}) {
+  async function complete(role, messages, {
+    signal, jsonMode = role !== "worker", modelOverride,
+  } = {}) {
     const config = configs[role];
+    const model = modelOverride || config.model;
     const request = {
-      model: config.model,
+      model,
       messages,
       temperature: config.temperature,
       max_tokens: config.maxTokens,
@@ -120,7 +144,7 @@ export function createOpenAiCompatibleGateways({
     };
     const response = await client.chat.completions.create(
       request,
-      signal ? { signal } : undefined,
+      { timeout: 90_000, ...(signal ? { signal } : {}) },
     );
     const content = responseText(response);
     if (!content) {
@@ -130,7 +154,7 @@ export function createOpenAiCompatibleGateways({
     }
     return {
       content,
-      modelSnapshot: makeSnapshot(providerName, role, config),
+      modelSnapshot: makeSnapshot(providerName, role, { ...config, model }),
     };
   }
 
@@ -156,27 +180,44 @@ export function createOpenAiCompatibleGateways({
           },
         ];
 
-        try {
-          const result = await complete("planner", messages, { signal });
-          return {
-            ...parseJson(result.content, "planner"),
-            modelSnapshot: result.modelSnapshot,
-          };
-        } catch (firstError) {
-          if (!["EMPTY_MODEL_OUTPUT", "INVALID_MODEL_JSON"].includes(firstError?.code)) throw firstError;
-          const retryMessages = [
-            ...messages,
-            {
-              role: "system",
-              content: "Retry once. The previous response was empty or not valid JSON. Return one compact, complete JSON object only. No markdown, no prose, no code fences. Include title, objective, summary, acceptanceCriteria, and 1 to 12 tasks; each task needs title, description, requiredCompetencies, and acceptanceCriteria.",
-            },
-          ];
-          const retry = await complete("planner", retryMessages, { signal, jsonMode: false });
-          return {
-            ...parseJson(retry.content, "planner"),
-            modelSnapshot: retry.modelSnapshot,
-          };
+        const retryMessages = [
+          ...messages,
+          {
+            role: "system",
+            content: "Return one compact, complete JSON object only. No markdown, no prose, no code fences. Include title, objective, summary, acceptanceCriteria, and 1 to 12 tasks; each task needs title, description, requiredCompetencies, and acceptanceCriteria.",
+          },
+        ];
+        const configuredModel = configs.planner.model;
+        const modelCandidates = [...new Set([
+          configuredModel,
+          "openrouter/free",
+        ])];
+        let lastError;
+        for (const model of modelCandidates) {
+          for (const jsonMode of [true, false]) {
+            try {
+              const result = await complete("planner", jsonMode ? messages : retryMessages, {
+                signal, jsonMode, modelOverride: model,
+              });
+              return {
+                ...parseJson(result.content, "planner"),
+                modelSnapshot: {
+                  ...result.modelSnapshot,
+                  fallbackUsed: model !== configuredModel,
+                  jsonMode,
+                },
+              };
+            } catch (error) {
+              lastError = error;
+              const retryable = ["EMPTY_MODEL_OUTPUT", "INVALID_MODEL_JSON"].includes(error?.code) ||
+                [403, 429, 500, 502, 503, 504].includes(error?.status);
+              if (!retryable) throw error;
+            }
+          }
         }
+        throw lastError || Object.assign(new Error("No planner model attempt succeeded"), {
+          code: "PLANNER_UNAVAILABLE",
+        });
       },
     }),
 
