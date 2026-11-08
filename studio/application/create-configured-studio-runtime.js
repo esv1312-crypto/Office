@@ -23,6 +23,8 @@ export function createConfiguredStudioRuntime({
   now,
   workerConcurrency,
   modelBudget = null,
+  maxToolRounds = 20,
+  maxToolCalls = 100,
 }) {
   if (!pool || typeof pool.connect !== "function") {
     throw new TypeError("A migrated Studio PostgreSQL pool is required");
@@ -33,7 +35,7 @@ export function createConfiguredStudioRuntime({
   if (typeof authorize !== "function") {
     throw new TypeError("A governance authorization policy is required");
   }
-  const gateways = createOpenAiCompatibleGateways({ client, models, provider, workerTools, modelBudget });
+  const gateways = createOpenAiCompatibleGateways({ client, models, provider, workerTools, modelBudget, maxToolRounds, maxToolCalls });
   const runtime = createStudioRuntime({
     pool,
     createId,
