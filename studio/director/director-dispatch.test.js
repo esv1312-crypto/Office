@@ -128,3 +128,25 @@ test("retries a failed task once through the durable bounded-retry store", async
   }]);
   assert.deepEqual(calls, [["retry", "task-failed", 6, 3]]);
 });
+
+test("limits each dispatch stage and explicitly defers remaining runnable tasks", async () => {
+  const tasks = [1, 2, 3, 4].map(number => ({
+    id: `task-${number}`, projectId: "project-1", status: "planned", version: 1,
+    requiredCompetencies: ["lua", "roblox"],
+  }));
+  const { dispatch, calls } = setup(tasks);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" }, maxAssignments: 2 });
+  assert.equal(result.status, "partially_dispatched");
+  assert.deepEqual(result.assigned.map(item => item.taskId), ["task-1", "task-2"]);
+  assert.deepEqual(result.deferred.map(item => item.taskId), ["task-3", "task-4"]);
+  assert.ok(result.deferred.every(item => item.code === "EXECUTION_BATCH_LIMIT"));
+  assert.equal(calls.filter(item => item[0] === "assign").length, 2);
+});
+
+test("rejects invalid dispatch batch limits", async () => {
+  const { dispatch } = setup([]);
+  await assert.rejects(
+    dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" }, maxAssignments: 0 }),
+    /maxAssignments must be an integer between 1 and 8/,
+  );
+});
