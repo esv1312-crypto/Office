@@ -74,3 +74,31 @@ test("reports revision-required QA verdict as needing attention", async () => {
   assert.equal(result.status, "needs_attention");
   assert.equal(result.qaReviews[0].taskStatus, "ready");
 });
+
+
+test("does not mark a zero-task, zero-dispatch plan as completed", async () => {
+  const calls = { worker: [], qa: [] };
+  const workflow = createPlanExecutionWorkflow({
+    dispatch: { dispatch: async () => ({
+      planId: "empty-plan", status: "dispatched", assigned: [], blocked: [], skipped: [],
+    }) },
+    workerPool: { executeAssignments: async assignments => {
+      calls.worker.push(assignments);
+      return [];
+    } },
+    qa: { review: async input => { calls.qa.push(input); return { verdict: "accepted" }; } },
+    directory: {
+      getTask: async () => null,
+      getSpecialist: async () => null,
+      getLatestArtifactForTask: async () => null,
+      listActiveSpecialists: async () => [],
+    },
+  });
+  const result = await workflow.run({ planId: "empty-plan", actor: { id: "owner" } });
+  assert.equal(result.status, "needs_attention");
+  assert.equal(result.executions.length, 0);
+  assert.equal(result.qaReviews.length, 0);
+  assert.equal(result.blocked[0].code, "NO_RUNNABLE_TASKS");
+  assert.deepEqual(calls.worker, [[]]);
+  assert.equal(calls.qa.length, 0);
+});

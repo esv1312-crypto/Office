@@ -110,7 +110,15 @@ export function createPlanExecutionWorkflow({
       const hasFailures = report.executions.some(item => item.status !== "qa");
       const hasRevisions = report.qaReviews.some(item => item.verdict === "revision_required");
       const allAssignedProcessed = report.executions.length === dispatchReport.assigned.length;
-      report.status = hasBlocked || hasFailures || hasRevisions || !allAssignedProcessed
+      const noWorkDispatched = dispatchReport.assigned.length === 0 &&
+        dispatchReport.skipped.length === 0 && dispatchReport.blocked.length === 0;
+      if (noWorkDispatched) {
+        report.blocked.push({
+          code: "NO_RUNNABLE_TASKS",
+          reason: "The approved plan contains no assigned, runnable, skipped, or explicitly blocked tasks; zero-work runs cannot be marked completed",
+        });
+      }
+      report.status = noWorkDispatched || hasBlocked || hasFailures || hasRevisions || !allAssignedProcessed
         ? "needs_attention"
         : dispatchReport.status === "blocked" || dispatchReport.status === "partially_dispatched"
           ? "partially_completed"
