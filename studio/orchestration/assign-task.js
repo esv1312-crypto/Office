@@ -18,12 +18,8 @@ export function createTaskAssignment({ store, authorize, now = () => new Date().
           !specialist.projectIds.includes(task.projectId)) {
         throw Object.assign(new Error("Specialist is not permitted in this project"), { code: "PROJECT_SCOPE_MISMATCH" });
       }
-      const requiredCompetencies = task.requiredCompetencies || [];
-      const coversEveryRequirement = requiredCompetencies.length > 0 &&
-        requiredCompetencies.every(requirement =>
-          hasCompetencyCoverage({ requiredCompetencies: [requirement] }, specialist));
-      if (!coversEveryRequirement) {
-        throw Object.assign(new Error("Specialist does not cover all of the task's required competencies"), {
+      if (!hasCompetencyCoverage(task, specialist)) {
+        throw Object.assign(new Error("Specialist does not cover any of the task's required competencies"), {
           code: "SPECIALIST_COMPETENCY_MISMATCH",
         });
       }
