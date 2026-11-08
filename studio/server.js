@@ -12,6 +12,7 @@ import { createSelfDevelopmentLaunchHandler } from "./http/self-development-laun
 import { createSelfDevelopmentSourceVerification } from "./http/self-development-source-verification.js";
 import { createSelfDevelopmentProductPilot } from "./http/self-development-product-pilot.js";
 import { createPostgresModelBudget } from "./gateways/postgres-model-budget.js";
+import { recoverBeforeOwnerTaskClaim } from "./application/owner-task-startup.js";
 
 function requiredEnv(name) {
   const value = String(process.env[name] || "").trim();
@@ -475,27 +476,31 @@ async function runConfiguredOwnerTask() {
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    const claim = await lockClient.query(`
-      INSERT INTO studio.owner_task_runs (task_key, status)
-      VALUES ($1, 'running')
-      -- Startup owner tasks are one-shot. Re-running a row that is already
-      -- 'running' after every deploy caused the same plan to be dispatched
-      -- repeatedly and spend model budget again. Resume must be an explicit,
-      -- separately governed operation, never an implicit deploy side effect.
-      ON CONFLICT (task_key) DO NOTHING
-      RETURNING task_key, plan_id
-    `, [taskKey]);
-    if (!claim.rowCount) {
+    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    const startup = await recoverBeforeOwnerTaskClaim({
+      recovery: controlPlane.runtime.recovery,
+      actor,
+      claim: () => lockClient.query(`
+        INSERT INTO studio.owner_task_runs (task_key, status)
+        VALUES ($1, 'running')
+        -- Startup owner tasks are one-shot. Re-running a row that is already
+        -- 'running' after every deploy caused the same plan to be dispatched
+        -- repeatedly and spend model budget again. Resume must be an explicit,
+        -- separately governed operation, never an implicit deploy side effect.
+        ON CONFLICT (task_key) DO NOTHING
+        RETURNING task_key, plan_id
+      `, [taskKey]),
+    });
+    if (startup.recovery.recovered) {
+      console.log(`[studio] owner task recovered expired executions=${startup.recovery.recovered}`);
+    }
+    if (startup.alreadyClaimed) {
       console.log(`[studio] owner task already claimed or complete; taskKey=${taskKey}`);
       return;
     }
     claimed = true;
+    const claim = startup.claim;
     const existingPlanId = claim.rows?.[0]?.plan_id || null;
-    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
-    const recovery = await controlPlane.runtime.recovery.recover({ actor, limit: 50 });
-    if (recovery.recovered) {
-      console.log(`[studio] owner task recovered expired executions=${recovery.recovered}`);
-    }
     let executablePlan;
 
     if (existingPlanId) {
