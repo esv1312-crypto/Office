@@ -133,7 +133,7 @@ const ALIASES = {
   "audit logging": ["security.review"],
   "secrets management": ["security.review"],
 };
-function normalize(value) { return String(value || "").trim().toLowerCase().replace(/\\s+/g, " "); }
+function normalize(value) { return String(value || "").trim().toLowerCase().replace(/\s+/g, " "); }
 export function competencyCoverage(task, specialist) {
   const available = new Set((specialist?.competencies || []).map(normalize));
   return (task?.requiredCompetencies || []).reduce((score, requirement) => {
