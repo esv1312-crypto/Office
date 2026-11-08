@@ -204,6 +204,36 @@ test("does not commit a result after heartbeat reports a lost lease", async () =
 });
 
 
+test("keeps renewing the worker lease while the external artifact is being written", async () => {
+  const { runtime, calls } = fixture({
+    heartbeatIntervalMs: 100,
+    artifactWriter: async value => {
+      await new Promise(resolve => setTimeout(resolve, 260));
+      return { path: value.path, commitSha: "artifact-commit", provenance: value.provenance };
+    },
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "qa");
+  assert.ok(calls.heartbeats.length >= 2);
+  assert.equal(calls.completed.length, 1);
+});
+
+test("does not hand off to QA when the lease is lost during external artifact writing", async () => {
+  const leaseError = Object.assign(new Error("Lease lost during artifact write"), { code: "EXECUTION_LEASE_LOST" });
+  const { runtime, calls } = fixture({
+    heartbeatIntervalMs: 100,
+    heartbeatError: leaseError,
+    artifactWriter: async value => {
+      await new Promise(resolve => setTimeout(resolve, 260));
+      return { path: value.path, commitSha: "orphaned-artifact", provenance: value.provenance };
+    },
+  });
+  const result = await runtime.execute({ taskId: "task-1", specialist, workerId: "worker-1" });
+  assert.equal(result.status, "lease_lost");
+  assert.equal(calls.completed.length, 0);
+  assert.equal(calls.failed.length, 0);
+});
+
 test("persists worker output to the approved repository workspace before database QA hand-off", async () => {
   const { runtime, calls } = fixture({
     artifactWriter: async value => ({

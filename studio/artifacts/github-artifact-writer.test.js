@@ -110,3 +110,20 @@ test("does not expose repository credentials or raw provider errors", async () =
     error => error.code === "ARTIFACT_REPOSITORY_UNAVAILABLE" && !error.message.includes("secret-value"),
   );
 });
+
+
+test("aborts a stalled GitHub request at the configured timeout", async () => {
+  const writer = createGithubArtifactWriter({
+    owner: "example", repo: "office", branch: "studio-v1-foundation", token: "test-token",
+    requestTimeoutMs: 1_000,
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => {
+        reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+      }, { once: true });
+    }),
+  });
+  await assert.rejects(
+    writer.writeTextArtifact({ path: "studio/projects/demo/a.md", content: "x", provenance }),
+    error => error.code === "ARTIFACT_REPOSITORY_TIMEOUT",
+  );
+});

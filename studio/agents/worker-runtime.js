@@ -151,6 +151,7 @@ export function createWorkerRuntime({
       let generated;
       let leaseError = null;
       let heartbeatInFlight = null;
+      let heartbeatStopped = false;
       const abortController = new AbortController();
       const renewLease = async () => {
         if (heartbeatInFlight || leaseError) return heartbeatInFlight;
@@ -170,6 +171,8 @@ export function createWorkerRuntime({
         ? setInterval(() => { void renewLease(); }, heartbeatIntervalMs)
         : null;
       const stopHeartbeat = async () => {
+        if (heartbeatStopped) return;
+        heartbeatStopped = true;
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         if (heartbeatInFlight) await heartbeatInFlight;
       };
@@ -199,7 +202,6 @@ export function createWorkerRuntime({
         });
         generated = await Promise.race([generation, deadline]);
         clearTimeout(modelTimeoutTimer);
-        await stopHeartbeat();
         if (leaseError) throw leaseError;
         if (!generated || typeof generated.text !== "string" || !generated.text.trim()) {
           throw Object.assign(new Error("Model gateway returned an empty result"), {
@@ -255,16 +257,33 @@ export function createWorkerRuntime({
               executionId: started.executionId,
               specialistId,
             },
+            signal: abortController.signal,
           });
         } catch (error) {
+          if (leaseError || error?.code === "ARTIFACT_REPOSITORY_ABORTED" ||
+              error?.code === "EXECUTION_LEASE_LOST") {
+            await stopHeartbeat();
+            const lost = leaseError || error;
+            return {
+              executionId: started.executionId,
+              taskId: id,
+              status: "lease_lost",
+              errorCode: lost.code || "EXECUTION_LEASE_LOST",
+              error: String(lost.message || lost),
+            };
+          }
           const reason = "Artifact repository write failed";
-          await store.failExecution({
-            executionId: started.executionId,
-            reason,
-            fencingToken: started.execution.fencingToken,
-            leaseToken: started.execution.leaseToken,
-            at: now(),
-          });
+          try {
+            await store.failExecution({
+              executionId: started.executionId,
+              reason,
+              fencingToken: started.execution.fencingToken,
+              leaseToken: started.execution.leaseToken,
+              at: now(),
+            });
+          } finally {
+            await stopHeartbeat();
+          }
           return {
             executionId: started.executionId,
             taskId: id,
@@ -273,6 +292,17 @@ export function createWorkerRuntime({
             error: reason,
           };
         }
+      }
+
+      if (leaseError) {
+        await stopHeartbeat();
+        return {
+          executionId: started.executionId,
+          taskId: id,
+          status: "lease_lost",
+          errorCode: leaseError.code || "EXECUTION_LEASE_LOST",
+          error: String(leaseError.message || leaseError),
+        };
       }
 
       const artifact = {
@@ -287,15 +317,20 @@ export function createWorkerRuntime({
       // Keep persistence outside the model-error catch. If durable completion
       // fails, leave recovery to the store/lease reconciler rather than
       // incorrectly marking a successfully generated result as model-failed.
-      const completed = await store.completeExecution({
-        executionId: started.executionId,
-        output,
-        modelSnapshot: generated.modelSnapshot,
-        artifact,
-        fencingToken: started.execution.fencingToken,
-        leaseToken: started.execution.leaseToken,
-        at: now(),
-      });
+      let completed;
+      try {
+        completed = await store.completeExecution({
+          executionId: started.executionId,
+          output,
+          modelSnapshot: generated.modelSnapshot,
+          artifact,
+          fencingToken: started.execution.fencingToken,
+          leaseToken: started.execution.leaseToken,
+          at: now(),
+        });
+      } finally {
+        await stopHeartbeat();
+      }
 
       if (!completed || completed.task?.status !== "qa" || !completed.artifactId) {
         throw new Error("Execution store did not confirm durable artifact and QA hand-off");
