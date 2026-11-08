@@ -164,7 +164,7 @@ test("updates an existing specialist's allowed tools with version check and audi
   assert.equal(result.specialist.version, 2);
   assert.ok(calls.some(call => call.sql.includes("UPDATE studio.specialists")));
   assert.ok(calls.some(call => call.sql.includes("specialist.updated")));
-  assert.equal(calls.at(-2).sql, "COMMIT");
+  assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
 test("rejects stale specialist updates", async () => {
