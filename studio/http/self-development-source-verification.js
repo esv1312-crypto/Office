@@ -78,10 +78,10 @@ export function createSelfDevelopmentSourceVerification({ pool, controlPlane, cr
         requiredCompetencies: ["implementation", "coding"],
         acceptanceCriteria: [
           "All three required source files were actually read from studio-v1-foundation using read_repo_file",
-          "Evidence includes each source file's blob SHA, total line count, and inspected inclusive line ranges",
-          "Findings accurately explain source-read branch versus isolated workspace-write branch and worker allowedTools hand-off",
-          "A new markdown evidence file exists at " + EVIDENCE_PATH + " on studio-ai-agent-workspace",
-          "The evidence file was read back after writing and its SHA/read-back result is recorded",
+          "Evidence includes each source file's actual blob SHA, actual total line count, and exact inspected inclusive ranges from the tool results",
+          "Findings accurately explain source-read branch versus isolated workspace-write branch and worker allowedTools hand-off using the specified source lines",
+          "A new markdown evidence file exists at " + EVIDENCE_PATH + " on studio-ai-agent-workspace and contains only source evidence, not self-referential write/read-back SHA claims",
+          "The exact persisted evidence-file content is present in Runtime-verified tool evidence; write blobSha equals read-back sha and both use the isolated workspace branch",
           "No source, secret, workflow, infrastructure, or production data was modified; no unsupported success claims appear"
         ],
         at,
