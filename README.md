@@ -20,7 +20,8 @@ INTAKE → RECON → PLAN → DELEGATE → EXECUTE → VERIFY → FIX → RETEST
 
 ## Непрерывность работы и доказательства
 
-- [Текущая точка остановки и статус проекта](docs/operations/AI_OFFICE_SESSION_HANDOFF.md) — читать в начале каждой новой рабочей сессии.
+- [Мастер-блокнот AI-ОФИСА](docs/operations/AI_OFFICE_MASTER_NOTEBOOK.md) — главный постоянный журнал: архитектура, реальные компоненты, состояние GitHub/Neon/Render, текущая точка остановки и история рабочих сессий. Читать первым при каждом возобновлении.
+- [Текущая точка остановки](docs/operations/AI_OFFICE_SESSION_HANDOFF.md) — короткая оперативная сводка; должна соответствовать мастер-блокноту.
 - [Правила фиксации тестов и evidence](docs/operations/TEST_EVIDENCE_AND_SESSION_CONTINUITY.md) — обязательный порядок сверки GitHub/Render и записи результатов.
 
 ## Продукты
@@ -28,7 +29,6 @@ INTAKE → RECON → PLAN → DELEGATE → EXECUTE → VERIFY → FIX → RETEST
 Один продукт может иметь несколько клиентских интерфейсов и один общий backend.
 
 Пример для «Погнали»:
-
 Native Mobile + ChatGPT App → Backend → Users / Events / Social Graph / Database / API.
 
 «Погнали» является рабочим проектом и полигоном для развития AI-ОФИСА, но архитектура ОФИСА не должна зависеть от его предметной области.
