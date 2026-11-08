@@ -38,6 +38,7 @@ export function createGithubArtifactWriter({
   token,
   allowedPrefixes = ["studio/projects/"],
   maxBytes = 512 * 1024,
+  requestTimeoutMs = 20_000,
   fetchImpl = globalThis.fetch,
 }) {
   const repositoryOwner = required(owner, "owner");
@@ -51,15 +52,26 @@ export function createGithubArtifactWriter({
   if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 2 * 1024 * 1024) {
     throw new TypeError("maxBytes must be an integer between 1 and 2097152");
   }
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1_000 || requestTimeoutMs > 120_000) {
+    throw new TypeError("requestTimeoutMs must be an integer between 1000 and 120000");
+  }
   if (typeof fetchImpl !== "function") throw new TypeError("fetchImpl is required");
 
   const apiBase = `https://api.github.com/repos/${encodeURIComponent(repositoryOwner)}/${encodeURIComponent(repositoryName)}/contents`;
 
   async function request(url, options) {
+    const controller = new AbortController();
+    const externalSignal = options?.signal;
+    const abortFromExternal = () => controller.abort(externalSignal?.reason);
+    if (externalSignal?.aborted) controller.abort(externalSignal.reason);
+    else externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
     let response;
+    let body;
     try {
       response = await fetchImpl(url, {
         ...options,
+        signal: controller.signal,
         headers: {
           accept: "application/vnd.github+json",
           authorization: `Bearer ${credential}`,
@@ -67,12 +79,25 @@ export function createGithubArtifactWriter({
           ...(options?.headers || {}),
         },
       });
+      body = await responseJson(response);
     } catch {
+      if (externalSignal?.aborted) {
+        throw Object.assign(new Error("Artifact repository request was aborted"), {
+          code: "ARTIFACT_REPOSITORY_ABORTED",
+        });
+      }
+      if (controller.signal.aborted) {
+        throw Object.assign(new Error("Artifact repository request timed out"), {
+          code: "ARTIFACT_REPOSITORY_TIMEOUT",
+        });
+      }
       throw Object.assign(new Error("Artifact repository is unavailable"), {
         code: "ARTIFACT_REPOSITORY_UNAVAILABLE",
       });
+    } finally {
+      clearTimeout(timeout);
+      externalSignal?.removeEventListener("abort", abortFromExternal);
     }
-    const body = await responseJson(response);
     if (!response.ok) {
       if (response.status === 404 && options?.method !== "PUT") return { notFound: true };
       const code = response.status === 409 || response.status === 422
@@ -88,7 +113,7 @@ export function createGithubArtifactWriter({
   }
 
   return Object.freeze({
-    async writeTextArtifact({ path, content, provenance }) {
+    async writeTextArtifact({ path, content, provenance, signal }) {
       const safePath = safeRepositoryPath(path, allowedPrefixes);
       if (typeof content !== "string" || !content.trim()) {
         throw new TypeError("Artifact content must be a non-empty UTF-8 string");
@@ -113,7 +138,7 @@ export function createGithubArtifactWriter({
 
       const encodedPath = safePath.split("/").map(encodeURIComponent).join("/");
       const url = `${apiBase}/${encodedPath}`;
-      const existing = await request(`${url}?ref=${encodeURIComponent(targetBranch)}`, { method: "GET" });
+      const existing = await request(`${url}?ref=${encodeURIComponent(targetBranch)}`, { method: "GET", signal });
       const sha = existing.notFound ? undefined : existing.body?.sha;
       if (!existing.notFound && typeof sha !== "string") {
         throw Object.assign(new Error("Repository returned an invalid file record"), {
@@ -131,6 +156,7 @@ export function createGithubArtifactWriter({
           branch: targetBranch,
           ...(sha ? { sha } : {}),
         }),
+        signal,
       });
       return Object.freeze({
         path: safePath,
