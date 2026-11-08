@@ -88,12 +88,20 @@ export function createStudioHttpHandlers({ runtime, loadProject, loadPlan }) {
           status: 409, code: "PLAN_NOT_APPROVED",
         });
       }
-      // This endpoint is the explicit, authenticated owner resume action.
+      // An explicit owner resume is deliberately a small stage, not a
+      // whole-plan fan-out. The HTTP boundary caps the caller-selected batch.
+      const body = request?.body && typeof request.body === "object" ? request.body : {};
+      const maxAssignments = body.maxAssignments === undefined ? 3 : body.maxAssignments;
+      if (!Number.isInteger(maxAssignments) || maxAssignments < 1 || maxAssignments > 3) {
+        throw Object.assign(new TypeError("maxAssignments must be an integer between 1 and 3"), {
+          status: 400, code: "INVALID_EXECUTION_BATCH_SIZE",
+        });
+      }
       // Reconcile expired Worker leases before dispatch so recovered assigned
       // tasks can be retried by the normal bounded workflow. Recovery is
       // owner-authorized and never calls a model or dispatches work itself.
       const recovery = await runtime.recovery.recover({ actor, limit: 50 });
-      const result = await runtime.workflow.run({ planId, actor });
+      const result = await runtime.workflow.run({ planId, actor, maxAssignments });
       return {
         status: result.status === "completed" ? 200 : 202,
         body: { ...result, recovery },
