@@ -29,6 +29,17 @@ function positiveIntegerEnv(name, fallback, max) {
   return value;
 }
 
+
+function positiveNumberEnv(name, fallback, max) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value > max) {
+    throw new Error(`${name} must be a positive number no greater than ${max}`);
+  }
+  return value;
+}
+
 function createRateLimiter({ windowMs = 60_000, max = 60 } = {}) {
   const buckets = new Map();
   return function studioRateLimit(request, response, next) {
@@ -135,6 +146,8 @@ const modelBudget = modelBudgetCap > 0 ? createPostgresModelBudget({
   pool,
   capUsd: modelBudgetCap,
   budgetKey: process.env.STUDIO_MODEL_BUDGET_KEY || "universal-ai-studio-launch-budget-v1",
+  inputUsdPerMillion: positiveNumberEnv("STUDIO_MODEL_INPUT_USD_PER_MILLION", 0.30, 1000),
+  outputUsdPerMillion: positiveNumberEnv("STUDIO_MODEL_OUTPUT_USD_PER_MILLION", 1.20, 1000),
 }) : null;
 const client = new OpenAI({
   apiKey: modelApiKey,
