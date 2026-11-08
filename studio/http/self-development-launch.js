@@ -107,12 +107,38 @@ export function createSelfDevelopmentLaunchHandler({
     );
     if (priorPlan.rows?.[0]) {
       const row = priorPlan.rows[0];
+      const existingPlan = {
+        ...(row.payload || {}),
+        id: row.id,
+        projectId: project.id,
+        organizationId,
+        status: row.status,
+      };
+      let planStatus = row.status;
+      let execution = null;
+      let recovery = null;
+
+      if (planStatus === "proposed") {
+        const approval = await controlPlane.runtime.approval.approve({
+          plan: existingPlan, actor,
+        });
+        planStatus = approval.plan?.status || "approved";
+      }
+      if (planStatus === "approved") {
+        recovery = await controlPlane.runtime.recovery.recover({ actor, limit: 50 });
+        execution = await controlPlane.runtime.workflow.run({
+          planId: row.id, actor,
+        });
+      }
+
       return {
-        status: 200,
+        status: execution?.status === "completed" ? 200 : 202,
         body: {
           projectId: project.id, projectCreated, addedSpecialists,
-          planId: row.id, planStatus: row.status,
-          message: "Self-development project already has a plan; no duplicate plan was created.",
+          planId: row.id, planStatus, recovery, execution,
+          message: execution
+            ? "Existing self-development plan resumed; no duplicate plan was created."
+            : "Existing self-development plan found; no duplicate plan was created.",
         },
       };
     }
