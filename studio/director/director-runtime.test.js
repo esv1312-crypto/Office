@@ -65,9 +65,42 @@ test("rejects malformed plans instead of persisting partial tasks", async () => 
   const { runtime, saved } = setup({ generated: { ...proposal, tasks: [] } });
   await assert.rejects(
     runtime.plan({ request: "Do work", project, actor }),
-    /between 1 and 25 tasks/,
+    /between 1 and 8 bounded stage tasks/,
   );
   assert.equal(saved.length, 1);
+});
+
+
+test("rejects oversized stage plans instead of dispatching a whole-program backlog", async () => {
+  const { runtime, saved } = setup({
+    generated: { ...proposal, tasks: Array.from({ length: 9 }, (_, index) => ({
+      ...proposal.tasks[0], title: `Task ${index + 1}`,
+    })) },
+  });
+  await assert.rejects(
+    runtime.plan({ request: "Build the entire office", project, actor }),
+    /between 1 and 8 bounded stage tasks/,
+  );
+  assert.equal(saved.length, 1);
+});
+
+test("rejects oversized task descriptions and acceptance criteria", async () => {
+  const tooLong = setup({ generated: {
+    ...proposal,
+    tasks: [{ ...proposal.tasks[0], description: "x".repeat(1201) }],
+  } });
+  await assert.rejects(
+    tooLong.runtime.plan({ request: "Do work", project, actor }),
+    /1200 characters or fewer/,
+  );
+  const tooManyCriteria = setup({ generated: {
+    ...proposal,
+    tasks: [{ ...proposal.tasks[0], acceptanceCriteria: ["1", "2", "3", "4", "5"] }],
+  } });
+  await assert.rejects(
+    tooManyCriteria.runtime.plan({ request: "Do work", project, actor }),
+    /between 1 and 4 items/,
+  );
 });
 
 test("does not persist if project is inactive", async () => {
