@@ -8,6 +8,7 @@ import { createLegacyOfficeTokenMiddleware } from "./http/create-legacy-office-t
 import { createGithubArtifactWriter } from "./artifacts/github-artifact-writer.js";
 import { createGithubWorkspaceTools } from "./agents/github-workspace-tools.js";
 import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.js";
+import { createSelfDevelopmentLaunchHandler } from "./http/self-development-launch.js";
 
 function requiredEnv(name) {
   const value = String(process.env[name] || "").trim();
@@ -192,6 +193,13 @@ const controlPlane = createStudioControlPlane({
   workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
 });
 
+const launchSelfDevelopment = createSelfDevelopmentLaunchHandler({
+  pool,
+  controlPlane,
+  createId: randomUUID,
+  createSpecialistsForProfile,
+});
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "256kb" }));
@@ -204,6 +212,19 @@ app.get("/health/ready", async (_request, response) => {
     return response.status(503).json({ status: "not_ready", database: "unavailable" });
   }
 });
+app.post(
+  "/api/studio/organizations/:organizationId/self-development/launch",
+  authenticate,
+  createRateLimiter({ windowMs: 60_000, max: 5 }),
+  async (request, response, next) => {
+    try {
+      const result = await launchSelfDevelopment(request);
+      return response.status(result.status).json(result.body);
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
 app.use("/api/studio", controlPlane.router);
 app.use((error, _request, response, _next) => {
   const status = Number.isInteger(error?.status) && error.status >= 400 && error.status < 600
