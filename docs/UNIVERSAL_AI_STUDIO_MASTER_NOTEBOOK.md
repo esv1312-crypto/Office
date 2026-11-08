@@ -301,3 +301,5 @@ Never write “done” merely because a request was accepted or a plan says comp
 - **Runtime evidence:** Latest inspected startup log reports `artifactStore=github+postgres`, `provider=openrouter`, `model=openrouter/free`; latest observed deploy from PR #95 is `live`.
 - **Important limitation:** Actual Runtime-agent workspace write/read-back/commit/PR has not yet been demonstrated. Recent pilot logs include `needs_attention` and `TASK_NOT_RUNNING`.
 - **Next action:** Validate GitHub operations through the Runtime's own worker tool path, then investigate and repair task dispatch/state transitions. Keep paid models disabled.
+- **Documentation PR:** Opened [PR #98](https://github.com/esv1312-crypto/Office/pull/98) from `studio-operations-notebook` into `studio-v1-foundation`. It is open and not merged. Initial notebook commit: `04a598ecfc582472fa4d32fd65415b223793613e`.
+
