@@ -86,19 +86,31 @@ export function createSelfDevelopmentLaunchHandler({
     }
 
     const roleRows = await pool.query(
-      "SELECT payload->>'role' AS role FROM studio.specialists WHERE organization_id = $1 AND status = 'active'",
+      "SELECT id, payload->>'role' AS role, version, payload FROM studio.specialists WHERE organization_id = $1 AND status = 'active'",
       [organizationId],
     );
-    const existingRoles = new Set((roleRows.rows || []).map(row => row.role).filter(Boolean));
+    const existingByRole = new Map((roleRows.rows || []).filter(row => row.role).map(row => [row.role, row]));
     const proposedTeam = createSpecialistsForProfile({
       productProfileId: SELF_DEVELOPMENT_PROFILE, organizationId, createId, at,
     });
     const addedSpecialists = [];
+    const updatedSpecialists = [];
     for (const specialist of proposedTeam) {
-      if (existingRoles.has(specialist.role)) continue;
-      await controlPlane.runtime.stores.domain.createSpecialist(specialist);
-      existingRoles.add(specialist.role);
-      addedSpecialists.push(specialist.role);
+      const existing = existingByRole.get(specialist.role);
+      if (!existing) {
+        await controlPlane.runtime.stores.domain.createSpecialist(specialist);
+        addedSpecialists.push(specialist.role);
+        continue;
+      }
+      const currentTools = Array.isArray(existing.payload?.allowedTools) ? existing.payload.allowedTools : [];
+      const desiredTools = Array.isArray(specialist.allowedTools) ? specialist.allowedTools : [];
+      if (JSON.stringify([...currentTools].sort()) !== JSON.stringify([...desiredTools].sort())) {
+        await controlPlane.runtime.stores.domain.updateSpecialist({
+          specialistId: existing.id, expectedVersion: Number(existing.version),
+          patch: { allowedTools: desiredTools }, at,
+        });
+        updatedSpecialists.push(specialist.role);
+      }
     }
 
     const priorPlan = await pool.query(
@@ -134,7 +146,7 @@ export function createSelfDevelopmentLaunchHandler({
       return {
         status: execution?.status === "completed" ? 200 : 202,
         body: {
-          projectId: project.id, projectCreated, addedSpecialists,
+          projectId: project.id, projectCreated, addedSpecialists, updatedSpecialists,
           planId: row.id, planStatus, recovery, execution,
           message: execution
             ? "Existing self-development plan resumed; no duplicate plan was created."
@@ -249,7 +261,7 @@ export function createSelfDevelopmentLaunchHandler({
     return {
       status: report.status === "completed" ? 200 : 202,
       body: {
-        projectId: project.id, projectCreated, addedSpecialists,
+        projectId: project.id, projectCreated, addedSpecialists, updatedSpecialists,
         planId: plan.id, planSource, plannerFailure,
         planStatus: approved.plan?.status || "approved",
         execution: report,
