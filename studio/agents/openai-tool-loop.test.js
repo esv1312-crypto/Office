@@ -317,3 +317,38 @@ test("supports the expanded 40-round worker budget", async () => {
   assert.equal(result.toolCallsExecuted, 21);
   assert.equal(requests, 22);
 });
+
+
+test("supports 40 tool rounds with a bounded 512 KiB cumulative tool-result budget", async () => {
+  let requests = 0;
+  const client = clientFor(async () => {
+    requests += 1;
+    if (requests <= 40) {
+      return {
+        choices: [{ message: { role: "assistant", content: null, tool_calls: [{
+          id: "large-round-" + requests,
+          type: "function",
+          function: { name: "read_file", arguments: JSON.stringify({ path: "src/large-" + requests + ".js" }) },
+        }] } }],
+        usage: { prompt_tokens: 5, completion_tokens: 1 },
+      };
+    }
+    return { choices: [{ message: { role: "assistant", content: "Finished 40 rounds." } }] };
+  });
+  const result = await runOpenAiToolLoop({
+    client,
+    model: "m",
+    messages: [{ role: "system", content: "worker" }, { role: "user", content: "inspect a large workspace" }],
+    tools: [tool],
+    executeTool: async () => ({ content: "x".repeat(8 * 1024) }),
+    maxRounds: 40,
+    maxToolCalls: 100,
+    maxToolResultBytes: 24 * 1024,
+    maxTotalToolResultBytes: 512 * 1024,
+    maxTotalPromptTokens: 10000,
+  });
+  assert.equal(result.text, "Finished 40 rounds.");
+  assert.equal(result.toolCallsExecuted, 40);
+  assert.equal(result.toolEvidence.length, 40);
+  assert.equal(requests, 41);
+});
