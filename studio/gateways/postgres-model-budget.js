@@ -27,6 +27,7 @@ function estimateMaximumCost({ model, messages, maxTokens, inputUsdPerMillion, o
   const outputCost = maxTokens * outputUsdPerMillion / 1_000_000;
   return {
     estimatedInputTokens,
+    inputBytesPerToken,
     maximumOutputTokens: maxTokens,
     amountUsd: usd((inputCost + outputCost) * 1.25),
   };
