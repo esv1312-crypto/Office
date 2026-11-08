@@ -4,7 +4,7 @@ import { createStudioExpressRouter } from "./create-studio-express-router.js";
 
 function fixture() {
   const routes = [];
-  const calls = { auth: [], rateLimit: [], bootstrap: [], plan: [], approve: [], execute: [] };
+  const calls = { auth: [], rateLimit: [], bootstrap: [], plan: [], approve: [], recover: [], execute: [] };
   const authenticate = (_req, _res, next) => { calls.auth.push(true); next(); };
   const rateLimit = (_req, _res, next) => { calls.rateLimit.push(true); next(); };
   const runtime = {
@@ -16,6 +16,10 @@ function fixture() {
     approval: { approve: async value => {
       calls.approve.push(value);
       return { plan: { id: value.plan.id, status: "approved" } };
+    } },
+    recovery: { recover: async value => {
+      calls.recover.push(value);
+      return { recovered: 0, tasks: [] };
     } },
     workflow: { run: async value => {
       calls.execute.push(value);
@@ -94,6 +98,8 @@ test("executes an approved plan and returns the workflow result", async () => {
   }, response, error => { throw error; });
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.status, "completed");
+  assert.deepEqual(response.body.recovery, { recovered: 0, tasks: [] });
+  assert.deepEqual(calls.recover, [{ actor: { id: "owner-1" }, limit: 50 }]);
   assert.deepEqual(calls.execute, [{ planId: "plan-1", actor: { id: "owner-1" } }]);
 });
 
