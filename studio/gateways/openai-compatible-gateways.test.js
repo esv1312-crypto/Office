@@ -227,7 +227,7 @@ test("settles a failed planner request conservatively so its reservation cannot 
   const events = [];
   const client = {
     chat: { completions: { create: async () => {
-      throw Object.assign(new Error("provider unavailable"), { status: 503 });
+      throw Object.assign(new Error("provider unavailable"), { status: 400 });
     } } },
   };
   const modelBudget = {
