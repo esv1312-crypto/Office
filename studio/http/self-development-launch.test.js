@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createSelfDevelopmentLaunchHandler } from "./self-development-launch.js";
 
 function fixture({ owner = true, priorPlan = null, plannerError = null } = {}) {
-  const calls = { projects: [], specialists: [], plans: [], approvals: [], executions: [] };
+  const calls = { projects: [], specialists: [], plans: [], approvals: [], executions: [], recoveries: [] };
   const pool = {
     async query(sql, params) {
       if (sql.includes("JOIN studio.organization_memberships")) return { rows: owner ? [{ id: "org-1" }] : [] };
@@ -28,6 +28,10 @@ function fixture({ owner = true, priorPlan = null, plannerError = null } = {}) {
     approval: { async approve(input) {
       calls.approvals.push(input);
       return { plan: { id: "plan-1", status: "approved" } };
+    } },
+    recovery: { async recover(input) {
+      calls.recoveries.push(input);
+      return { recovered: 2, tasks: [{ taskId: "stale-1" }, { taskId: "stale-2" }] };
     } },
     workflow: { async run(input) {
       calls.executions.push(input);
@@ -65,12 +69,18 @@ test("rejects non-owner before creating anything", async () => {
   assert.equal(calls.plans.length, 0);
 });
 
-test("does not create duplicate plan on repeated launch", async () => {
-  const { handler, calls } = fixture({ priorPlan: { id: "existing-plan", status: "approved" } });
+test("resumes an existing approved plan and recovers expired work without creating a duplicate", async () => {
+  const { handler, calls } = fixture({
+    priorPlan: { id: "existing-plan", status: "approved", payload: { title: "Existing plan" } },
+  });
   const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
+  assert.equal(result.status, 202);
   assert.equal(result.body.planId, "existing-plan");
+  assert.equal(result.body.planStatus, "approved");
+  assert.equal(result.body.recovery.recovered, 2);
+  assert.deepEqual(calls.recoveries, [{ actor: { id: "owner-1" }, limit: 50 }]);
+  assert.deepEqual(calls.executions, [{ planId: "existing-plan", actor: { id: "owner-1" } }]);
   assert.equal(calls.plans.length, 0);
-  assert.equal(calls.executions.length, 0);
 });
 
 
