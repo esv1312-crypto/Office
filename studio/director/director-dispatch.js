@@ -32,16 +32,28 @@ export function createDirectorDispatch({
   if (typeof authorize !== "function") throw new TypeError("Dispatch authorization is required");
 
   return Object.freeze({
-    async dispatch({ planId, actor }) {
+    async dispatch({ planId, actor, maxAssignments = 3 }) {
       if (typeof planId !== "string" || !planId.trim()) throw new TypeError("planId is required");
+      if (!Number.isInteger(maxAssignments) || maxAssignments < 1 || maxAssignments > 8) {
+        throw new TypeError("maxAssignments must be an integer between 1 and 8");
+      }
       const loaded = await store.loadApprovedPlanForDispatch({ planId: planId.trim() });
       const allowed = await authorize({ actor, action: "director.plan.dispatch", plan: loaded.plan });
       if (allowed !== true) throw Object.assign(new Error("Plan dispatch is not authorized"), { code: "PLAN_DISPATCH_FORBIDDEN" });
 
       const specialists = await store.listActiveSpecialists({ organizationId: loaded.organizationId });
-      const report = { planId: loaded.plan.id, status: "dispatched", assigned: [], blocked: [], skipped: [] };
+      const report = { planId: loaded.plan.id, status: "dispatched", assigned: [], blocked: [], skipped: [], deferred: [] };
 
       for (const task of loaded.tasks) {
+        if (task.status === "running" || task.status === "qa" || task.status === "completed") {
+          report.skipped.push({ taskId: task.id, status: task.status });
+          continue;
+        }
+        if (["failed", "assigned", "planned", "ready"].includes(task.status) &&
+            report.assigned.length >= maxAssignments) {
+          report.deferred.push({ taskId: task.id, status: task.status, code: "EXECUTION_BATCH_LIMIT" });
+          continue;
+        }
         if (task.status === "failed") {
           if (typeof store.retryFailedTask !== "function") {
             report.blocked.push({
@@ -98,10 +110,6 @@ export function createDirectorDispatch({
           }
           continue;
         }
-        if (task.status === "running" || task.status === "qa" || task.status === "completed") {
-          report.skipped.push({ taskId: task.id, status: task.status });
-          continue;
-        }
         if (task.status !== "planned" && task.status !== "ready") {
           report.blocked.push({ taskId: task.id, reason: `Unexpected task status: ${task.status}` });
           continue;
@@ -133,7 +141,9 @@ export function createDirectorDispatch({
         }
       }
 
-      if (report.blocked.length) report.status = report.assigned.length ? "partially_dispatched" : "blocked";
+      if (report.blocked.length || report.deferred.length) {
+        report.status = report.assigned.length ? "partially_dispatched" : "blocked";
+      }
       return report;
     },
   });

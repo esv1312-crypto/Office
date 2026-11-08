@@ -27,11 +27,15 @@ export function createPlanExecutionWorkflow({
   }
 
   return Object.freeze({
-    async run({ planId, actor }) {
-      const dispatchReport = await dispatch.dispatch({ planId, actor });
+    async run({ planId, actor, maxAssignments = 3 }) {
+      if (!Number.isInteger(maxAssignments) || maxAssignments < 1 || maxAssignments > 8) {
+        throw new TypeError("maxAssignments must be an integer between 1 and 8");
+      }
+      const dispatchReport = await dispatch.dispatch({ planId, actor, maxAssignments });
       const report = {
         planId, dispatch: dispatchReport, executions: [], qaReviews: [],
         blocked: [...dispatchReport.blocked],
+        deferred: [...(dispatchReport.deferred || [])],
       };
 
       const workerResults = await workerPool.executeAssignments(dispatchReport.assigned);
@@ -109,16 +113,17 @@ export function createPlanExecutionWorkflow({
       const hasBlocked = report.blocked.length > 0;
       const hasFailures = report.executions.some(item => item.status !== "qa");
       const hasRevisions = report.qaReviews.some(item => item.verdict === "revision_required");
+      const hasDeferred = report.deferred.length > 0;
       const allAssignedProcessed = report.executions.length === dispatchReport.assigned.length;
       const noWorkDispatched = dispatchReport.assigned.length === 0 &&
-        dispatchReport.skipped.length === 0 && dispatchReport.blocked.length === 0;
+        dispatchReport.skipped.length === 0 && dispatchReport.blocked.length === 0 && !hasDeferred;
       if (noWorkDispatched) {
         report.blocked.push({
           code: "NO_RUNNABLE_TASKS",
           reason: "The approved plan contains no assigned, runnable, skipped, or explicitly blocked tasks; zero-work runs cannot be marked completed",
         });
       }
-      report.status = noWorkDispatched || hasBlocked || hasFailures || hasRevisions || !allAssignedProcessed
+      report.status = noWorkDispatched || hasBlocked || hasFailures || hasRevisions || hasDeferred || !allAssignedProcessed
         ? "needs_attention"
         : dispatchReport.status === "blocked" || dispatchReport.status === "partially_dispatched"
           ? "partially_completed"
