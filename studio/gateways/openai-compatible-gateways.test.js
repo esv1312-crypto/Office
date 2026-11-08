@@ -232,7 +232,8 @@ test("settles a failed planner request conservatively so its reservation cannot 
   };
   const modelBudget = {
     reserve: async () => ({ id: "planner-reservation", amountUsd: 0.01 }),
-    settleFailure: async reservation => events.push(reservation.id),
+    settleFailure: async reservation => events.push("worst-case:" + reservation.id),
+    release: async reservation => events.push("released:" + reservation.id),
     settle: async () => {},
   };
   const gateways = createOpenAiCompatibleGateways({
@@ -243,5 +244,5 @@ test("settles a failed planner request conservatively so its reservation cannot 
     gateways.planningGateway.generatePlan({ request: "Plan", project: {} }),
     error => error.status === 400,
   );
-  assert.deepEqual(events, ["planner-reservation"]);
+  assert.deepEqual(events, ["released:planner-reservation"]);
 });
