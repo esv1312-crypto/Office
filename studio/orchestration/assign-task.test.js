@@ -22,13 +22,31 @@ test("authorizes and persists a compatible assignment", async () => {
   assert.equal(saved.expectedVersion, 2);
 });
 
-test("rejects missing competencies before persistence", async () => {
+test("allows a primary specialist with partial competency coverage", async () => {
+  let saved;
+  const assignment = createTaskAssignment({
+    store: { assignTask: async input => (saved = input) },
+    authorize: async () => true,
+    now: () => "2026-11-07T10:00:00.000Z",
+  });
+  const result = await assignment.assign({
+    task,
+    specialist: { ...specialist, competencies: ["roblox"] },
+    actor,
+    expectedVersion: 3,
+  });
+  assert.equal(result.taskId, "task-1");
+  assert.equal(saved.specialistId, "spec-1");
+  assert.equal(saved.expectedVersion, 3);
+});
+
+test("rejects assignments with zero competency coverage before persistence", async () => {
   const assignment = createTaskAssignment({
     store: { assignTask: async () => assert.fail("must not persist") },
     authorize: async () => true,
   });
   await assert.rejects(
-    assignment.assign({ task, specialist: { ...specialist, competencies: ["roblox"] }, actor }),
+    assignment.assign({ task, specialist: { ...specialist, competencies: ["javascript"] }, actor }),
     error => error.code === "SPECIALIST_COMPETENCY_MISMATCH",
   );
 });
