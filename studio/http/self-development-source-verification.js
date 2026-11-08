@@ -1,7 +1,7 @@
 import { createTask } from "../core/create-task.js";
 
 const PROJECT_NAME = "AI Office Self-Development";
-const PLAN_TITLE = "AI Office — Live Source Read/Write Verification";
+const PLAN_TITLE = "AI Office — Live Source Read/Write Verification v2";
 const TASK_TITLE = "Inspect deployed source and publish verifiable workspace evidence";
 const EVIDENCE_PATH = "studio/agent-workspace/verification/post-pr81-source-audit.md";
 
@@ -73,7 +73,7 @@ export function createSelfDevelopmentSourceVerification({ pool, controlPlane, cr
           "After writing, read the same evidence file back using read_repo_file with branch=studio-ai-agent-workspace. Record the returned workspace blob SHA and read-back confirmation. If any required source read, write, or read-back fails, report the precise error and do not claim success.",
           "Do not modify any source file, settings, secrets, workflows, infrastructure, or production data. The only permitted write is the single evidence markdown file under studio/agent-workspace/verification/."
         ].join("\n\n"),
-        requiredCompetencies: ["implementation", "coding", "documentation"],
+        requiredCompetencies: ["implementation", "coding"],
         acceptanceCriteria: [
           "All three required source files were actually read from studio-v1-foundation using read_repo_file",
           "Evidence includes each source file's blob SHA, total line count, and inspected inclusive line ranges",
