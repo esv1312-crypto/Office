@@ -56,7 +56,7 @@ export function createSelfDevelopmentProductPilot({ pool, controlPlane, now = ()
       const project = await controlPlane.access.loadProject({ projectId, actor: owner });
       const brief = [
         "Build the first real Roblox product vertical slice for Universal AI Studio: a football fans district.",
-        "This is an implementation assignment, not another audit or roadmap. Create concrete Roblox Luau source files and a setup guide in the isolated GitHub workspace only.",
+        "This is an implementation assignment, not another audit or roadmap. Name the plan exactly: Roblox Fan District — First Playable Vertical Slice v1. Create concrete Roblox Luau source files and a setup guide in the isolated GitHub workspace only.",
         "Target folder: studio/agent-workspace/roblox-fan-district/ . Do not write anywhere else.",
         "Implement a small, coherent playable loop: player spawn, a central fan plaza, a safe server-authoritative interaction/points mechanic, a repeatable short challenge, and a simple leaderboard or score display.",
         "Deliver separate, correctly named Luau scripts with clear server/client placement, RemoteEvent setup, and exact Roblox Studio installation steps. Prefer Roblox services and APIs that exist; do not invent engine APIs.",
