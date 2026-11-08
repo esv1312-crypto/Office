@@ -415,3 +415,13 @@ Never write “done” merely because a request was accepted or a plan says comp
 - **Current Sprint 2 acceptance:** Not accepted. Artifacts exist and QA has rejected two tasks; no production source patch, executed regression tests, or PR from Runtime agents exists. Plan row remains `approved` at the latest database check.
 - **Issue #107:** Updated with the fresh plan ID, artifact SHAs, QA findings, dependency-ordering defect, and exact next fixes.
 - **Next action:** Fix task dependency preservation and dependency-aware dispatch before another self-development sprint. Then tighten implementation prompts to target actual JavaScript source paths only; QA must be gated until implementation artifact read-back exists. Keep paid models disabled; no direct SQL task resets.
+
+
+### 2026-11-08 — Sprint 2 final QA hand-off failed
+
+- **Persisted QA verdicts:** Two independent QA review rows exist:
+  - `b773e434-5daa-4acd-87cd-139b40a6eac3` — implementation task: `revision_required` because source read-back for the claimed patch target was missing and test read-back was truncated.
+  - `df17eddc-8ba8-4886-8809-777c1fc3c050` — QA report task: `revision_required` because its source audit evidence contained contradictory SHA values and missing source SHA data.
+- **Final launch error:** Render logged `[studio] self-development launch failed INVALID_QA_VERDICT` at 2026-11-08T14:43:03Z. The QA gateway requested JSON and tried its configured fallback models, but the final review response still failed the QA runtime's strict verdict normalization. Inspect the raw structured QA response and parser path before retrying.
+- **Latest task state:** Implementation and QA-report tasks have returned to `ready` after revision-required verdicts; Architect task is still `qa` with no QA review row at the latest check. The plan remains `approved`; it is not completed.
+- **Next action:** Fix the QA output/normalization failure and add a regression test; implement dependency-aware dispatch or simplify the next plan to one implementation task plus the existing independent QA hand-off; constrain worker patches to real JavaScript files proven by source read-back. No additional deployment/restart should be used to blindly retry Sprint 2. Keep paid models disabled.
