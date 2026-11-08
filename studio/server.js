@@ -10,6 +10,7 @@ import { createGithubWorkspaceTools } from "./agents/github-workspace-tools.js";
 import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.js";
 import { createSelfDevelopmentLaunchHandler } from "./http/self-development-launch.js";
 import { createSelfDevelopmentSourceVerification } from "./http/self-development-source-verification.js";
+import { createSelfDevelopmentProductPilot } from "./http/self-development-product-pilot.js";
 
 function requiredEnv(name) {
   const value = String(process.env[name] || "").trim();
@@ -209,6 +210,8 @@ const runSourceVerification = createSelfDevelopmentSourceVerification({
   createId: randomUUID,
 });
 
+const runProductPilot = createSelfDevelopmentProductPilot({ pool, controlPlane });
+
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "256kb" }));
@@ -351,6 +354,35 @@ async function runConfiguredSourceVerification() {
   }
 }
 
+async function runConfiguredProductPilot() {
+  if (String(process.env.STUDIO_SELF_DEVELOPMENT_PRODUCT_PILOT || "").toLowerCase() !== "true") return;
+  const organizationId = String(process.env.STUDIO_SELF_DEVELOPMENT_ORGANIZATION_ID || "").trim();
+  if (!organizationId) {
+    console.error("[studio] product pilot skipped; organization ID is not configured");
+    return;
+  }
+  const lockClient = await pool.connect();
+  let locked = false;
+  try {
+    await lockClient.query("SELECT pg_advisory_lock(741920265)");
+    locked = true;
+    const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    const result = await runProductPilot({ organizationId, actor });
+    const executionSummary = (result.execution?.executions || [])
+      .map(item => `${item.taskId || "task"}:${item.status || "unknown"}:${item.errorCode || "none"}`)
+      .join(",") || "none";
+    const blockedSummary = (result.execution?.blocked || [])
+      .map(item => `${item.taskId || "task"}:${item.status || "blocked"}:${item.errorCode || "none"}`)
+      .join(",") || "none";
+    console.log(`[studio] product pilot; plan=${result.planId || "existing"}; status=${result.status}; created=${Boolean(result.created)}; executions=${result.execution?.executions?.length || 0}; executionResults=${executionSummary}; qa=${result.execution?.qaReviews?.length || 0}; blocked=${result.execution?.blocked?.length || 0}; blockedDetails=${blockedSummary}`);
+  } catch (error) {
+    console.error("[studio] product pilot failed", error?.code || error?.status || "PRODUCT_PILOT_FAILED");
+  } finally {
+    if (locked) await lockClient.query("SELECT pg_advisory_unlock(741920265)").catch(() => {});
+    lockClient.release();
+  }
+}
+
 async function runConfiguredOwnerExecution() {
   const planId = String(process.env.STUDIO_OWNER_EXECUTE_PLAN_ID || "").trim();
   if (!planId) return;
@@ -396,6 +428,7 @@ const server = app.listen(port, "0.0.0.0", () => {
     await runConfiguredInitialBootstrap();
     await runConfiguredSelfDevelopmentLaunch();
     await runConfiguredSourceVerification();
+    await runConfiguredProductPilot();
     await runConfiguredOwnerExecution();
   })().catch(error => {
     console.error("[studio] startup orchestration failed", error?.code || error?.message || "STARTUP_FAILED");
