@@ -43,9 +43,9 @@ function fixture({ owner = true, priorPlan = null, plannerError = null, existing
     } },
   } };
   const createSpecialistsForProfile = ({ organizationId, createId, at }) => [
-    { id: createId(), organizationId, name: "Solution Architect", role: "solution_architect", instructions: "Design", competencies: ["architecture"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
-    { id: createId(), organizationId, name: "Platform Engineer", role: "implementation_specialist", instructions: "Implement", competencies: ["coding"], allowedTools: ["repo.read"], status: "active", version: 1, createdAt: at, updatedAt: at },
-    { id: createId(), organizationId, name: "Quality Engineer", role: "quality_engineer", instructions: "Review deliverables and inspect persisted workspace files in studio-ai-agent-workspace.", competencies: ["qa.review"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
+    { id: createId(), organizationId, name: "Solution Architect", role: "solution_architect", instructions: "Design", competencies: ["architecture", "system.design", "integration", "repository inspection", "source code analysis", "root cause analysis", "technical documentation"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
+    { id: createId(), organizationId, name: "Platform Engineer", role: "implementation_specialist", instructions: "Implement", competencies: ["implementation", "coding", "documentation", "code patching", "test development", "regression testing", "source code modification"], allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
+    { id: createId(), organizationId, name: "Quality Engineer", role: "quality_engineer", instructions: "Review deliverables and inspect persisted workspace files in studio-ai-agent-workspace.", competencies: ["qa.review", "testing", "security.review", "acceptance.criteria", "code review", "quality assurance", "test coverage analysis", "safety assessment", "platform.qa"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
   ];
   const handler = createSelfDevelopmentLaunchHandler({
     pool, controlPlane, createId: (() => { let id = 0; return () => `id-${++id}`; })(),
@@ -120,7 +120,7 @@ test("updates existing Solution Architect permissions instead of skipping the ex
   const { handler, calls } = fixture({
     existingSpecialists: [{
       id: "architect-1", role: "solution_architect", version: 1,
-      payload: { allowedTools: [] },
+      payload: { allowedTools: [], competencies: ["architecture", "system.design", "integration", "repository inspection", "source code analysis", "root cause analysis", "technical documentation"] },
     }],
   });
   const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
@@ -136,16 +136,31 @@ test("updates existing Solution Architect permissions instead of skipping the ex
 });
 
 
+test("updates the existing Implementation Specialist with canonical code-task competency aliases", async () => {
+  const { handler, calls } = fixture({
+    existingSpecialists: [{
+      id: "implementer-1", role: "implementation_specialist", version: 2,
+      payload: { allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"], competencies: ["implementation", "coding", "documentation"] },
+    }],
+  });
+  const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
+  assert.equal(result.status, 202);
+  const update = calls.updatedSpecialists.find(item => item.specialistId === "implementer-1");
+  assert.ok(update.patch.competencies.includes("code patching"));
+  assert.ok(update.patch.competencies.includes("regression testing"));
+});
+
 test("grants the existing Quality Engineer read-only access to persisted workspace patches", async () => {
   const { handler, calls } = fixture({
     existingSpecialists: [{
       id: "qa-1", role: "quality_engineer", version: 3,
-      payload: { allowedTools: [], instructions: "Review deliverables" },
+      payload: { allowedTools: [], competencies: ["qa.review"], instructions: "Review deliverables" },
     }],
   });
   const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
   assert.equal(result.status, 202);
   const update = calls.updatedSpecialists.find(item => item.specialistId === "qa-1");
   assert.deepEqual(update.patch.allowedTools, ["list_repo_directory", "read_repo_file"]);
+  assert.ok(update.patch.competencies.includes("platform.qa"));
   assert.match(update.patch.instructions, /studio-ai-agent-workspace/);
 });
