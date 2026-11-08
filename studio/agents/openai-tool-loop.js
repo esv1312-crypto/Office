@@ -94,6 +94,7 @@ function compactedConversation({ baseMessages, rounds, keepRecentRounds = 4 }) {
       ...(item.path ? { path: item.path } : {}),
       ...(item.branch ? { branch: item.branch } : {}),
       ...(item.sha ? { sha: item.sha } : {}),
+      ...(item.blobSha ? { blobSha: item.blobSha } : {}),
       ...(item.commitSha ? { commitSha: item.commitSha } : {}),
       ...(item.error ? { error: item.error } : {}),
     }));
