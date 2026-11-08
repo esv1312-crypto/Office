@@ -53,7 +53,7 @@ function normalize(value) { return String(value || "").trim().toLowerCase().repl
 export function competencyCoverage(task, specialist) {
   const available = new Set((specialist?.competencies || []).map(normalize));
   return (task?.requiredCompetencies || []).reduce((score, requirement) => {
-    const aliases = (ALIASES[normalize(requirement)] || [requirement]).map(normalize);
+    const aliases = [...new Set([normalize(requirement), ...(ALIASES[normalize(requirement)] || []).map(normalize)])];
     return score + (aliases.some(skill => available.has(skill)) ? 1 : 0);
   }, 0);
 }
