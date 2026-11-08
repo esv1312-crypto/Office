@@ -49,6 +49,7 @@ export function createConfiguredStudioRuntime({
     ...(artifactPathForTask ? { artifactPathForTask } : {}),
     ...(now ? { now } : {}),
     ...(workerConcurrency !== undefined ? { workerConcurrency } : {}),
+    modelTimeoutMs,
   });
   return Object.freeze({ ...runtime, gateways });
 }
