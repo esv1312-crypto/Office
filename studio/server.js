@@ -11,6 +11,7 @@ import { createRobloxStarterTeam } from "./product-profiles/roblox/starter-team.
 import { createSelfDevelopmentLaunchHandler } from "./http/self-development-launch.js";
 import { createSelfDevelopmentSourceVerification } from "./http/self-development-source-verification.js";
 import { createSelfDevelopmentProductPilot } from "./http/self-development-product-pilot.js";
+import { createPostgresModelBudget } from "./gateways/postgres-model-budget.js";
 
 function requiredEnv(name) {
   const value = String(process.env[name] || "").trim();
@@ -117,6 +118,10 @@ const defaultModel = String(
   process.env.STUDIO_DEFAULT_MODEL ||
   (paidModelsEnabled ? "deepseek/deepseek-v4.1-flash-1017" : legacyFreeModel),
 ).trim();
+const modelBudgetCap = Number(process.env.STUDIO_MODEL_BUDGET_USD || 0);
+if (paidModelsEnabled && (!Number.isFinite(modelBudgetCap) || modelBudgetCap <= 0)) {
+  throw new Error("Paid models require STUDIO_MODEL_BUDGET_USD hard cap");
+}
 function modelEnv(name) {
   const model = String(process.env[name] || defaultModel).trim();
   if (!model) throw new Error(`${name} must identify an OpenRouter model`);
@@ -126,6 +131,11 @@ function modelEnv(name) {
   return model;
 }
 const pool = new Pool({ connectionString: databaseUrl, max: 5 });
+const modelBudget = modelBudgetCap > 0 ? createPostgresModelBudget({
+  pool,
+  capUsd: modelBudgetCap,
+  budgetKey: process.env.STUDIO_MODEL_BUDGET_KEY || "universal-ai-studio-launch-budget-v1",
+}) : null;
 const client = new OpenAI({
   apiKey: modelApiKey,
   baseURL: process.env.STUDIO_MODEL_BASE_URL || "https://openrouter.ai/api/v1",
@@ -196,6 +206,7 @@ const controlPlane = createStudioControlPlane({
   workerTools: githubWorkspaceTools,
   createSpecialistsForProfile,
   workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
+  modelBudget,
 });
 
 const launchSelfDevelopment = createSelfDevelopmentLaunchHandler({
@@ -513,7 +524,7 @@ async function runConfiguredOwnerTask() {
 }
 
 const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}`);
+  console.log(`[studio] control plane listening on port ${port}; database=existing-office; provider=openrouter; auth=${legacyOwnerToken ? "legacy-owner-token" : "neon-auth"}; artifactStore=${artifactWriter ? "github+postgres" : "postgres"}; model=${defaultModel}; budget=${modelBudget ? `${modelBudgetCap}USD` : "disabled"}`);
   void (async () => {
     // The explicitly configured owner master task has priority over legacy startup jobs.
     // Await it first so older self-development/pilot workflows cannot delay its handoff to Director.
