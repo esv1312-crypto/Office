@@ -181,7 +181,7 @@ export async function runOpenAiToolLoop({
       }
       let result;
       try {
-        result = await executeTool({ name, arguments: call.function.arguments });
+        result = await executeTool({ name, arguments: call.function.arguments, signal });
       } catch (error) {
         result = {
           error: error?.code || "TOOL_EXECUTION_FAILED",
