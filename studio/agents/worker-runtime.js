@@ -36,6 +36,13 @@ function runtimeToolEvidenceSection(value) {
     for (const key of ["path", "branch", "sha", "blobSha", "commitSha", "error"]) {
       if (typeof item[key] === "string") record[key] = item[key];
     }
+    if (typeof item.content === "string" && Buffer.byteLength(item.content, "utf8") <= 8192) {
+      record.content = item.content;
+    }
+    if (item.contentTruncated === true) {
+      record.contentTruncated = true;
+      if (Number.isInteger(item.contentBytes)) record.contentBytes = item.contentBytes;
+    }
     if (item.range && typeof item.range === "object" &&
         [item.range.startLine, item.range.endLine, item.range.totalLines].every(Number.isInteger)) {
       record.range = {
