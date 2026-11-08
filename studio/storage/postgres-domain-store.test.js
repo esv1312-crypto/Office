@@ -182,3 +182,88 @@ test("rejects stale specialist updates", async () => {
     specialistId: "s1", expectedVersion: 1, patch: { allowedTools: ["read_repo_file"] }, at,
   }), error => error.code === "SPECIALIST_VERSION_CONFLICT");
 });
+
+
+test("requeues a failed task for one bounded retry and records an audit event", async () => {
+  const calls = [];
+  const taskPayload = {
+    id: "task-failed", projectId: "project-1", title: "Inspect runtime",
+    requiredCompetencies: ["architecture"], failureReason: "MODEL_EXECUTION_TIMEOUT",
+    status: "failed", version: 5, assigneeSpecialistId: "specialist-1",
+  };
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT t.*") && sql.includes("FROM studio.tasks")) {
+        return { rows: [{
+          id: "task-failed", project_id: "project-1", organization_id: "org-1",
+          status: "failed", version: 5, assignee_specialist_id: "specialist-1",
+          payload: taskPayload,
+        }] };
+      }
+      if (sql.includes("FROM studio.specialists")) {
+        return { rows: [{
+          id: "specialist-1", organization_id: "org-1", status: "active",
+          payload: { id: "specialist-1", competencies: ["architecture"], projectIds: [] },
+        }] };
+      }
+      if (sql.includes("COUNT(*)::int AS attempts")) return { rows: [{ attempts: 1 }] };
+      return { rows: [], rowCount: 1 };
+    },
+    release() {},
+  };
+  const store = createPostgresDomainStore({
+    pool: { async connect() { return client; } },
+    createId: () => "retry-event-1",
+  });
+  const result = await store.retryFailedTask({
+    taskId: "task-failed", expectedVersion: 5, maxAttempts: 2, at,
+    actorId: "owner-1",
+  });
+  assert.equal(result.task.status, "assigned");
+  assert.equal(result.task.version, 6);
+  assert.equal(result.task.retryCount, 1);
+  assert.equal(result.task.previousFailureReason, "MODEL_EXECUTION_TIMEOUT");
+  assert.equal("failureReason" in result.task, false);
+  assert.equal(result.attempt, 2);
+  const update = calls.find(call => call.sql.includes("UPDATE studio.tasks SET status = 'assigned'"));
+  assert.ok(update);
+  const audit = calls.find(call => call.sql.includes("task.retry_scheduled"));
+  assert.ok(audit);
+  assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
+test("does not exceed the configured failed-task retry limit", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT t.*") && sql.includes("FROM studio.tasks")) {
+        return { rows: [{
+          id: "task-failed", project_id: "project-1", organization_id: "org-1",
+          status: "failed", version: 6, assignee_specialist_id: "specialist-1",
+          payload: { id: "task-failed", requiredCompetencies: ["architecture"], failureReason: "timeout" },
+        }] };
+      }
+      if (sql.includes("FROM studio.specialists")) {
+        return { rows: [{
+          id: "specialist-1", organization_id: "org-1", status: "active",
+          payload: { id: "specialist-1", competencies: ["architecture"], projectIds: [] },
+        }] };
+      }
+      if (sql.includes("COUNT(*)::int AS attempts")) return { rows: [{ attempts: 2 }] };
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const store = createPostgresDomainStore({
+    pool: { async connect() { return client; } },
+    createId: () => "retry-event-2",
+  });
+  await assert.rejects(
+    store.retryFailedTask({ taskId: "task-failed", expectedVersion: 6, maxAttempts: 2, at }),
+    error => error.code === "TASK_RETRY_LIMIT_REACHED",
+  );
+  assert.equal(calls.some(call => call.sql.includes("UPDATE studio.tasks SET status = 'assigned'")), false);
+  assert.equal(calls.at(-1).sql, "ROLLBACK");
+});
