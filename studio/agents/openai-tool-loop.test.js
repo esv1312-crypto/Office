@@ -26,10 +26,15 @@ test("executes a tool call and returns a compact result to the model", async () 
   });
   const result = await runOpenAiToolLoop({
     client, model: "deepseek/flash", messages: [{ role: "user", content: "Inspect file" }],
-    tools: [tool], executeTool: async () => ({ content: "hello" })
+    tools: [tool], executeTool: async () => ({ path: "src/main.js", branch: "studio-v1-foundation", sha: "source-blob-sha", range: { startLine: 10, endLine: 20, totalLines: 40 }, content: "hello" })
   });
   assert.equal(result.text, "Done.");
   assert.equal(result.toolCallsExecuted, 1);
+  assert.deepEqual(result.toolEvidence, [{
+    name: "read_file", status: "ok", path: "src/main.js",
+    branch: "studio-v1-foundation", sha: "source-blob-sha",
+    range: { startLine: 10, endLine: 20, totalLines: 40 },
+  }]);
   assert.equal(result.usage.promptTokens, 45);
   assert.equal(result.usage.completionTokens, 8);
   assert.equal(result.usage.cachedInputTokens, 7);
