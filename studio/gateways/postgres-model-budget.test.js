@@ -106,6 +106,34 @@ test("budget snapshot trusts the reservation ledger rather than drifted account 
   assert.ok(Math.abs(snapshot.remainingUsd - 0.93) < 1e-9);
 });
 
+test("calibrates known DeepSeek Flash prompt estimates while keeping unknown models conservative", async () => {
+  const payload = [{ role: "user", content: "x".repeat(8000) }];
+  const serializedBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+
+  const flashPool = fakePool();
+  const flashBudget = createPostgresModelBudget({ pool: flashPool, capUsd: 1, budgetKey: "flash" });
+  const flashReservation = await flashBudget.reserve({
+    model: "deepseek/deepseek-v4.1-flash-1017",
+    role: "worker",
+    messages: payload,
+    maxTokens: 4000,
+  });
+  assert.equal(flashReservation.inputBytesPerToken, 8);
+  assert.equal(flashReservation.estimatedInputTokens, Math.ceil(serializedBytes / 8));
+  assert.equal(flashPool.reservations[0].reserved_usd, flashReservation.amountUsd);
+
+  const unknownPool = fakePool();
+  const unknownBudget = createPostgresModelBudget({ pool: unknownPool, capUsd: 1, budgetKey: "unknown" });
+  const unknownReservation = await unknownBudget.reserve({
+    model: "unlisted/model",
+    role: "worker",
+    messages: payload,
+    maxTokens: 4000,
+  });
+  assert.equal(unknownReservation.inputBytesPerToken, 2);
+  assert.equal(unknownReservation.estimatedInputTokens, Math.ceil(serializedBytes / 2));
+});
+
 test("budget ledger records actual provider cost even when it exceeds the estimate", async () => {
   const pool = fakePool();
   const budget = createPostgresModelBudget({ pool, capUsd: 1, budgetKey: "test" });

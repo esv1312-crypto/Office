@@ -7,16 +7,27 @@ function usd(value) {
   return Number(Number(value).toFixed(9));
 }
 
-function estimateMaximumCost({ messages, maxTokens, inputUsdPerMillion, outputUsdPerMillion }) {
+const INPUT_BYTES_PER_ESTIMATED_TOKEN = Object.freeze({
+  // Calibrated from settled production reservations: p95 estimated/actual
+  // prompt-token ratios were 8.56x (V4.1 Flash worker, 1,211 calls) and
+  // 7.71x (V4 Flash worker, 90 calls). Dividing the byte estimate by four
+  // leaves roughly 2x p95 headroom before the existing 25% safety margin.
+  "deepseek/deepseek-v4.1-flash-1017": 8,
+  "deepseek/deepseek-v4-flash-0731": 8,
+});
+
+function estimateMaximumCost({ model, messages, maxTokens, inputUsdPerMillion, outputUsdPerMillion }) {
   const serialized = JSON.stringify(messages ?? []);
-  // A conservative tokenizer-independent estimate: one token per two UTF-8
-  // bytes. The old two-tokens-per-byte rule reserved up to 8x more than
-  // ordinary English/JSON prompts and starved useful work before the cap.
-  const estimatedInputTokens = Math.ceil(Buffer.byteLength(serialized, "utf8") / 2);
+  // Unknown models retain the conservative one-token-per-two-byte estimate.
+  // Flash models use the measured calibration above; actual provider cost is
+  // still reconciled from response usage whenever OpenRouter reports it.
+  const inputBytesPerToken = INPUT_BYTES_PER_ESTIMATED_TOKEN[model] || 2;
+  const estimatedInputTokens = Math.ceil(Buffer.byteLength(serialized, "utf8") / inputBytesPerToken);
   const inputCost = estimatedInputTokens * inputUsdPerMillion / 1_000_000;
   const outputCost = maxTokens * outputUsdPerMillion / 1_000_000;
   return {
     estimatedInputTokens,
+    inputBytesPerToken,
     maximumOutputTokens: maxTokens,
     amountUsd: usd((inputCost + outputCost) * 1.25),
   };
@@ -102,7 +113,7 @@ export function createPostgresModelBudget({
 
   async function reserve({ model, role, messages, maxTokens }) {
     await ensureSchema();
-    const estimate = estimateMaximumCost({ messages, maxTokens, inputUsdPerMillion, outputUsdPerMillion });
+    const estimate = estimateMaximumCost({ model, messages, maxTokens, inputUsdPerMillion, outputUsdPerMillion });
     const reservationId = randomUUID();
     const db = await pool.connect();
     try {

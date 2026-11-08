@@ -34,6 +34,14 @@ These are safety ceilings, not targets. A healthy task should normally finish we
 - Keep a hard owner-approved cap. Exhaustion blocks new paid requests; no automatic cap increase or model fallback is permitted.
 - Configure `STUDIO_MODEL_INPUT_USD_PER_MILLION` and `STUDIO_MODEL_OUTPUT_USD_PER_MILLION` from the current selected provider/model rates. The defaults are intentionally conservative and must not be represented as the provider's invoice price.
 
+### Reservation calibration
+
+- Keep the configured input/output rates conservative for the most expensive provider allowed by the OpenRouter route. The current $0.30/$1.20 per-million defaults match the upper end of listed V4.1 Flash provider rates; do not lower them merely to make reservations smaller.
+- Calibrate prompt-token estimation only for exact model IDs with enough settled usage data. The V4.1 Flash and V4 Flash snapshots use 8 UTF-8 bytes per estimated token, based on measured p95 over-reservation ratios of 8.56x (1,211 V4.1 worker calls) and 7.71x (90 V4 worker calls). This leaves about 2x p95 headroom before the 25% safety margin. Unknown model IDs retain the more conservative 2-byte estimate.
+- Revisit a model calibration when provider/model routing changes or after at least 100 new settled requests. Never apply one model's calibration to unrelated models.
+- Cap each worker completion at 4,000 output tokens while retaining the 12,000-token task-wide ceiling. This bounds each reservation without reducing the total output allowance for a multi-round task.
+- Continue reserving the actual request's maximum output tokens. Do not reserve average observed output in place of the hard request maximum; that would allow an unusually long response to exceed the budget.
+
 ## Startup and recovery
 
 Startup owner tasks are one-shot. A Render deploy must never implicitly restart an already claimed owner task. Resuming interrupted work requires a separately governed recovery action that checks task leases, idempotency, existing artifacts, remaining budget, and prior attempts before dispatching anything.

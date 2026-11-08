@@ -116,18 +116,28 @@ export function createOpenAiCompatibleGateways({
   maxTotalOutputTokens = 12000,
   maxTotalPromptTokens = 100000,
   modelBudget = null,
+  maxWorkerTokens = 4000,
 }) {
   if (!client?.chat?.completions ||
       typeof client.chat.completions.create !== "function") {
     throw new TypeError("An OpenAI-compatible chat completions client is required");
   }
+  if (!Number.isInteger(maxWorkerTokens) || maxWorkerTokens < 1 || maxWorkerTokens > 32000) {
+    throw new TypeError("maxWorkerTokens must be an integer between 1 and 32000");
+  }
   const providerName = requiredString(provider, "provider");
   if (!models || typeof models !== "object" || Array.isArray(models)) {
     throw new TypeError("models configuration is required");
   }
+  const workerConfig = normalizeModelConfig(models.worker, "worker");
   const configs = Object.freeze({
     planner: normalizeModelConfig(models.planner, "planner"),
-    worker: normalizeModelConfig(models.worker, "worker"),
+    // The task-wide output ceiling remains 12k. A 4k per-request ceiling
+    // prevents reserving 12-16k output tokens for every short tool-loop turn.
+    worker: Object.freeze({
+      ...workerConfig,
+      maxTokens: Math.min(workerConfig.maxTokens, maxWorkerTokens),
+    }),
     qa: normalizeModelConfig(models.qa, "qa"),
   });
 

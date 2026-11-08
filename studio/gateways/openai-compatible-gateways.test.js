@@ -88,6 +88,17 @@ test("worker forwards abort signal and returns text with a model snapshot", asyn
   assert.equal(result.modelSnapshot.model, "worker-model");
 });
 
+test("caps each worker completion at four thousand tokens without changing the task-wide output ceiling", async () => {
+  const { gateways, calls } = fixture({ contents: ["Implemented the assigned change."] });
+  const result = await gateways.workerModelGateway.generate({
+    task: { id: "task-token-cap" },
+    specialist: { id: "builder", role: "Developer", instructions: "Build it" },
+    execution: { attempt: 1 },
+  });
+  assert.equal(calls[0].request.max_tokens, 4000);
+  assert.equal(result.modelSnapshot.parameters.maxTokens, 4000);
+});
+
 test("QA requests JSON and preserves the independent reviewer verdict", async () => {
   const { gateways, calls } = fixture({
     contents: [JSON.stringify({ verdict: "accepted", findings: [] })],
