@@ -46,6 +46,30 @@ function responseText(response) {
   return "";
 }
 
+function firstJsonObject(text) {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
 function parseJson(content, role) {
   if (!content || !content.trim()) {
     throw Object.assign(new Error(`${role} model returned empty content`), {
@@ -53,11 +77,8 @@ function parseJson(content, role) {
     });
   }
 
-  const text = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const candidates = [text];
-  const start = text.indexOf("{");
-  if (start >= 0 && text !== text.slice(start)) candidates.push(text.slice(start));
-
+  const text = content.trim().replace(/^```(?:json)?\\s*/i, "").replace(/\\s*```$/, "");
+  const candidates = [text, firstJsonObject(text)].filter(Boolean);
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate);
