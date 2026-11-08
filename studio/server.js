@@ -336,7 +336,13 @@ async function runConfiguredSourceVerification() {
     locked = true;
     const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
     const result = await runSourceVerification({ organizationId, actor });
-    console.log(`[studio] source verification; plan=${result.planId || "existing"}; status=${result.status}; created=${Boolean(result.created)}; executions=${result.execution?.executions?.length || 0}; qa=${result.execution?.qaReviews?.length || 0}; blocked=${result.execution?.blocked?.length || 0}`);
+    const executionSummary = (result.execution?.executions || [])
+      .map(item => `${item.taskId || "task"}:${item.status || "unknown"}:${item.errorCode || "none"}`)
+      .join(",") || "none";
+    const blockedSummary = (result.execution?.blocked || [])
+      .map(item => `${item.taskId || "task"}:${item.status || "blocked"}:${item.errorCode || "none"}`)
+      .join(",") || "none";
+    console.log(`[studio] source verification; plan=${result.planId || "existing"}; status=${result.status}; created=${Boolean(result.created)}; executions=${result.execution?.executions?.length || 0}; executionResults=${executionSummary}; qa=${result.execution?.qaReviews?.length || 0}; blocked=${result.execution?.blocked?.length || 0}; blockedDetails=${blockedSummary}`);
   } catch (error) {
     console.error("[studio] source verification failed", error?.code || error?.status || "SOURCE_VERIFICATION_FAILED");
   } finally {
