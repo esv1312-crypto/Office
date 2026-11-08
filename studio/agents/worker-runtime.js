@@ -47,8 +47,8 @@ function runtimeToolEvidenceSection(value) {
     return record;
   });
   if (!records.length) return "";
-  return "\\n\\n## Runtime-verified tool evidence\\n\\n\x60\x60\x60json\\n" +
-    JSON.stringify(records, null, 2) + "\\n\x60\x60\x60";
+  return "\n\n## Runtime-verified tool evidence\n\n\x60\x60\x60json\n" +
+    JSON.stringify(records, null, 2) + "\n\x60\x60\x60";
 }
 
 function safeModelSnapshot(value) {
