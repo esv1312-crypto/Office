@@ -36,6 +36,7 @@ function runtimeToolEvidenceSection(value) {
     for (const key of ["path", "branch", "sha", "blobSha", "commitSha", "error"]) {
       if (typeof item[key] === "string") record[key] = item[key];
     }
+    if (typeof item.contentKind === "string") record.contentKind = item.contentKind;
     if (typeof item.content === "string" && Buffer.byteLength(item.content, "utf8") <= 8192) {
       record.content = item.content;
     }

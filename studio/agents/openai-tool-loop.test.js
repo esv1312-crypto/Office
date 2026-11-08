@@ -172,3 +172,34 @@ test("includes exact content only for workspace verification-file read-backs", a
   assert.equal(result.toolEvidence[0].content, "# Evidence\nExact persisted text.");
   assert.equal(result.toolEvidence[0].sha, "readback-sha");
 });
+
+
+test("includes exact source snippets for the three audit source files only", async () => {
+  const client = clientFor(async request => {
+    if (request.messages.length === 1) {
+      return { choices: [{ message: { tool_calls: [
+        { id: "source-1", type: "function", function: { name: "read_repo_file", arguments: JSON.stringify({
+          path: "studio/agents/worker-runtime.js",
+          branch: "studio-v1-foundation",
+          start_line: 175,
+          end_line: 185,
+        }) } },
+      ] } }] };
+    }
+    return { choices: [{ message: { content: "Inspected." } }] };
+  });
+  const readRepoTool = { type: "function", function: { name: "read_repo_file", parameters: { type: "object" } } };
+  const result = await runOpenAiToolLoop({
+    client, model: "m", messages: [{ role: "user", content: "inspect source" }],
+    tools: [readRepoTool],
+    executeTool: async () => ({
+      path: "studio/agents/worker-runtime.js",
+      branch: "studio-v1-foundation",
+      sha: "source-sha",
+      range: { startLine: 175, endLine: 185, totalLines: 315 },
+      content: "line 184: allowedTools is forwarded",
+    }),
+  });
+  assert.equal(result.toolEvidence[0].contentKind, "source-snippet");
+  assert.equal(result.toolEvidence[0].content, "line 184: allowedTools is forwarded");
+});

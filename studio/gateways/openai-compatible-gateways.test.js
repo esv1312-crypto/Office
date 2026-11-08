@@ -203,3 +203,38 @@ test("QA retries an empty structured response without JSON mode", async () => {
   assert.equal(result.modelSnapshot.retryUsed, true);
   assert.equal(result.modelSnapshot.jsonMode, false);
 });
+
+
+test("QA falls back to an explicit free model after empty primary responses", async () => {
+  const review = { verdict: "revision_required", findings: ["The inspected source range does not support the claim."] };
+  const { gateways, calls } = fixture({ contents: ["", "", JSON.stringify(review)] });
+  const result = await gateways.qaGateway.review({
+    task: { id: "task-qa-fallback", acceptanceCriteria: ["Source claims match inspected lines"] },
+    artifact: { id: "artifact-qa-fallback", content: "Runtime-verified tool evidence" },
+    reviewer: { id: "qa-reviewer" },
+  });
+  assert.equal(result.verdict, "revision_required");
+  assert.deepEqual(result.findings, review.findings);
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0].request.model, "qa-model");
+  assert.equal(calls[1].request.model, "qa-model");
+  assert.equal(calls[2].request.model, "nvidia/nemotron-3.5-lightning:free");
+  assert.equal(result.modelSnapshot.fallbackUsed, true);
+});
+
+
+test("QA tries a second free model when the first fallback is also empty", async () => {
+  const review = { verdict: "revision_required", findings: ["The source snippet does not show the claimed guard."] };
+  const { gateways, calls } = fixture({ contents: ["", "", "", JSON.stringify(review)] });
+  const result = await gateways.qaGateway.review({
+    task: { id: "task-qa-second-fallback", acceptanceCriteria: ["Claims match source snippets"] },
+    artifact: { id: "artifact-qa-second-fallback", content: "Runtime-verified tool evidence" },
+    reviewer: { id: "qa-reviewer" },
+  });
+  assert.equal(result.verdict, "revision_required");
+  assert.equal(calls.length, 4);
+  assert.equal(calls[2].request.model, "nvidia/nemotron-3.5-lightning:free");
+  assert.equal(calls[2].request.response_format, undefined);
+  assert.equal(calls[3].request.model, "google/gemma-4-31b-it:free");
+  assert.equal(result.modelSnapshot.fallbackUsed, true);
+});
