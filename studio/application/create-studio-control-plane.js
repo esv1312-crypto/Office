@@ -28,7 +28,7 @@ export function createStudioControlPlane({
   now,
   workerConcurrency,
   modelBudget = null,
-  maxToolRounds = 20,
+  maxToolRounds = 40,
   maxToolCalls = 100,
   modelTimeoutMs = 300_000,
 }) {
