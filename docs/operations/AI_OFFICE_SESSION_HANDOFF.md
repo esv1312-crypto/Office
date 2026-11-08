@@ -1,100 +1,58 @@
 # AI-ОФИС — текущая точка остановки
 
-> Обновлять в конце каждой рабочей сессии и после существенного теста. Это источник правды для продолжения в новом чате. Проверено: 2026-10-21 (UTC).
+> Главный источник контекста: [AI_OFFICE_MASTER_NOTEBOOK.md](./AI_OFFICE_MASTER_NOTEBOOK.md). Сначала читать его, затем сверять GitHub, Neon и Render. Снимок фактов: 2026-11-08.
 
+## Главная цель
 
+Пользователь хочет, чтобы **AI-ОФИС самостоятельно достраивал и улучшал собственный код**: директор исследует офис, формирует implementation plan, распределяет задачи между специалистами, workers читают/пишут в изолированной GitHub-ветке, независимый QA проверяет, офис исправляет ошибки.
 
-## Актуальное обновление рабочей сессии — 2026-10-21 10:56 UTC
+**Это не Roblox game development.** Roblox Fan District — отдельный продуктовый пилот, который ошибочно запускался из startup flow. Не продолжать его и не создавать новые Roblox задачи без отдельной просьбы пользователя.
 
-Этот блок новее исторических статусов ниже и имеет приоритет при продолжении.
+## Подтверждено уже сделанное
 
-### Production deployment — PASS
-- GitHub main SHA перед деплоем: `7678fcfdb7c50a3ad8452e6eb5bc765f8198f8bd`.
-- Render deploy: [dep-dbc9k5mi0phs73ar2ck0](https://dashboard.render.com/web/srv-davoj1s9v7es738jino0/deploys/dep-dbc9k5mi0phs73ar2ck0), статус `live`, старт 2026-10-21 10:55:18 UTC, завершён 10:56:01 UTC.
-- Build завершился успешно; Render logs подтвердили checkout точного SHA `7678fcfdb7c50a3ad8452e6eb5bc765f8198f8bd`, `npm install` без уязвимостей, затем запуск `npm start`.
-- После деплоя `/` вернул `service=ai-office-runtime,status=online`; `/health` вернул `ok=true,status=online,persistence.enabled=true,persistence.ready=true`. Время старта процесса: `2026-10-21T10:55:49.922Z`.
-- Unit, runtime smoke и PostgreSQL integration на том же SHA `7678fcfdb7c5` завершились успешно: [unit](https://github.com/esv1312-crypto/Office/actions/runs/39587904921), [runtime smoke](https://github.com/esv1312-crypto/Office/actions/runs/39587904943), [PostgreSQL](https://github.com/esv1312-crypto/Office/actions/runs/39587905036). Evidence archive также успешен: [run 39587982780](https://github.com/esv1312-crypto/Office/actions/runs/39587982780).
+- OpenRouter model credential в Studio runtime настроен; сервис запускается, Neon execution snapshots содержат реальные вызовы OpenRouter.
+- GitHub workspace credential работает: worker сделал запись и read-back в `studio-ai-agent-workspace`; независимый QA принял результат.
+- GitHub tools: `list_repo_directory`, `read_repo_file`, `write_repo_file`, `patch_repo_file`.
+- Источники читаются из `studio-v1-foundation`; записи ограничены `studio/agent-workspace/` в `studio-ai-agent-workspace`.
+- AI Office Self-Development project: `d8a125e7-bacb-41a5-854a-cc34fe97e516`.
+- Initial audit/roadmap plan `a7db94fe-01c6-4021-a21d-8cb3eeaf50e3`: все шесть задач завершены.
+- Live Source Read/Write Verification v6 plan `4ab2653e-cede-4463-9664-2ada8338da5d`: task `c3b0e950-e702-49f0-bc3c-dbb732242bc6` completed; QA verdict accepted at `2026-11-08T12:09:59Z`.
 
-### Live production audit — NOT VERIFIED
-- Авторизованный workflow `.github/workflows/office-live-runtime-smoke.yml` после свежего деплоя ещё не запускался. Он нужен для проверки provider fallback, root recovery, evidence pipeline и office audit.
-- Доступный GitHub connector поддерживает read-only fetch и не предоставляет workflow-dispatch action. Не вызывать защищённые диагностические endpoints без `OFFICE_AUDIT_TOKEN`; секреты не извлекать и не записывать.
-- Следующий шаг: запустить вручную GitHub Actions workflow **AI-OFFICE authorized live runtime audit** через Actions UI после подтверждения, что repository secret `OFFICE_AUDIT_TOKEN` настроен и совпадает с Render. Затем сохранить run ID, все результаты и artifact в журнале.
-- Фактическое переключение assigned model на другую модель остаётся отдельной проверкой: прошлый четырёхсотрудниковый тест использовал одну модель; fallback/recovery нельзя считать доказанными до live audit evidence.
+## Модель: важное различие
 
-## 1. Сначала сверять версии
+- Последние фактические executions и Render startup logs показывают `openrouter/free`, а не DeepSeek.
+- В deployed `studio/server.js` есть paid-model gate `STUDIO_ALLOW_PAID_MODELS`, но DeepSeek V4.1 Flash не активирован в живом runtime.
+- Модельный ключ OpenRouter есть; GitHub workspace write credential работает.
+- PR #66/#67 закрыты, но их branch `feat/openrouter-paid-autonomous-office` diverged от production branch `studio-v1-foundation` (3 ahead / 43 behind). Не мержить целиком.
+- Ранее PR #48–#50 реализовывали отдельный одноразовый read-only DeepSeek audit в legacy `src/server.js`; это не автономный Studio worker workflow.
+- Нужен hard $1 spend cap для обычного Studio planner/worker/QA workflow. Текущие token/tool limits не заменяют денежный лимит.
+- Целевой маршрут: DeepSeek V4.1 Flash через OpenRouter для первого ограниченного self-development запуска; Pro — для отдельно согласованных сложных задач.
 
-- Репозиторий: [esv1312-crypto/Office](https://github.com/esv1312-crypto/Office)
-- Основная ветка: `main`
-- Последний проверенный SHA `main` перед этой записью: `0a80d02e6691a02ef42b3b1a2c61ce9a529cbe4d` (`fix: read GitHub workflow event payload reliably`). Эта запись сама создаёт следующий commit; при новом старте обязательно получить свежий SHA `main`.
-- Последний подтверждённый production deploy Render: `dep-dbc7evl9fdbs73c4jjag`
-- SHA этого deploy: `93d43b30193caf8bd4ed81399eb453019fb9995a`
-- **Важно:** GitHub `main` опережает подтверждённый production deploy. Не считать новый код установленным на production, пока свежая проверка Render не подтвердит SHA/деплой.
+## Runtime / Render
 
-## 2. Текущее состояние по доказательствам
+- Workspace: `tea-d61lnoq4d50c73ac3hgg`.
+- Service: `ai-office-runtime`, ID `srv-davoj1s9v7es738jino0`.
+- URL: https://ai-office-runtime-8pir.onrender.com
+- Branch: `studio-v1-foundation`.
+- Последний подтверждённый deploy: `dep-dbo6u5gu01pc73ee7k7g`, commit `66bb1cdd765de9dd2b5f871abe758aaa238f0480`, status live, completed `2026-11-08T12:46:54Z`.
+- Startup log: provider=openrouter, model=openrouter/free; self-development startup trigger enabled.
+- Последний полученный log: SIGTERM at `2026-11-08T13:01:54Z`; следующего startup log в этом запросе не было. Проверить health/logs при возобновлении.
 
-### Подтверждено
-- Production health endpoint ранее вернул `ok: true`, `status: online`, persistence `ready: true`.
-- Последний подтверждённый Render deploy `93d43b3` завершился успешно 2026-10-21 в 08:28:13 UTC.
-- На SHA `64eb122` (merge PR #39) успешно завершились unit, runtime smoke и PostgreSQL integration: [unit](https://github.com/esv1312-crypto/Office/actions/runs/39587051588), [runtime smoke](https://github.com/esv1312-crypto/Office/actions/runs/39587051502), [PostgreSQL](https://github.com/esv1312-crypto/Office/actions/runs/39587051499).
-- На SHA `0a80d02` unit tests прошли: [run 39587169717](https://github.com/esv1312-crypto/Office/actions/runs/39587169717). На момент этой записи runtime smoke [run 39587169552](https://github.com/esv1312-crypto/Office/actions/runs/39587169552) и PostgreSQL [run 39587169747](https://github.com/esv1312-crypto/Office/actions/runs/39587169747) ещё выполняются; перепроверить итог.
-- Ранее live-тест четырёх сотрудников завершился успешно: все четыре задачи завершены без ошибок, но все использовали одну и ту же модель. Реальное переключение модели этим тестом не доказано.
+## Ошибка маршрутизации, которую нужно исправить
 
-### Ещё не доказано
-- Что Render развернул свежий `main`: последний найденный production deploy — `dep-dbc7evl9fdbs73c4jjag`, SHA `93d43b30193caf8bd4ed81399eb453019fb9995a`. В Render включён auto-deploy от `main`; после docs/workflow commits повторно проверить список deploys, не предполагать результат.
-- Живое поведение provider fallback и recovery в production.
-- Фактическое переключение сотрудника на другую модель при отказе основной.
-- Сквозная проверка evidence и office audit именно после свежего production deploy.
+Startup logs показывают повторный запуск Roblox product pilot plan `b45ca5c0-714f-42e8-9a70-c527dc5b4ab9` (Roblox Fan District) внутри AI Office Self-Development project. Он возвращает `needs_attention` и не является текущей задачей пользователя.
 
-## 3. Что было последним препятствием
+Не удалять его историю и не продолжать. После подтверждения пользователя установить `STUDIO_SELF_DEVELOPMENT_PRODUCT_PILOT=false`, сохранив self-development startup trigger; затем исправить startup/owner flow так, чтобы он запускал self-development implementation plan, а не Roblox product pilot.
 
-- Workflow `.github/workflows/office-live-runtime-smoke.yml` называется **AI-OFFICE authorized live runtime audit** и запускается вручную через `workflow_dispatch`.
-- Он проверяет provider fallback, root recovery, evidence pipeline и office audit. Это не обычный локальный smoke-тест: он обращается к production и запускает диагностические сценарии.
-- Платный браузерный инструмент TinyFish не был запущен из-за нулевого баланса. Ничего через него не изменялось.
-- Доступный GitHub read-only fetch позволяет читать workflow/runs, но не запускает workflow вручную. Не утверждать, что live audit запущен, пока нет конкретного run ID и результата.
-- Не обходить ограничение случайными тестами и не подменять live audit обычным smoke-тестом.
+## Следующие действия
 
-## 4. Следующие шаги — строго по порядку
+1. Проверить текущий Render health/deploy/logs.
+2. На основе deployed `studio-v1-foundation` портировать только нужные изменения paid-model routing, не мержить divergent feature branch.
+3. Реализовать/проверить hard global $1 budget для paid model requests в Studio planner/worker/QA.
+4. Подключить DeepSeek V4.1 Flash через существующий OpenRouter key для одного ограниченного self-development запуска; Pro оставить для отдельно согласованных сложных задач.
+5. Проверить модель по реальным execution snapshots и provider usage/cost.
+6. Создать один новый owner-approved implementation plan на достройку AI-ОФИСА по уже принятому roadmap. Не повторять аудит; не создавать Roblox задачи.
+7. Выполнять в изолированной GitHub workspace branch, независимый QA, фиксировать SHA/read-back/CI.
+8. После каждого существенного шага обновлять мастер-блокнот и этот handoff.
 
-1. **Read-only:** повторно проверить текущий SHA `main`, последние Actions runs и последний production deploy в Render.
-2. Сверить SHA GitHub и Render. Если Render отстаёт, проверить события/автодеплой и определить безопасный путь синхронизации; не запускать второй deploy вслепую.
-3. Когда Render подтверждённо работает на актуальном SHA, запустить именно `AI-OFFICE authorized live runtime audit` авторизованным способом.
-4. Сохранить run ID, SHA, время, итог каждого check, ссылки на логи и артефакты.
-5. Только после этого делать вывод о fallback/recovery. Если тест не запускался или нет evidence — статус **NOT VERIFIED**, а не PASS и не FAIL.
-6. Отдельно проверить model routing: assigned model vs actual model; смену модели подтверждать только если evidence показывает, что модель действительно изменилась.
-
-## 5. Обязательный протокол каждой рабочей сессии
-
-Перед действиями:
-- Прочитать этот файл.
-- Получить свежие GitHub `main` SHA и последние workflow runs.
-- Получить свежий Render deploy/SHA/status.
-- Сначала выбрать актуальную версию и только затем тестировать.
-- Различать локальные тесты, тесты ветки, тесты `main` и production live tests.
-
-После каждого теста или существенного действия записать:
-- UTC timestamp;
-- цель и тип проверки (unit / integration / branch / main / production);
-- commit SHA и ветку;
-- Render deploy ID/SHA, если тест затрагивает production;
-- команды/workflow и run ID;
-- PASS / FAIL / NOT VERIFIED;
-- конкретное evidence: ссылка на run, job logs, artifact, task ID и важные фактические поля;
-- ошибки и что они означают;
-- следующий конкретный шаг;
-- какие изменения реально были сделаны. Не записывать намерение как выполненное действие.
-
-Никаких секретов, токенов или их значений в журнал не помещать.
-
-## 6. Автоматизация журнала — текущий статус
-
-PR [#39](https://github.com/esv1312-crypto/Office/pull/39) слит в `main` коммитом `64eb122bb3dde547fed1b402d66c8a6a1c4926bc`. Workflow `.github/workflows/office-evidence-archive.yml` впервые падал из-за пустого `EVENT_PATH`; исправлено в `0a80d02e6691a02ef42b3b1a2c61ce9a529cbe4d` чтением встроенного `GITHUB_EVENT_PATH`. Первый подтверждённый успешный архив: [run 39587207880](https://github.com/esv1312-crypto/Office/actions/runs/39587207880), artifact `office-evidence-39587169717-attempt-1`, создан 2026-10-21 10:48 UTC, хранится до 2027-01-19. После исправления архивирование стабильно срабатывает: [архив для PostgreSQL на SHA `47e06b3`](https://github.com/esv1312-crypto/Office/actions/runs/39587391681) завершился успешно. Unit, runtime smoke и PostgreSQL на SHA `47e06b3` завершились успешно: [unit](https://github.com/esv1312-crypto/Office/actions/runs/39587291269), [runtime smoke](https://github.com/esv1312-crypto/Office/actions/runs/39587291056), [PostgreSQL](https://github.com/esv1312-crypto/Office/actions/runs/39587291066). Артефакты хранятся 90 дней. Три ранних архивных запуска на SHA `64eb122` упали до исправления; их не считать успешными.
-
-Архив evidence не заменяет оригинальные job logs и не доказывает production-состояние без проверки SHA/deploy. Handoff по-прежнему обновляется после существенных действий; автоматическое обновление файла handoff не реализовано.
-
-## 7. Правило продолжения в новом чате
-
-Первое действие нового чата — перечитать этот handoff и выполнить read-only сверку GitHub ↔ Render. Не повторять тест, пока не проверены последние run ID и evidence. После работы обновить этот файл и сохранить ссылки на evidence. Этот документ является краткой точкой восстановления контекста, а не заменой оригинальных логов.
-
-## Краткий итог на момент записи
-
-**Состояние на 2026-10-21 10:53 UTC:** PR #39 слит; handoff и автоматический evidence archive работают. Unit, runtime smoke и PostgreSQL на GitHub `main` SHA `47e06b391026` прошли успешно, и архив workflow создаёт evidence artifacts. Production `/health` отвечает `ok:true`, `status:online`, persistence `ready:true`. Однако Render всё ещё показывает live deploy SHA `93d43b30193caf8bd4ed81399eb453019fb9995a`; GitHub `main` опережает его на 5 коммитов, включая кодовую правку `src/server.js` в `eb7a5bf`. В Render настройках `autoDeploy=yes`, branch=`main`, но новых deploy events после 08:28 UTC нет. Не запускать production smoke audit против старого SHA как доказательство нового кода. Следующий шаг: разобраться, почему auto-deploy не подхватил main, безопасно довести production до согласованного SHA, затем выполнить отдельный авторизованный live runtime audit и сохранить evidence. Не считать отсутствие deploy ошибкой приложения; production сейчас отвечает.
+**Не начинать с нуля. Не создавать новую организацию или сотрудников. Не повторять завершённый аудит. Не утверждать, что DeepSeek активен, пока snapshots не подтверждают это.**
