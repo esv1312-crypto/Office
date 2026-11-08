@@ -159,3 +159,55 @@ test("reads current source from readBranch while writes remain on workspace bran
   assert.ok(put.url.includes("/studio/agent-workspace/report.md"));
   assert.equal(JSON.parse(put.body).branch, "studio-ai-agent-workspace");
 });
+
+test("automatically scopes relative write paths to the isolated workspace", async () => {
+  const calls = [];
+  const tools = createTools(async (url, options = {}) => {
+    calls.push({ url, method: options.method || "GET", body: options.body });
+    if (options.method === "PUT") return response(200, {
+      content: { sha: "workspace-blob" }, commit: { sha: "workspace-commit" },
+    });
+    return response(404, {});
+  });
+  const result = await tools.execute({ name: "write_repo_file", arguments: {
+    path: "roblox-fan-district/Server/Points.server.lua",
+    content: "print('hello')",
+    message: "Add points system",
+  } });
+  assert.equal(result.path, "studio/agent-workspace/roblox-fan-district/Server/Points.server.lua");
+  assert.equal(result.branch, "studio-ai-agent-workspace");
+  assert.ok(calls[0].url.includes("/contents/studio/agent-workspace/roblox-fan-district/Server/Points.server.lua?"));
+  assert.ok(calls[1].url.includes("/contents/studio/agent-workspace/roblox-fan-district/Server/Points.server.lua"));
+});
+
+test("lists the isolated workspace root when the worker uses dot", async () => {
+  let requestedUrl = "";
+  const tools = createTools(async url => {
+    requestedUrl = url;
+    return response(200, [{ name: "roblox-fan-district", path: "studio/agent-workspace/roblox-fan-district", type: "dir", size: 0 }]);
+  });
+  const result = await tools.execute({ name: "list_repo_directory", arguments: { path: "." } });
+  assert.equal(result[0].name, "roblox-fan-district");
+  assert.ok(requestedUrl.includes("/contents/studio/agent-workspace?ref=studio-ai-agent-workspace"));
+});
+
+test("reads relative paths from the workspace branch without changing source-branch reads", async () => {
+  const tools = createTools(async url => response(200, {
+    type: "file", content: Buffer.from("workspace content").toString("base64"), sha: "workspace-sha",
+  }));
+  const result = await tools.execute({ name: "read_repo_file", arguments: {
+    path: "roblox-fan-district/README.md", branch: "studio-ai-agent-workspace",
+  } });
+  assert.equal(result.path, "studio/agent-workspace/roblox-fan-district/README.md");
+  assert.equal(result.content, "workspace content");
+  assert.equal(result.branch, "studio-ai-agent-workspace");
+});
+
+test("relative workspace writes still reject traversal and explicit production paths", async () => {
+  const tools = createTools(async () => response(404));
+  for (const path of ["../outside.lua", "studio/server.js", "studio/projects/private.md", "/etc/passwd"]) {
+    await assert.rejects(tools.execute({ name: "write_repo_file", arguments: {
+      path, content: "x", message: "must reject",
+    } }), error => error.code === "WORKSPACE_PATH_REJECTED");
+  }
+});

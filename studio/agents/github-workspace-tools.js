@@ -36,6 +36,30 @@ function safePath(value, allowedPrefix) {
   return normalized;
 }
 
+function safeWorkspacePath(value, allowedPrefix) {
+  const candidate = required(value, "path");
+  const normalized = normalizedPath(candidate);
+  if (normalized.startsWith("studio/") &&
+      normalized !== allowedPrefix.slice(0, -1) &&
+      !normalized.startsWith(allowedPrefix)) {
+    throw Object.assign(new Error("Repository-root paths are not permitted for workspace writes"), { code: "WORKSPACE_PATH_REJECTED" });
+  }
+  const scoped = normalized === allowedPrefix.slice(0, -1) || normalized.startsWith(allowedPrefix)
+    ? normalized
+    : allowedPrefix + normalized;
+  return safePath(scoped, allowedPrefix);
+}
+
+function safeWorkspaceOrReadPath(value, allowedPrefix) {
+  const normalized = normalizedPath(value);
+  if (normalized.startsWith("studio/") &&
+      normalized !== allowedPrefix.slice(0, -1) &&
+      !normalized.startsWith(allowedPrefix)) {
+    return safeReadPath(normalized);
+  }
+  return safeWorkspacePath(normalized, allowedPrefix);
+}
+
 async function parseResponse(response) {
   let body = {};
   try { body = await response.json(); } catch {}
@@ -118,25 +142,30 @@ export function createGithubWorkspaceTools({
   }
 
   const definitions = Object.freeze([
-    { type: "function", function: { name: "list_repo_directory", description: "List files and directories in an allowed workspace directory.", parameters: { type: "object", properties: { path: { type: "string" }, branch: { type: "string", enum: [sourceBranch, targetBranch] } }, required: ["path"], additionalProperties: false } } },
-    { type: "function", function: { name: "read_repo_file", description: "Read a UTF-8 file from the current source branch by default, or explicitly from the isolated workspace branch for artifact read-back. Optionally return a bounded inclusive line range.", parameters: { type: "object", properties: { path: { type: "string" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 1 }, branch: { type: "string", enum: [sourceBranch, targetBranch] } }, required: ["path"], additionalProperties: false } } },
-    { type: "function", function: { name: "write_repo_file", description: "Create or replace a UTF-8 source file in the isolated workspace branch. Use patch_repo_file for small edits to existing files.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "message"], additionalProperties: false } } },
-    { type: "function", function: { name: "patch_repo_file", description: "Replace only an inclusive line range (or insert at a line) in an existing file. Supply the blob SHA from the latest read to prevent overwriting concurrent changes.", parameters: { type: "object", properties: { path: { type: "string" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 0 }, replacement: { type: "string" }, expected_sha: { type: "string" }, message: { type: "string" } }, required: ["path", "start_line", "end_line", "replacement", "expected_sha", "message"], additionalProperties: false } } },
+    { type: "function", function: { name: "list_repo_directory", description: "List files and directories. Defaults to the isolated workspace branch. Use path '.' to list the workspace root, or a path relative to studio/agent-workspace/ (for example 'roblox-fan-district'). To list source code, explicitly set branch to the source branch and use a full repository path.", parameters: { type: "object", properties: { path: { type: "string" }, branch: { type: "string", enum: [sourceBranch, targetBranch] } }, required: ["path"], additionalProperties: false } } },
+    { type: "function", function: { name: "read_repo_file", description: "Read a UTF-8 file. Defaults to the source branch and requires a full repository path. When branch is the isolated workspace branch, a path relative to studio/agent-workspace/ is automatically scoped into that workspace. Optionally return a bounded inclusive line range.", parameters: { type: "object", properties: { path: { type: "string" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 1 }, branch: { type: "string", enum: [sourceBranch, targetBranch] } }, required: ["path"], additionalProperties: false } } },
+    { type: "function", function: { name: "write_repo_file", description: "Create or replace a UTF-8 source file in the isolated workspace branch. The path may be relative to studio/agent-workspace/ (for example 'roblox-fan-district/Server/Points.server.lua') or may include the full prefix. Relative paths are automatically scoped to studio/agent-workspace/. Never use absolute paths or '..'. Use patch_repo_file for small edits to existing files.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, message: { type: "string" } }, required: ["path", "content", "message"], additionalProperties: false } } },
+    { type: "function", function: { name: "patch_repo_file", description: "Replace only an inclusive line range (or insert at a line) in an existing workspace file. The path may be relative to studio/agent-workspace/ or may include the full prefix. Relative paths are automatically scoped to studio/agent-workspace/. Supply the blob SHA from the latest read to prevent overwriting concurrent changes.", parameters: { type: "object", properties: { path: { type: "string" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 0 }, replacement: { type: "string" }, expected_sha: { type: "string" }, message: { type: "string" } }, required: ["path", "start_line", "end_line", "replacement", "expected_sha", "message"], additionalProperties: false } } },
   ]);
 
   async function execute(name, args = {}) {
     if (name === "list_repo_directory") {
-      const path = safeReadPath(args.path);
-      const readRef = args.branch === undefined ? sourceBranch : required(args.branch, "branch");
+      const readRef = args.branch === undefined ? targetBranch : required(args.branch, "branch");
       if (![sourceBranch, targetBranch].includes(readRef)) throw Object.assign(new Error("Repository read branch is not permitted"), { code: "WORKSPACE_BRANCH_REJECTED" });
+      const rawPath = typeof args.path === "string" ? args.path.trim() : "";
+      const path = readRef === targetBranch
+        ? (rawPath === "" || rawPath === "." ? prefix.slice(0, -1) : safeWorkspaceOrReadPath(rawPath, prefix))
+        : safeReadPath(rawPath);
       const items = await request(api + "/" + encodedPath(path) + "?ref=" + encodeURIComponent(readRef));
       if (!Array.isArray(items)) throw Object.assign(new Error("Expected a directory listing"), { code: "WORKSPACE_INVALID_RESPONSE" });
       return items.map(item => ({ name: item.name, path: item.path, type: item.type, size: item.size }));
     }
     if (name === "read_repo_file") {
-      const path = safeReadPath(args.path);
       const readRef = args.branch === undefined ? sourceBranch : required(args.branch, "branch");
       if (![sourceBranch, targetBranch].includes(readRef)) throw Object.assign(new Error("Repository read branch is not permitted"), { code: "WORKSPACE_BRANCH_REJECTED" });
+      const path = readRef === targetBranch
+        ? safeWorkspaceOrReadPath(args.path, prefix)
+        : safeReadPath(args.path);
       const file = await fetchFile(path, readRef);
       const lines = file.content.split("\n");
       const start = args.start_line === undefined ? 1 : args.start_line;
@@ -151,7 +180,7 @@ export function createGithubWorkspaceTools({
       };
     }
     if (name === "write_repo_file") {
-      const path = safePath(args.path, prefix);
+      const path = safeWorkspacePath(args.path, prefix);
       if (typeof args.content !== "string" || !args.content.length) throw new TypeError("content must be a non-empty string");
       let existing = null;
       try { existing = await fetchFile(path); }
@@ -159,7 +188,7 @@ export function createGithubWorkspaceTools({
       return saveFile(path, args.content, args.message, existing?.sha);
     }
     if (name === "patch_repo_file") {
-      const path = safePath(args.path, prefix);
+      const path = safeWorkspacePath(args.path, prefix);
       const start = args.start_line;
       const end = args.end_line;
       if (!Number.isInteger(start) || start < 1 || !Number.isInteger(end) || end < 0 || end < start - 1) throw Object.assign(new Error("Invalid patch line range"), { code: "WORKSPACE_INVALID_RANGE" });
