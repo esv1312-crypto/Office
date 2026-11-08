@@ -288,12 +288,12 @@ async function runConfiguredInitialBootstrap() {
 }
 
 async function runConfiguredSelfDevelopmentLaunch() {
-  if (String(process.env.STUDIO_SELF_DEVELOPMENT_ON_START || "").toLowerCase() !== "true") return;
   const organizationId = String(process.env.STUDIO_SELF_DEVELOPMENT_ORGANIZATION_ID || "").trim();
   if (!organizationId) {
     console.error("[studio] self-development launch skipped; organization ID is not configured");
     return;
   }
+  console.log("[studio] self-development startup trigger enabled by organization configuration");
   const lockClient = await pool.connect();
   let locked = false;
   try {
