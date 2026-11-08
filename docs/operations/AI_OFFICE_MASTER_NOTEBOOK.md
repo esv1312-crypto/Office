@@ -44,7 +44,7 @@ Live worker source-verification v6 подтвердил:
 - `list_repo_directory`
 - `read_repo_file`
 - `write_repo_file`
-- `patch_repo_file`
+- `patch_repo_file` exists in the workspace tool implementation with SHA-guarded writes. However, the persisted Implementation Specialist allow-list in Neon explicitly lists only `list_repo_directory`, `read_repo_file`, and `write_repo_file`; do not assume patch is currently granted to that specialist until checked/updated.
 
 Фактические границы:
 - исходный код читается из `studio-v1-foundation`;
