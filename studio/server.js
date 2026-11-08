@@ -464,7 +464,7 @@ async function runConfiguredOwnerTask() {
       VALUES ($1, 'running')
       ON CONFLICT (task_key) DO UPDATE
         SET status = 'running', error_code = NULL, updated_at = now()
-        WHERE studio.owner_task_runs.status = 'failed'
+        WHERE studio.owner_task_runs.status IN ('failed', 'running')
       RETURNING task_key
     `, [taskKey]);
     if (!claim.rowCount) {
