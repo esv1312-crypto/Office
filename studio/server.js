@@ -206,6 +206,7 @@ const controlPlane = createStudioControlPlane({
   workerTools: githubWorkspaceTools,
   createSpecialistsForProfile,
   workerConcurrency: positiveIntegerEnv("STUDIO_WORKER_CONCURRENCY", 2, 8),
+  modelTimeoutMs: positiveIntegerEnv("STUDIO_WORKER_MODEL_TIMEOUT_MS", 300000, 600000),
   modelBudget,
   maxToolRounds: 20,
   maxToolCalls: 100,
