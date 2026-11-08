@@ -42,6 +42,40 @@ export function createDirectorDispatch({
       const report = { planId: loaded.plan.id, status: "dispatched", assigned: [], blocked: [], skipped: [] };
 
       for (const task of loaded.tasks) {
+        if (task.status === "failed") {
+          if (typeof store.retryFailedTask !== "function") {
+            report.blocked.push({
+              taskId: task.id,
+              code: "TASK_RETRY_UNAVAILABLE",
+              reason: "The durable task store does not support bounded retries",
+            });
+            continue;
+          }
+          try {
+            const retried = await store.retryFailedTask({
+              taskId: task.id,
+              expectedVersion: task.version,
+              maxAttempts: 2,
+              at: now(),
+              actorId: actor?.id || null,
+            });
+            report.assigned.push({
+              taskId: task.id,
+              specialistId: retried.task?.assigneeSpecialistId || task.assigneeSpecialistId,
+              taskStatus: retried.task?.status || "assigned",
+              resumed: true,
+              retry: true,
+              attempt: retried.attempt || null,
+            });
+          } catch (error) {
+            report.blocked.push({
+              taskId: task.id,
+              code: error?.code || "TASK_RETRY_FAILED",
+              reason: String(error?.message || error).slice(0, 500),
+            });
+          }
+          continue;
+        }
         if (task.status === "assigned") {
           // An assigned task may have a failed/expired execution while the task
           // remains assigned. Re-submit the existing assignment to the Worker
