@@ -134,3 +134,51 @@ test("approval refuses a missing verified owner identity before opening a transa
   );
   assert.equal(connected, false);
 });
+
+
+test("updates an existing specialist's allowed tools with version check and audit event", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT id, organization_id, name, role, status, version, payload FROM studio.specialists")) {
+        return { rows: [{
+          id: "s1", organization_id: "org-1", name: "Solution Architect",
+          role: "solution_architect", status: "active", version: 1,
+          payload: { id: "s1", name: "Solution Architect", role: "solution_architect", allowedTools: [], version: 1 },
+        }] };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const store = createPostgresDomainStore({
+    pool: { async connect() { return client; } },
+    createId: () => "event-update-1",
+  });
+  const result = await store.updateSpecialist({
+    specialistId: "s1", expectedVersion: 1,
+    patch: { allowedTools: ["list_repo_directory", "read_repo_file"] }, at,
+  });
+  assert.deepEqual(result.specialist.allowedTools, ["list_repo_directory", "read_repo_file"]);
+  assert.equal(result.specialist.version, 2);
+  assert.ok(calls.some(call => call.sql.includes("UPDATE studio.specialists")));
+  assert.ok(calls.some(call => call.sql.includes("specialist.updated")));
+  assert.equal(calls.at(-1).sql, "COMMIT");
+});
+
+test("rejects stale specialist updates", async () => {
+  const client = {
+    async query(sql) {
+      if (sql.includes("SELECT id, organization_id, name, role, status, version, payload FROM studio.specialists")) {
+        return { rows: [{ id: "s1", organization_id: "org-1", name: "Architect", role: "solution_architect", status: "active", version: 2, payload: {} }] };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const store = createPostgresDomainStore({ pool: { async connect() { return client; } }, createId: () => "event-1" });
+  await assert.rejects(store.updateSpecialist({
+    specialistId: "s1", expectedVersion: 1, patch: { allowedTools: ["read_repo_file"] }, at,
+  }), error => error.code === "SPECIALIST_VERSION_CONFLICT");
+});

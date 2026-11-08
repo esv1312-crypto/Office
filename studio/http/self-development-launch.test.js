@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createSelfDevelopmentLaunchHandler } from "./self-development-launch.js";
 
-function fixture({ owner = true, priorPlan = null, plannerError = null } = {}) {
+function fixture({ owner = true, priorPlan = null, plannerError = null, existingSpecialists = [] } = {}) {
   const calls = { projects: [], specialists: [], plans: [], approvals: [], executions: [], recoveries: [] };
   const pool = {
     async query(sql, params) {
       if (sql.includes("JOIN studio.organization_memberships")) return { rows: owner ? [{ id: "org-1" }] : [] };
       if (sql.includes("FROM studio.projects")) return { rows: [] };
-      if (sql.includes("FROM studio.specialists")) return { rows: [] };
+      if (sql.includes("FROM studio.specialists")) return { rows: existingSpecialists };
       if (sql.includes("FROM studio.plans")) return { rows: priorPlan ? [priorPlan] : [] };
       throw new Error("Unexpected query");
     },
@@ -16,6 +16,7 @@ function fixture({ owner = true, priorPlan = null, plannerError = null } = {}) {
   const domain = {
     async createProject(project) { calls.projects.push(project); },
     async createSpecialist(specialist) { calls.specialists.push(specialist); },
+    async updateSpecialist(input) { calls.updatedSpecialists = [...(calls.updatedSpecialists || []), input]; },
     async createPlanWithTasks(input) { calls.fallbackPlan = input; return input; },
   };
   const controlPlane = { runtime: {
@@ -39,6 +40,7 @@ function fixture({ owner = true, priorPlan = null, plannerError = null } = {}) {
     } },
   } };
   const createSpecialistsForProfile = ({ organizationId, createId, at }) => [
+    { id: createId(), organizationId, name: "Solution Architect", role: "solution_architect", instructions: "Design", competencies: ["architecture"], allowedTools: ["list_repo_directory", "read_repo_file"], status: "active", version: 1, createdAt: at, updatedAt: at },
     { id: createId(), organizationId, name: "Platform Engineer", role: "implementation_specialist", instructions: "Implement", competencies: ["coding"], allowedTools: ["repo.read"], status: "active", version: 1, createdAt: at, updatedAt: at },
     { id: createId(), organizationId, name: "Quality Engineer", role: "quality_engineer", instructions: "Review", competencies: ["qa.review"], allowedTools: [], status: "active", version: 1, createdAt: at, updatedAt: at },
   ];
@@ -97,4 +99,24 @@ test("uses a deterministic, evidence-bounded bootstrap plan when planner output 
   assert.ok(calls.fallbackPlan.tasks.every(task => task.status === "draft" && task.assigneeSpecialistId === null));
   assert.equal(calls.approvals.length, 1);
   assert.equal(calls.executions[0].planId, calls.fallbackPlan.plan.id);
+});
+
+
+test("updates existing Solution Architect permissions instead of skipping the existing role", async () => {
+  const { handler, calls } = fixture({
+    existingSpecialists: [{
+      id: "architect-1", role: "solution_architect", version: 1,
+      payload: { allowedTools: [] },
+    }],
+  });
+  const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
+  assert.equal(result.status, 202);
+  assert.equal(calls.specialists.some(item => item.role === "solution_architect"), false);
+  assert.deepEqual(calls.updatedSpecialists, [{
+    specialistId: "architect-1",
+    expectedVersion: 1,
+    patch: { allowedTools: ["list_repo_directory", "read_repo_file"] },
+    at: "2026-11-08T00:00:00.000Z",
+  }]);
+  assert.deepEqual(result.body.updatedSpecialists, ["solution_architect"]);
 });

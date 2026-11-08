@@ -93,6 +93,37 @@ export function createPostgresDomainStore({ pool, createId }) {
       });
     },
 
+    async updateSpecialist({ specialistId, expectedVersion, patch, at }) {
+      const id = required(specialistId, "specialistId");
+      const updatedAt = timestamp(at);
+      const changes = object(patch, "patch");
+      const allowedFields = new Set(["allowedTools", "instructions", "competencies", "modelProfile"]);
+      if (Object.keys(changes).length === 0 || Object.keys(changes).some(key => !allowedFields.has(key))) {
+        throw new TypeError("Specialist patch contains no changes or unsupported fields");
+      }
+      if (changes.allowedTools !== undefined && !Array.isArray(changes.allowedTools)) {
+        throw new TypeError("Specialist allowedTools must be an array");
+      }
+      return transaction(pool, async client => {
+        const result = await client.query(
+          "SELECT id, organization_id, name, role, status, version, payload FROM studio.specialists WHERE id = $1 FOR UPDATE",
+          [id]);
+        const row = result.rows[0];
+        if (!row) throw Object.assign(new Error("Specialist not found"), { code: "SPECIALIST_NOT_FOUND" });
+        if (expectedVersion !== undefined && Number(row.version) !== expectedVersion) {
+          throw Object.assign(new Error("Specialist version conflict"), { code: "SPECIALIST_VERSION_CONFLICT" });
+        }
+        const specialist = { ...(row.payload || {}), ...changes, id: row.id, organizationId: row.organization_id, name: row.name, role: row.role, status: row.status, version: Number(row.version) + 1, updatedAt };
+        await client.query("UPDATE studio.specialists SET version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
+          [id, specialist.version, JSON.stringify(specialist), updatedAt]);
+        const idForEvent = eventId(createId);
+        const eventPayload = { name: row.name, role: row.role, changedFields: Object.keys(changes) };
+        await client.query("INSERT INTO studio.events (id, organization_id, aggregate_type, aggregate_id, event_type, payload, occurred_at) VALUES ($1,$2,'specialist',$3,'specialist.updated',$4::jsonb,$5)",
+          [idForEvent, row.organization_id, id, JSON.stringify(eventPayload), updatedAt]);
+        await insertOutboxEvent(client, { eventId: idForEvent, organizationId: row.organization_id, aggregateType: "specialist", aggregateId: id, eventType: "specialist.updated", payload: eventPayload, occurredAt: updatedAt });
+        return { specialist, eventId: idForEvent };
+      });
+    },
     async createPlanWithTasks({ plan: planInput, tasks: taskInputs }) {
       const plan = object(planInput, "plan");
       const planId = required(plan.id, "plan.id");
