@@ -13,6 +13,11 @@ function setup(tasks) {
   const store = {
     loadApprovedPlanForDispatch: async () => ({ plan, organizationId: "org-1", tasks }),
     listActiveSpecialists: async () => specialists,
+    retryFailedTask: async ({ taskId, expectedVersion }) => {
+      calls.push(["retry", taskId, expectedVersion]);
+      const task = tasks.find(item => item.id === taskId);
+      return { task: { ...task, status: "assigned" }, attempt: 2 };
+    },
     markTaskReady: async ({ taskId, expectedVersion }) => {
       calls.push(["ready", taskId, expectedVersion]);
       const task = tasks.find(item => item.id === taskId);
@@ -107,4 +112,19 @@ test("blocks stale assignments whose specialist is no longer active", async () =
   const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
   assert.equal(result.status, "blocked");
   assert.equal(result.blocked[0].code, "ASSIGNED_SPECIALIST_UNAVAILABLE");
+});
+
+
+test("retries a failed task once through the durable bounded-retry store", async () => {
+  const { dispatch, calls } = setup([{
+    id: "task-failed", projectId: "project-1", status: "failed", version: 6,
+    assigneeSpecialistId: "a-dev", requiredCompetencies: ["lua", "roblox"],
+  }]);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.status, "dispatched");
+  assert.deepEqual(result.assigned, [{
+    taskId: "task-failed", specialistId: "a-dev", taskStatus: "assigned",
+    resumed: true, retry: true, attempt: 2,
+  }]);
+  assert.deepEqual(calls, [["retry", "task-failed", 6]]);
 });
