@@ -13,8 +13,8 @@ function setup(tasks) {
   const store = {
     loadApprovedPlanForDispatch: async () => ({ plan, organizationId: "org-1", tasks }),
     listActiveSpecialists: async () => specialists,
-    retryFailedTask: async ({ taskId, expectedVersion }) => {
-      calls.push(["retry", taskId, expectedVersion]);
+    retryFailedTask: async ({ taskId, expectedVersion, maxAttempts }) => {
+      calls.push(["retry", taskId, expectedVersion, maxAttempts]);
       const task = tasks.find(item => item.id === taskId);
       return { task: { ...task, status: "assigned" }, attempt: 2 };
     },
@@ -126,5 +126,5 @@ test("retries a failed task once through the durable bounded-retry store", async
     taskId: "task-failed", specialistId: "a-dev", taskStatus: "assigned",
     resumed: true, retry: true, attempt: 2,
   }]);
-  assert.deepEqual(calls, [["retry", "task-failed", 6]]);
+  assert.deepEqual(calls, [["retry", "task-failed", 6, 3]]);
 });
