@@ -79,17 +79,35 @@ test("rejects stale patch SHA before writing", async () => {
   assert.equal(writes, 0);
 });
 
-test("rejects traversal, secrets, workflows, and paths outside the workspace", async () => {
+test("allows read-only source inspection outside the write workspace", async () => {
+  const source = "export const answer = 42;";
+  const calls = [];
+  const tools = createTools(async url => {
+    calls.push(url);
+    return response(200, { type: "file", content: Buffer.from(source).toString("base64"), sha: "source-sha" });
+  });
+  const result = await tools.execute({ name: "read_repo_file", arguments: { path: "studio/server.js" } });
+  assert.equal(result.content, source);
+  assert.match(calls[0], /contents\\/studio\\/server\\.js/);
+});
+
+test("keeps repository reads away from secrets, project data, workflows, and traversal", async () => {
   let calls = 0;
   const tools = createTools(async () => { calls += 1; return response(404); });
   for (const path of [
     "../outside.js", "studio/agent-workspace/../../outside.js",
-    "studio/agent-workspace/.env", "studio/agent-workspace/secrets/token.txt",
-    "studio/agent-workspace/.github/workflows/deploy.yml", "studio/projects/private.md",
-    "/studio/agent-workspace/file.js", "studio\\agent-workspace\\file.js",
+    ".env", "studio/.env", "studio/secrets/token.txt", "studio/credentials/key.json",
+    ".github/workflows/deploy.yml", "studio/projects/private.md",
+    "/studio/server.js", "studio\\\\server.js",
   ]) {
     await assert.rejects(tools.execute({ name: "read_repo_file", arguments: { path } }),
       error => error.code === "WORKSPACE_PATH_REJECTED");
+  }
+  for (const name of ["write_repo_file", "patch_repo_file"]) {
+    await assert.rejects(tools.execute({ name, arguments: {
+      path: "studio/server.js", content: "x", message: "no",
+      start_line: 1, end_line: 1, replacement: "x", expected_sha: "sha",
+    } }), error => error.code === "WORKSPACE_PATH_REJECTED");
   }
   assert.equal(calls, 0);
 });
