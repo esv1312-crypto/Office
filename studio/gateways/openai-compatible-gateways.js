@@ -354,6 +354,6 @@ export function createOpenAiCompatibleGateways({
           code: "QA_UNAVAILABLE",
         });
       },
-    }),,
+    }),
   });
 }
