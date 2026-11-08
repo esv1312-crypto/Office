@@ -140,6 +140,11 @@ test("reads current source from readBranch while writes remain on workspace bran
     path: "studio/agent-workspace/report.md", content: "verified", message: "Save verification",
   } });
   assert.equal(written.commitSha, "workspace-commit");
+  const readBack = await tools.execute({ name: "read_repo_file", arguments: {
+    path: "studio/agent-workspace/report.md", branch: "studio-ai-agent-workspace",
+  } });
+  assert.equal(readBack.sha, "main-source-sha");
+  assert.ok(calls.some(call => call.url.includes("/studio/agent-workspace/report.md?ref=studio-ai-agent-workspace")));
   const put = calls.find(call => call.method === "PUT");
   assert.ok(put.url.includes("/studio/agent-workspace/report.md"));
   assert.equal(JSON.parse(put.body).branch, "studio-ai-agent-workspace");
