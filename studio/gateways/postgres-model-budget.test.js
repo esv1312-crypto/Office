@@ -60,6 +60,14 @@ function fakePool({ capUsd = 1, staleCounters = false } = {}) {
             account.reserved_usd = Number(params[2]);
             return { rowCount: 1, rows: [] };
           }
+          if (sql.includes("UPDATE studio.model_budget_reservations") && sql.includes("actual_usd = 0")) {
+            const row = reservations.find(item => item.id === params[0] &&
+              item.budget_key === params[1] && item.status === "reserved");
+            if (!row) return { rowCount: 0, rows: [] };
+            row.status = "settled";
+            row.actual_usd = 0;
+            return { rowCount: 1, rows: [{ reserved_usd: row.reserved_usd }] };
+          }
           if (sql.includes("UPDATE studio.model_budget_reservations") &&
               sql.includes("actual_input_tokens = $3")) {
             const row = reservations.find(item => item.id === params[0] && item.status === "reserved");
@@ -123,4 +131,19 @@ test("failed requests are conservatively settled at their reservation instead of
   const snapshot = await budget.snapshot();
   assert.equal(snapshot.spentUsd, reservation.amountUsd);
   assert.equal(snapshot.reservedUsd, 0);
+});
+
+
+test("known non-billable rejections release the reservation without counting spend", async () => {
+  const pool = fakePool();
+  const budget = createPostgresModelBudget({ pool, capUsd: 1, budgetKey: "test" });
+  const reservation = await budget.reserve({
+    model: "deepseek/flash", role: "planner",
+    messages: [{ role: "user", content: "invalid request" }], maxTokens: 8,
+  });
+  await budget.release(reservation);
+  const snapshot = await budget.snapshot();
+  assert.equal(snapshot.spentUsd, 0);
+  assert.equal(snapshot.reservedUsd, 0);
+  assert.equal(snapshot.remainingUsd, 1);
 });
