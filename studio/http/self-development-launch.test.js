@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createSelfDevelopmentLaunchHandler } from "./self-development-launch.js";
 
-function fixture({ owner = true, priorPlan = null } = {}) {
+function fixture({ owner = true, priorPlan = null, plannerError = null } = {}) {
   const calls = { projects: [], specialists: [], plans: [], approvals: [], executions: [] };
   const pool = {
     async query(sql, params) {
@@ -16,11 +16,13 @@ function fixture({ owner = true, priorPlan = null } = {}) {
   const domain = {
     async createProject(project) { calls.projects.push(project); },
     async createSpecialist(specialist) { calls.specialists.push(specialist); },
+    async createPlanWithTasks(input) { calls.fallbackPlan = input; return input; },
   };
   const controlPlane = { runtime: {
     stores: { domain },
     director: { async plan(input) {
       calls.plans.push(input);
+      if (plannerError) throw plannerError;
       return { plan: { id: "plan-1", status: "proposed" } };
     } },
     approval: { async approve(input) {
@@ -69,4 +71,20 @@ test("does not create duplicate plan on repeated launch", async () => {
   assert.equal(result.body.planId, "existing-plan");
   assert.equal(calls.plans.length, 0);
   assert.equal(calls.executions.length, 0);
+});
+
+
+test("uses a deterministic, evidence-bounded bootstrap plan when planner output fails", async () => {
+  const { handler, calls } = fixture({
+    plannerError: Object.assign(new Error("invalid model JSON"), { code: "INVALID_MODEL_JSON" }),
+  });
+  const result = await handler({ auth: { actor: { id: "owner-1" } }, params: { organizationId: "org-1" } });
+  assert.equal(result.status, 202);
+  assert.equal(result.body.planSource, "deterministic-bootstrap-fallback");
+  assert.equal(result.body.plannerFailure.code, "INVALID_MODEL_JSON");
+  assert.equal(calls.fallbackPlan.plan.title, "AI Office Self-Development — Initial Audit and Roadmap");
+  assert.equal(calls.fallbackPlan.tasks.length, 6);
+  assert.ok(calls.fallbackPlan.tasks.every(task => task.status === "draft" && task.assigneeSpecialistId === null));
+  assert.equal(calls.approvals.length, 1);
+  assert.equal(calls.executions[0].planId, calls.fallbackPlan.plan.id);
 });
