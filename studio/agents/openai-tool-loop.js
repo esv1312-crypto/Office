@@ -95,7 +95,7 @@ export async function runOpenAiToolLoop({
   maxToolResultBytes = 12 * 1024,
   maxTotalToolResultBytes = 48 * 1024,
   maxTotalOutputTokens = 12000,
-  maxTotalPromptTokens = 120000,
+  maxTotalPromptTokens = 600000,
   requestTimeoutMs = 90_000,
   modelBudget = null,
   signal,
