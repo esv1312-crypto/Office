@@ -73,6 +73,7 @@ export async function runOpenAiToolLoop({
   maxTotalToolResultBytes = 48 * 1024,
   maxTotalOutputTokens = 12000,
   maxTotalPromptTokens = 120000,
+  requestTimeoutMs = 90_000,
   signal,
 }) {
   if (typeof client?.chat?.completions?.create !== "function") throw new TypeError("chat.completions.create is required");
@@ -86,6 +87,9 @@ export async function runOpenAiToolLoop({
   if (!Number.isInteger(maxTotalToolResultBytes) || maxTotalToolResultBytes < maxToolResultBytes) throw new TypeError("maxTotalToolResultBytes must be at least maxToolResultBytes");
   if (!Number.isInteger(maxTotalOutputTokens) || maxTotalOutputTokens < 1) throw new TypeError("maxTotalOutputTokens must be positive");
   if (!Number.isInteger(maxTotalPromptTokens) || maxTotalPromptTokens < 1) throw new TypeError("maxTotalPromptTokens must be positive");
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1_000 || requestTimeoutMs > 300_000) {
+    throw new TypeError("requestTimeoutMs must be between 1000 and 300000");
+  }
 
   const allowed = new Set(tools.map(item => item?.function?.name).filter(name => typeof name === "string"));
   if (allowed.size !== tools.length) throw new TypeError("tool definitions must have unique function names");
@@ -107,7 +111,7 @@ export async function runOpenAiToolLoop({
       max_tokens: Math.min(maxTokens, remainingOutput),
       tools,
       tool_choice: "auto",
-    }, signal ? { signal } : undefined);
+    }, { timeout: requestTimeoutMs, ...(signal ? { signal } : {}) });
     const requestUsage = usageFrom(response);
     usage.promptTokens += requestUsage.promptTokens;
     usage.completionTokens += requestUsage.completionTokens;
