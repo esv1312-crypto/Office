@@ -103,7 +103,7 @@ test("budget snapshot trusts the reservation ledger rather than drifted account 
   const snapshot = await budget.snapshot();
   assert.equal(snapshot.spentUsd, 0.07);
   assert.equal(snapshot.reservedUsd, 0);
-  assert.equal(snapshot.remainingUsd, 0.93);
+  assert.ok(Math.abs(snapshot.remainingUsd - 0.93) < 1e-9);
 });
 
 test("budget ledger records actual provider cost even when it exceeds the estimate", async () => {
