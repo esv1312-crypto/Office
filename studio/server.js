@@ -484,6 +484,10 @@ async function runConfiguredOwnerTask() {
     claimed = true;
     const existingPlanId = claim.rows?.[0]?.plan_id || null;
     const actor = { id: "legacy-office-owner", name: "AI-OFFICE owner" };
+    const recovery = await controlPlane.runtime.recovery.recover({ actor, limit: 50 });
+    if (recovery.recovered) {
+      console.log(`[studio] owner task recovered expired executions=${recovery.recovered}`);
+    }
     let executablePlan;
 
     if (existingPlanId) {
