@@ -1,4 +1,5 @@
 import { insertOutboxEvent } from "./postgres-outbox-store.js";
+import { hasCompetencyCoverage } from "../core/competency-matching.js";
 /**
  * PostgreSQL repositories for Studio projects, specialists, and tasks.
  * The caller injects a pg-compatible pool; this module never connects or migrates.
