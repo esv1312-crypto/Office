@@ -145,7 +145,7 @@ export function createGithubWorkspaceTools({
       const boundedEnd = Math.min(end, start + maxReadLines - 1, lines.length);
       const selected = lines.slice(start - 1, boundedEnd);
       return {
-        path, content: selected.join("\n"), sha: file.sha,
+        path, branch: readRef, content: selected.join("\n"), sha: file.sha,
         range: { startLine: start, endLine: boundedEnd, totalLines: lines.length },
         truncated: boundedEnd < Math.min(end, lines.length),
       };
