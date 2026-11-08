@@ -478,3 +478,15 @@ Never write “done” merely because a request was accepted or a plan says comp
 - **Budget snapshot at 15:14:16Z:** cap USD 2.00; settled spend USD 0.022717259; outstanding reservations USD 0.019338000. No model request is allowed to start unless its reservation fits within the remaining shared cap.
 - **Startup cleanup:** Legacy self-development, source-verification, product-pilot, owner-execution, and bootstrap-on-start triggers were disabled on the Runtime so they do not consume this master-task budget or compete with the Director.
 - **Next:** Verify that the 8,000-token planner returns valid JSON, that the new plan is persisted, and that worker execution proceeds past the former tool-call and context ceilings. Then verify QA, GitHub artifacts/PRs, and final budget totals. Do not describe the master office as completed until those checks pass.
+
+
+### 2026-11-08 — Final worker output/context allowances and current DeepSeek run
+
+- **PR #117:** https://github.com/esv1312-crypto/Office/pull/117 — merged as `223d0fea71e29adcb56f6d3b4de9916f0b2f7f7a`. Raised worker model completion allowance from 6,000 to 12,000 tokens after a live worker completion reached exactly 6,000 tokens and returned `EMPTY_MODEL_OUTPUT`.
+- **PR #118:** https://github.com/esv1312-crypto/Office/pull/118 — merged as `959e9843b66d0ffc275056510aa3bb821b58ca68`. Raised cumulative prompt-token budget to 600,000 in both the gateway and tool-loop defaults after two workers hit the 240,000 cumulative prompt-token ceiling.
+- **Latest deployment:** `dep-dbo95q9srm7s73ba9pb0` is live on commit `959e9843b66d0ffc275056510aa3bb821b58ca68`. Runtime startup confirms `deepseek/deepseek-v4.1-flash-1017` and `budget=2USD`.
+- **Current Director plan:** `73e30858-c2bb-4568-9d55-869df4b2cd7d`, title `Universal AI Studio: Evidence-Based Restore/Rebuild Execution Plan`. At 15:19:47Z it contained 21 planned tasks and 2 running tasks. The first active tasks are repository/runtime/data reconnaissance and the owner console.
+- **Live model proof:** planner returned 5,493 completion tokens (below its new 8,000 limit); two worker executions started with lease heartbeats confirmed; tool-loop calls are using the same DeepSeek Flash model with pre-call budget reservations.
+- **Budget snapshot at 15:19:47Z:** cap USD 2.00; settled spend USD 0.077712266; reserved USD 0.193643250; remaining available after reservations approximately USD 1.7286.
+- **Previous attempts:** earlier plans `017531d1-3dcd-400b-b339-7458cb12814e`, `336b3a4b-c02b-4aab-adb2-e03ee4af46fb`, and `8ca1a463-86d0-4925-ac27-fc619a765362` were not completed; their blockers included tool-call ceiling, tool-result context ceiling, truncated planner JSON, worker output ceiling, cumulative prompt-token ceiling, and a Render restart. Do not count them as completed deliverables.
+- **Next:** let the latest deployment run without further code deploys; monitor current worker tasks and budget. Verify committed artifacts, tests, QA verdicts, and any PRs before claiming the office build is complete.
