@@ -1,3 +1,5 @@
+import { createTask } from "../core/create-task.js";
+
 /**
  * Owner-only launch of the AI Office self-development project.
  * Creates a separate project inside the existing organization, ensures a
@@ -115,26 +117,115 @@ export function createSelfDevelopmentLaunchHandler({
       };
     }
 
-    const proposed = await controlPlane.runtime.director.plan({
-      request: SELF_DEVELOPMENT_BRIEF, project, actor,
-      constraints: {
-        maxTasks: 12,
-        requireEvidence: true,
-        noProductionChanges: true,
-        freeModelsOnly: true,
-      },
-    });
-    const plan = proposed.plan || proposed;
-    if (!plan?.id) throw Object.assign(new Error("Director did not persist a plan"), {
-      status: 502, code: "DIRECTOR_PLAN_NOT_CREATED",
-    });
+    let proposed;
+    let planSource = "director-model";
+    let plannerFailure = null;
+    try {
+      proposed = await controlPlane.runtime.director.plan({
+        request: SELF_DEVELOPMENT_BRIEF, project, actor,
+        constraints: {
+          maxTasks: 12,
+          requireEvidence: true,
+          noProductionChanges: true,
+          freeModelsOnly: true,
+        },
+      });
+    } catch (error) {
+      plannerFailure = {
+        code: error?.code || null,
+        status: Number.isInteger(error?.status) ? error.status : null,
+      };
+    }
+
+    let plan = proposed?.plan || proposed;
+    if (!plan?.id) {
+      planSource = "deterministic-bootstrap-fallback";
+      const fallbackPlan = {
+        id: createId(),
+        projectId: project.id,
+        organizationId,
+        title: "AI Office Self-Development — Initial Audit and Roadmap",
+        objective: "Establish an evidence-based development roadmap for a reliable autonomous universal AI office.",
+        summary: "A bounded bootstrap plan created because the configured planner did not return a valid persisted plan. Specialists must distinguish verified facts from assumptions and must not claim repository access they do not have.",
+        acceptanceCriteria: [
+          "Architecture and current runtime capabilities are mapped without unsupported claims",
+          "Autonomy lifecycle gaps and recovery risks are prioritized",
+          "Model reliability and structured-output failure modes are documented",
+          "GitHub worker access prerequisites and permission boundaries are explicit",
+          "A dependency-aware implementation backlog has owners and verifiable acceptance criteria",
+          "QA evidence requirements are defined for every implementation stage",
+        ],
+        planningSource: planSource,
+        plannerFailure,
+        modelSnapshot: {
+          provider: "studio-bootstrap",
+          model: "deterministic-self-development-template",
+          instructionVersion: "1",
+          parameters: { reason: "planner output unavailable; free-model policy preserved" },
+        },
+        status: "proposed",
+        version: 1,
+        createdAt: at,
+        updatedAt: at,
+        createdBy: actor.id,
+      };
+      const taskSpecs = [
+        {
+          title: "Map the current AI Office architecture and capability boundaries",
+          description: "Produce a structured architecture map from the verified project context and known runtime behavior. Explicitly label what is verified, inferred, and still requires repository inspection. Do not claim to have read source files or run commands unless tools provide evidence.",
+          competencies: ["architecture", "system.design", "integration"],
+          criteria: ["Architecture map covers intake, planning, specialists, dispatch, workers, QA, persistence, recovery, models, and tools", "Every statement is labelled verified, inferred, or unverified", "Missing evidence is listed as concrete follow-up work"],
+        },
+        {
+          title: "Audit the autonomous work lifecycle and failure recovery",
+          description: "Describe the complete lifecycle from owner request through planning, approval, task assignment, execution, QA, retry, and evidence. Identify failure states, recovery gaps, and safe stopping conditions using only verified context.",
+          competencies: ["architecture", "system.design", "integration"],
+          criteria: ["Lifecycle diagram or ordered state map is provided", "Failure modes and recovery paths are listed", "No unsupported claim of successful execution is made"],
+        },
+        {
+          title: "Prioritize the universal AI Office product roadmap",
+          description: "Create a dependency-aware roadmap for making the office useful across software, design, construction, marketing, research, and other domains. Separate foundational platform work from domain-specific specialists.",
+          competencies: ["product.strategy", "task.decomposition", "requirements"],
+          criteria: ["Roadmap is divided into ordered milestones", "Each milestone has an observable completion condition", "Universal extension points are distinguished from product-specific features"],
+        },
+        {
+          title: "Document model reliability and structured-output risks",
+          description: "Analyze the observed empty, invalid-JSON, and access-error behavior in planner model calls. Recommend a bounded free-model routing, parsing, timeout, and fallback strategy. Do not request paid-model activation.",
+          competencies: ["product.strategy", "task.decomposition", "requirements"],
+          criteria: ["Observed failures are separated from hypotheses", "Retry/fallback behavior has explicit bounds", "No paid model or unapproved spending is proposed"],
+        },
+        {
+          title: "Audit GitHub execution readiness and permission boundaries",
+          description: "Document the runtime prerequisites for workers to read and write the approved GitHub workspace, including credential presence, allowed paths, branch restrictions, artifact persistence, and how to verify actual commits. Never ask for or print secret values.",
+          competencies: ["architecture", "system.design", "integration"],
+          criteria: ["Required runtime credentials are named without exposing values", "Workspace path and branch restrictions are documented", "A safe end-to-end GitHub tool verification checklist is provided"],
+        },
+        {
+          title: "Define independent QA and evidence gates for self-improvement",
+          description: "Create acceptance and QA rules that prevent plans, drafts, unrun tests, or unsupported model claims from being reported as completed work.",
+          competencies: ["qa.review", "testing", "security.review", "acceptance.criteria"],
+          criteria: ["Every stage has evidence requirements", "QA independence and revision rules are defined", "Deployment and production changes require explicit gates"],
+        },
+      ];
+      const tasks = taskSpecs.map(spec => createTask({
+        id: createId(), projectId: project.id, title: spec.title,
+        description: spec.description, requiredCompetencies: spec.competencies,
+        acceptanceCriteria: spec.criteria, at,
+      }));
+      const persisted = await controlPlane.runtime.stores.domain.createPlanWithTasks({
+        plan: fallbackPlan, tasks,
+      });
+      plan = persisted.plan;
+    }
+
     const approved = await controlPlane.runtime.approval.approve({ plan, actor });
     const report = await controlPlane.runtime.workflow.run({ planId: plan.id, actor });
     return {
       status: report.status === "completed" ? 200 : 202,
       body: {
         projectId: project.id, projectCreated, addedSpecialists,
-        planId: plan.id, planStatus: approved.plan?.status || "approved",
+        planId: plan.id, planSource, plannerFailure,
+        planStatus: approved.plan?.status || "approved",
         execution: report,
       },
     };
