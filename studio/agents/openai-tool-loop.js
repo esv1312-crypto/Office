@@ -122,7 +122,7 @@ export async function runOpenAiToolLoop({
   executeTool,
   temperature = 0.2,
   maxTokens = 6000,
-  maxRounds = 40,
+  maxRounds = 50,
   maxToolCalls = 12,
   maxToolResultBytes = 12 * 1024,
   maxTotalToolResultBytes = 512 * 1024,
