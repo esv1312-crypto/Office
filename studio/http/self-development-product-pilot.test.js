@@ -37,7 +37,9 @@ test("asks the Director for a real Roblox implementation plan and runs the stand
   assert.match(brief, /studio\/agent-workspace\/roblox-fan-district\//);
   assert.match(brief, /server-authoritative/);
   assert.match(brief, /independently inspect/);
-  assert.deepEqual(calls.approvals, [calls.plans[0] && { id: "plan-new", status: "proposed", projectId: "project-1" }]);
+  assert.equal(calls.approvals.length, 1);
+  assert.equal(calls.approvals[0].plan.id, "plan-new");
+  assert.equal(calls.approvals[0].actor.id, "legacy-office-owner");
   assert.deepEqual(calls.executions, [{ planId: "plan-new", actor: { id: "legacy-office-owner" } }]);
 });
 
