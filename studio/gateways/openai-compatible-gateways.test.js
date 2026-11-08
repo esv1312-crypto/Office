@@ -100,7 +100,7 @@ test("QA requests JSON and preserves the independent reviewer verdict", async ()
 });
 
 test("rejects empty and invalid structured model output with stable error codes", async () => {
-  const empty = fixture({ contents: ["   ", "   "] }).gateways;
+  const empty = fixture({ contents: ["   ", "   ", "   ", "   "] }).gateways;
   await assert.rejects(
     empty.planningGateway.generatePlan({ request: "x", project: {} }),
     error => error.code === "EMPTY_MODEL_OUTPUT",
