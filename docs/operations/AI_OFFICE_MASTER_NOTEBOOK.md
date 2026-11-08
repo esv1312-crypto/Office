@@ -35,7 +35,7 @@
 - **Однако фактически используемая модель в активном Studio runtime на последнем снимке — `openrouter/free`, не DeepSeek.** Это подтверждается Render startup logs и Neon execution model snapshots.
 - В `studio/server.js` на deployed branch есть конфигурационный gate `STUDIO_ALLOW_PAID_MODELS`; при включении paid default в коде — `deepseek/deepseek-v4.1-flash-1017`. Но наличие этого кода не означает, что gate включён.
 - PR #66 (“Enable controlled paid OpenRouter models for Studio”) и PR #67 (“Add governed GitHub tool execution to Studio workers”) закрыты, но их feature branch `feat/openrouter-paid-autonomous-office` относительно deployed `studio-v1-foundation` diverged: 3 commits ahead / 43 behind. Нельзя вслепую мержить эту ветку.
-- PR #48–#50 описывали отдельный **одноразовый read-only DeepSeek audit** в legacy `src/server.js`, с отключёнными инструментами и бюджетом $1. Это не автономная разработка офиса и не доказательство, что DeepSeek подключён к Studio workers.
+- PR #48–#50 описывали отдельный **одноразовый read-only DeepSeek audit** в legacy `src/server.js`, с отключёнными инструментами и бюджетом $1. Там был локальный in-memory reserve/usage counter (`paidTestUsage`), а не долговечный глобальный бюджет Studio workers. Это не автономная разработка офиса и не доказательство, что DeepSeek подключён к Studio workers.
 - Текущий Studio runtime имеет token/tool budgets (например, bounded tool calls, prompt/output budgets, usage metadata), но **не считать их эквивалентом hard $1 spend cap**. До платного запуска нужно реализовать/проверить отдельное ограничение расходов для обычного Studio planner/worker/QA цикла.
 
 ## 3. Подтверждённые «руки» и доступы офиса
