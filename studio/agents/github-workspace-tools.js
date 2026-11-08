@@ -39,6 +39,11 @@ function safePath(value, allowedPrefix) {
 function safeWorkspacePath(value, allowedPrefix) {
   const candidate = required(value, "path");
   const normalized = normalizedPath(candidate);
+  if (normalized.startsWith("studio/") &&
+      normalized !== allowedPrefix.slice(0, -1) &&
+      !normalized.startsWith(allowedPrefix)) {
+    throw Object.assign(new Error("Repository-root paths are not permitted for workspace writes"), { code: "WORKSPACE_PATH_REJECTED" });
+  }
   const scoped = normalized === allowedPrefix.slice(0, -1) || normalized.startsWith(allowedPrefix)
     ? normalized
     : allowedPrefix + normalized;
