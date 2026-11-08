@@ -316,7 +316,7 @@ export function createOpenAiCompatibleGateways({
 
     qaGateway: Object.freeze({
       async review({ task, artifact, reviewer, signal }) {
-        const result = await complete("qa", [
+        const messages = [
           {
             role: "system",
             content: [
@@ -334,11 +334,25 @@ export function createOpenAiCompatibleGateways({
             role: "user",
             content: JSON.stringify({ task, artifact, reviewer }),
           },
-        ], { signal });
-        return {
-          ...parseJson(result.content, "qa"),
-          modelSnapshot: result.modelSnapshot,
-        };
+        ];
+        let lastError;
+        for (const jsonMode of [true, false]) {
+          try {
+            const result = await complete("qa", messages, { signal, jsonMode });
+            return {
+              ...parseJson(result.content, "qa"),
+              modelSnapshot: { ...result.modelSnapshot, jsonMode, retryUsed: !jsonMode },
+            };
+          } catch (error) {
+            lastError = error;
+            const retryable = ["EMPTY_MODEL_OUTPUT", "INVALID_MODEL_JSON"].includes(error?.code) ||
+              [403, 429, 500, 502, 503, 504].includes(error?.status);
+            if (!retryable) throw error;
+          }
+        }
+        throw lastError || Object.assign(new Error("QA model returned no review"), {
+          code: "QA_UNAVAILABLE",
+        });
       },
     }),
   });
