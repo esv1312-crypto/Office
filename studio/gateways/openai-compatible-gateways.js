@@ -56,7 +56,7 @@ function firstJsonObject(text) {
     const char = text[index];
     if (inString) {
       if (escaped) escaped = false;
-      else if (char === "\\\\") escaped = true;
+      else if (char === "\\") escaped = true;
       else if (char === '"') inString = false;
       continue;
     }
@@ -72,12 +72,12 @@ function firstJsonObject(text) {
 
 function parseJson(content, role) {
   if (!content || !content.trim()) {
-    throw Object.assign(new Error(`${role} model returned empty content`), {
+    throw Object.assign(new Error(role + " model returned empty content"), {
       code: "EMPTY_MODEL_OUTPUT",
     });
   }
 
-  const text = content.trim().replace(/^```(?:json)?\\s*/i, "").replace(/\\s*```$/, "");
+  const text = content.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/, "");
   const candidates = [text, firstJsonObject(text)].filter(Boolean);
   for (const candidate of candidates) {
     try {
@@ -86,7 +86,7 @@ function parseJson(content, role) {
     } catch {}
   }
 
-  throw Object.assign(new Error(`${role} model returned invalid JSON`), {
+  throw Object.assign(new Error(role + " model returned invalid JSON"), {
     code: "INVALID_MODEL_JSON",
   });
 }
