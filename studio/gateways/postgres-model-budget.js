@@ -211,6 +211,28 @@ export function createPostgresModelBudget({
     }
   }
 
+  async function release(reservation) {
+    if (!reservation?.id) return;
+    await ensureSchema();
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      const result = await db.query(`
+        UPDATE studio.model_budget_reservations
+        SET status = 'settled', actual_usd = 0, settled_at = now()
+        WHERE id = $1 AND budget_key = $2 AND status = 'reserved'
+        RETURNING reserved_usd
+      `, [reservation.id, budgetKey]);
+      if (result.rowCount) await refreshAccountFromLedger(db);
+      await db.query("COMMIT");
+    } catch (error) {
+      await db.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      db.release();
+    }
+  }
+
   async function snapshot() {
     await ensureSchema();
     const result = await pool.query(`
@@ -235,5 +257,5 @@ export function createPostgresModelBudget({
     };
   }
 
-  return Object.freeze({ reserve, settle, settleFailure, snapshot, ensureSchema });
+  return Object.freeze({ reserve, settle, settleFailure, release, snapshot, ensureSchema });
 }
