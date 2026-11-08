@@ -29,6 +29,7 @@ These are safety ceilings, not targets. A healthy task should normally finish we
 - The reservation ledger is the source of truth; denormalized account totals are refreshed from it.
 - Record the provider-reported cost when available, even if it exceeds the estimate. Never clamp real cost to the reservation.
 - If a request fails ambiguously after it may have reached the provider, settle its reservation at the reserved maximum. Do not silently release potentially billable work.
+- Release reservations only for explicit non-billable rejections (400, 401, 403, 404, 422, 429); treat timeouts and ambiguous server/network failures conservatively.
 - Reservations older than 15 minutes are conservatively reconciled as spent, protecting against crashes between provider completion and database settlement.
 - Keep a hard owner-approved cap. Exhaustion blocks new paid requests; no automatic cap increase or model fallback is permitted.
 - Configure `STUDIO_MODEL_INPUT_USD_PER_MILLION` and `STUDIO_MODEL_OUTPUT_USD_PER_MILLION` from the current selected provider/model rates. The defaults are intentionally conservative and must not be represented as the provider's invoice price.
