@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createWorkerPool } from "./worker-pool.js";
 
-function fixture({ concurrency = 2, failures = {} } = {}) {
+function fixture({ concurrency = 2, failures = {}, delayMs = 10 } = {}) {
   const calls = [];
   let active = 0;
   let maximumActive = 0;
@@ -25,7 +25,7 @@ function fixture({ concurrency = 2, failures = {} } = {}) {
         maximumActive = Math.max(maximumActive, active);
         calls.push(input);
         try {
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise(resolve => setTimeout(resolve, delayMs));
           if (failures[input.taskId]) throw Object.assign(new Error("worker exploded"), { code: "WORKER_CRASH" });
           return { executionId: `exec-${input.taskId}`, status: "qa", artifactId: `artifact-${input.taskId}`, output: "done" };
         } finally { active -= 1; }
@@ -70,4 +70,19 @@ test("validates concurrency and assignment input", async () => {
   assert.throws(() => fixture({ concurrency: 0 }), /concurrency/);
   const f = fixture();
   await assert.rejects(f.pool.executeAssignments({}), /assignments must be an array/);
+});
+
+
+test("enforces one global concurrency limit across overlapping plan runs", async () => {
+  const f = fixture({ concurrency: 2, delayMs: 40 });
+  const first = f.pool.executeAssignments(["a", "b"].map(id => ({
+    taskId: id, specialistId: `spec-${id}`,
+  })));
+  const second = f.pool.executeAssignments(["c", "d"].map(id => ({
+    taskId: id, specialistId: `spec-${id}`,
+  })));
+  const [firstResults, secondResults] = await Promise.all([first, second]);
+  assert.equal(firstResults.length + secondResults.length, 4);
+  assert.ok([...firstResults, ...secondResults].every(item => item.status === "qa"));
+  assert.equal(f.maximumActive, 2);
 });

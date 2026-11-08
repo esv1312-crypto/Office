@@ -15,6 +15,21 @@ export function createWorkerPool({ worker, directory, createWorkerId, concurrenc
     throw new TypeError("concurrency must be an integer between 1 and 32");
   }
 
+  let activeWorkers = 0;
+  const waitingWorkers = [];
+  async function acquireWorkerSlot() {
+    if (activeWorkers < concurrency) {
+      activeWorkers += 1;
+      return;
+    }
+    await new Promise(resolve => waitingWorkers.push(resolve));
+  }
+  function releaseWorkerSlot() {
+    const next = waitingWorkers.shift();
+    if (next) next();
+    else activeWorkers -= 1;
+  }
+
   return Object.freeze({
     concurrency,
     async executeAssignments(assignments) {
@@ -45,18 +60,23 @@ export function createWorkerPool({ worker, directory, createWorkerId, concurrenc
                 code: "ASSIGNMENT_STALE",
               });
             }
-            const result = await worker.execute({
-              taskId: task.id, specialist, workerId: createWorkerId(),
-            });
-            results[index] = {
-              taskId: task.id, specialistId: specialist.id,
-              executionId: result?.executionId || null,
-              status: result?.status || "invalid_worker_result",
-              artifactId: result?.artifactId || null,
-              output: result?.output,
-              errorCode: result?.errorCode || null,
-              error: result?.error || null,
-            };
+            await acquireWorkerSlot();
+            try {
+              const result = await worker.execute({
+                taskId: task.id, specialist, workerId: createWorkerId(),
+              });
+              results[index] = {
+                taskId: task.id, specialistId: specialist.id,
+                executionId: result?.executionId || null,
+                status: result?.status || "invalid_worker_result",
+                artifactId: result?.artifactId || null,
+                output: result?.output,
+                errorCode: result?.errorCode || null,
+                error: result?.error || null,
+              };
+            } finally {
+              releaseWorkerSlot();
+            }
           } catch (error) {
             results[index] = {
               taskId: assignment?.taskId || null,
