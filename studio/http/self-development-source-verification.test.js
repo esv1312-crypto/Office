@@ -40,6 +40,7 @@ test("creates one scoped source-verification plan, approves it, and executes thr
   assert.ok(task.description.includes("studio/agents/github-workspace-tools.js"));
   assert.ok(task.description.includes("studio/agents/worker-runtime.js lines 180-188 and 238-245"));
   assert.ok(task.description.includes("Do NOT put the evidence file's own blob SHA"));
+  assert.ok(task.description.includes("exact bounded source snippets from the three allowlisted source files"));
   assert.ok(task.description.includes("studio/agent-workspace/verification/post-pr81-source-audit-v6.md"));
   assert.deepEqual(calls.approved, [calls.created[0].plan.id]);
   assert.deepEqual(calls.executed, [{ planId: calls.created[0].plan.id, actor: { id: "legacy-office-owner" } }]);
