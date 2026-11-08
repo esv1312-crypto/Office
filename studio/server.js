@@ -471,7 +471,7 @@ async function runConfiguredOwnerTask() {
              AND studio.owner_task_runs.plan_id IS NOT NULL
              AND EXISTS (
                SELECT 1 FROM studio.tasks t
-                WHERE t.plan_id = studio.owner_task_runs.plan_id
+                WHERE t.plan_id::text = studio.owner_task_runs.plan_id
                   AND t.status NOT IN ('completed', 'cancelled')
              )
            )
