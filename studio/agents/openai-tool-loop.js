@@ -44,12 +44,16 @@ function evidenceForTool({ name, arguments: rawArguments, result }) {
   ]);
   const isWorkspaceEvidenceReadback = typeof path === "string" &&
     path.startsWith("studio/agent-workspace/verification/");
+  const isWorkspaceProductReadback = typeof path === "string" &&
+    path.startsWith("studio/agent-workspace/") && !isWorkspaceEvidenceReadback;
   const isAllowlistedSourceRead = typeof path === "string" && sourceEvidencePaths.has(path);
   if (name === "read_repo_file" &&
-      (isWorkspaceEvidenceReadback || isAllowlistedSourceRead) &&
+      (isWorkspaceEvidenceReadback || isWorkspaceProductReadback || isAllowlistedSourceRead) &&
       typeof result?.content === "string") {
     const contentBytes = Buffer.byteLength(result.content, "utf8");
-    evidence.contentKind = isWorkspaceEvidenceReadback ? "workspace-verification-readback" : "source-snippet";
+    evidence.contentKind = isWorkspaceEvidenceReadback
+      ? "workspace-verification-readback"
+      : isWorkspaceProductReadback ? "workspace-product-readback" : "source-snippet";
     if (contentBytes <= 8192) evidence.content = result.content;
     else {
       evidence.contentTruncated = true;

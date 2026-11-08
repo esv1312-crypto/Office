@@ -53,7 +53,7 @@ test("worker uses only specialist-granted tools and records real tool-call evide
   assert.equal(calls[0].tools[0].function.name, "read_repo_file");
   assert.equal(calls[1].messages.at(-1).role, "tool");
   assert.equal(result.modelSnapshot.toolCallsExecuted, 1);
-  assert.deepEqual(result.toolEvidence, [{ name: "read_repo_file", status: "ok", path: "studio/agent-workspace/a.js", branch: "studio-v1-foundation", sha: "verified-sha", range: { startLine: 1, endLine: 1, totalLines: 1 } }]);
+  assert.deepEqual(result.toolEvidence, [{ name: "read_repo_file", status: "ok", path: "studio/agent-workspace/a.js", branch: "studio-v1-foundation", sha: "verified-sha", range: { startLine: 1, endLine: 1, totalLines: 1 }, contentKind: "workspace-product-readback", content: "export const x = 1;" }]);
   assert.equal(result.modelSnapshot.model, "deepseek/deepseek-v4.1-flash-1017");
 });
 
