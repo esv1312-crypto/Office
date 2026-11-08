@@ -241,7 +241,7 @@ test("settles a failed planner request conservatively so its reservation cannot 
   });
   await assert.rejects(
     gateways.planningGateway.generatePlan({ request: "Plan", project: {} }),
-    error => error.status === 503,
+    error => error.status === 400,
   );
   assert.deepEqual(events, ["planner-reservation"]);
 });
