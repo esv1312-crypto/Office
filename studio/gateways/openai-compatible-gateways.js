@@ -114,7 +114,7 @@ export function createOpenAiCompatibleGateways({
   maxToolResultBytes = 24 * 1024,
   maxTotalToolResultBytes = 256 * 1024,
   maxTotalOutputTokens = 24000,
-  maxTotalPromptTokens = 240000,
+  maxTotalPromptTokens = 600000,
   modelBudget = null,
 }) {
   if (!client?.chat?.completions ||
