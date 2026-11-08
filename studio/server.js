@@ -144,7 +144,7 @@ const models = {
   planner: {
     model: modelEnv("STUDIO_PLANNER_MODEL"),
     temperature: 0.2,
-    maxTokens: 3000,
+    maxTokens: 8000,
     instructionVersion: "studio-v1",
   },
   worker: {
