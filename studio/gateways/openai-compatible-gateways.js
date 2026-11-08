@@ -340,11 +340,13 @@ export function createOpenAiCompatibleGateways({
         const candidates = [
           { model: configs.qa.model, fallbackUsed: false },
           { model: "nvidia/nemotron-3.5-lightning:free", fallbackUsed: true },
+          { model: "google/gemma-4-31b-it:free", fallbackUsed: true },
         ].filter((candidate, index, all) =>
           all.findIndex(item => item.model === candidate.model) === index
         );
         for (const candidate of candidates) {
-          for (const jsonMode of [true, false]) {
+          const responseModes = candidate.fallbackUsed ? [false] : [true, false];
+          for (const jsonMode of responseModes) {
             try {
               const result = await complete("qa", messages, {
                 signal, jsonMode, modelOverride: candidate.model,
