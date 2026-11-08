@@ -15,17 +15,17 @@ function required(value, field) {
 
 const SELF_DEVELOPMENT_PROJECT = "AI Office Self-Development";
 const SELF_DEVELOPMENT_PROFILE = "ai-office-platform";
-const SELF_DEVELOPMENT_PLAN_TITLE = "AI Office Self-Development — First Implementation Sprint";
+const SELF_DEVELOPMENT_PLAN_TITLE = "AI Office Self-Development — Sprint 2: Reliable Autonomous Execution";
 const SELF_DEVELOPMENT_BRIEF = [
-  "Create a plan titled exactly: AI Office Self-Development — First Implementation Sprint.",
-  "This is the first implementation sprint to improve Universal AI Studio / AI Office itself. The previous initial audit and roadmap are already complete. Do not repeat the audit and do not work on the Roblox Fan District product.",
-  "Use source-grounded repository inspection to investigate the observed orchestration defects: a plan reported completed with zero assigned tasks and zero executions; worker executions repeatedly expiring their leases; and QA tasks being retried repeatedly without producing verifiable source read-back.",
+  "Create a new plan titled exactly: AI Office Self-Development — Sprint 2: Reliable Autonomous Execution. This is a fresh sprint; do not resume or duplicate the failed Sprint 1 plan.",
+  "Improve Universal AI Studio / AI Office itself. The initial audit and Sprint 1 are already recorded; do not repeat either and do not work on the Roblox Fan District product.",
+  "Focus narrowly on two verified orchestration bottlenecks: failed tasks are not eligible for redispatch (inspect studio/director/director-dispatch.js), and the tool-loop helper defaults to 8 rounds / 12 calls while the Runtime gateway now passes 12 rounds / 24 calls (inspect studio/agents/openai-tool-loop.js and studio/gateways/openai-compatible-gateways.js). The zero-work false-completion defect is already fixed in the latest merged source; do not redo it.",
   "Inspect the actual source files on studio-v1-foundation using only list_repo_directory and read_repo_file. Cite exact repository paths, relevant line ranges, observed behavior, and distinguish proven root causes from hypotheses. Do not infer source behavior from logs alone.",
-  "Create a dependency-aware plan with no more than four tasks: (1) architect identifies and documents the highest-priority verified root cause, (2) Implementation Specialist prepares a minimal proposed code patch and focused regression tests, (3) an independent Quality Engineer reads the exact persisted patch files back from GitHub and reviews correctness, safety, and test coverage, and (4) only if needed, a small follow-up integration task.",
-  "Use only these exact canonical requiredCompetencies when creating tasks: architect = architecture, system.design, integration, repository inspection, source code analysis, root cause analysis, technical documentation; implementation = implementation, coding, documentation, code patching, test development, regression testing, source code modification; platform QA = qa.review, testing, security.review, acceptance.criteria, code review, quality assurance, test coverage analysis, safety assessment, platform.qa. Do not invent alternative competency labels. Assign platform QA to the Quality Engineer, not Roblox QA.",
+  "Create exactly three small, dependency-aware tasks: (1) Solution Architect inspects the two named source areas and defines a bounded retry policy with a hard attempt ceiling plus role-appropriate tool budgets; (2) Implementation Specialist prepares one minimal patch and focused regression tests for those behaviors; (3) independent universal Quality Engineer reads the exact persisted patch and tests back from GitHub and reviews them. Each task must require only a few repository tool calls and have explicit outputs.",
+  "Use only these canonical requiredCompetencies: architect = architecture, system.design, integration, repository inspection, source code analysis, root cause analysis, technical documentation; implementation = implementation, coding, documentation, code patching, test development, regression testing, source code modification; platform QA = qa.review, testing, security.review, acceptance.criteria, code review, quality assurance, test coverage analysis, safety assessment, platform.qa. Include platform.qa explicitly and assign platform QA to the universal Quality Engineer, never Roblox QA.",
   "All proposed code and test files must be written only under studio/agent-workspace/ai-office-self-development/ on studio-ai-agent-workspace. Use write_repo_file, then read_repo_file on the exact returned path and verify the content. Do not modify studio-v1-foundation or any production path.",
   "The current worker tools do not provide shell execution or automatic pull-request creation. Do not claim tests were run, production code was changed, or a PR was opened. Provide exact test commands and a reviewable patch/diff for owner review.",
-  "Every task must have concrete outputs, dependencies, and acceptance criteria. Require actual worker execution records, exact source read evidence, persisted workspace files, commit/blob identifiers, and an independent QA verdict.",
+  "Every task must have concrete outputs, dependencies, and acceptance criteria. Require actual worker execution records, exact source read evidence, persisted workspace files, commit/blob identifiers, and an independent QA verdict. Never claim tests ran: Runtime currently has no shell/test runner, so test files are proposed artifacts only.",
   "Respect all path, branch, credential, and production safety restrictions. Do not change secrets, workflows, infrastructure, live data, or deployment configuration.",
   "Use only the currently enabled free model policy. Do not enable paid models or incur unapproved costs."
 ].join("\n");
@@ -175,7 +175,7 @@ export function createSelfDevelopmentLaunchHandler({
       proposed = await controlPlane.runtime.director.plan({
         request: SELF_DEVELOPMENT_BRIEF, project, actor,
         constraints: {
-          maxTasks: 4,
+          maxTasks: 3,
           requireEvidence: true,
           noProductionChanges: true,
           freeModelsOnly: true,
@@ -196,8 +196,8 @@ export function createSelfDevelopmentLaunchHandler({
         projectId: project.id,
         organizationId,
         title: SELF_DEVELOPMENT_PLAN_TITLE,
-        objective: "Prepare the first source-grounded, independently reviewed patch for improving the AI Office autonomous execution lifecycle.",
-        summary: "A bounded first implementation sprint. Workers must inspect current source, prepare proposed code and regression-test files in the isolated workspace only, and have QA read back and review the exact persisted files.",
+        objective: "Prepare a source-grounded, independently reviewed patch for bounded task retry and role-appropriate worker tool budgets.",
+        summary: "A narrow second sprint addressing failed-task redispatch and fixed worker tool budgets. Workers prepare proposed code and regression-test files in the isolated workspace only; QA reads back and reviews the exact persisted files.",
         acceptanceCriteria: [
           "The highest-priority orchestration defect is grounded in exact source paths and line ranges",
           "A minimal proposed patch and focused regression tests are persisted in the isolated workspace branch",
@@ -222,22 +222,22 @@ export function createSelfDevelopmentLaunchHandler({
       };
       const taskSpecs = [
         {
-          title: "Inspect orchestration completion and worker lease recovery",
-          description: "Read the current workflow, task-state, dispatch, execution lease, recovery, and QA source files. Identify one highest-priority proven defect using exact paths and line ranges. Do not infer source behavior or claim tests were run.",
+          title: "Inspect failed-task redispatch and worker tool budgets",
+          description: "Read only studio/director/director-dispatch.js, studio/agents/openai-tool-loop.js, and studio/gateways/openai-compatible-gateways.js. Explain why failed tasks are not redispatched and identify the exact fixed tool-loop limits. Propose a bounded retry policy with a hard ceiling. Cite exact source paths and line ranges. Do not claim tests ran.",
           competencies: ["architecture", "system.design", "integration"],
           criteria: ["Exact source paths and line ranges are cited", "Observed code behavior is separated from hypotheses", "A minimal fix strategy and regression scenario are defined"],
         },
         {
-          title: "Prepare an isolated patch and regression tests for the verified defect",
-          description: "Prepare a reviewable unified diff and focused regression-test files for the verified orchestration defect. Write only under studio/agent-workspace/ai-office-self-development/ on studio-ai-agent-workspace. Read every written file back and include commit/blob identifiers. Do not claim the production source was modified or tests were executed.",
+          title: "Prepare isolated retry-policy and worker-budget patch",
+          description: "Prepare one reviewable unified diff and focused regression-test files for bounded failed-task retries and configurable worker tool budgets. Write no more than two proposed files under studio/agent-workspace/ai-office-self-development/ on studio-ai-agent-workspace. Read each written file back and include commit/blob identifiers. Do not claim production source was modified or tests were executed.",
           competencies: ["implementation", "coding"],
           criteria: ["Patch is grounded in source read-back", "Regression test covers the reproduced failure mode", "All files are persisted in the allowed workspace and read back exactly", "No production path is modified"],
         },
         {
-          title: "Independently review the persisted self-development patch",
-          description: "Use read-only repository tools to inspect the exact patch and test files from studio-ai-agent-workspace. Compare the proposed changes with source files on studio-v1-foundation, identify correctness and safety issues, and provide an independent verdict. Do not claim tests were run.",
-          competencies: ["qa.review", "testing", "security.review", "acceptance.criteria"],
-          criteria: ["QA independently reads exact persisted files", "Patch and tests are checked against source and acceptance criteria", "Missing runtime or test execution evidence is clearly identified", "Reviewer is independent from the implementation specialist"],
+          title: "Independently review the persisted retry and budget patch",
+          description: "Use read-only repository tools to inspect the exact persisted patch and test files from studio-ai-agent-workspace. Compare with source files on studio-v1-foundation, verify retry ceilings, error classification, tool-budget bounds, and production isolation, then provide an independent verdict. Do not claim tests were run.",
+          competencies: ["qa.review", "testing", "security.review", "acceptance.criteria", "platform.qa"],
+          criteria: ["Universal Quality Engineer independently reads exact persisted files", "Patch and tests are checked against source and acceptance criteria", "Retry ceiling and tool budgets are bounded and safe", "Missing runtime or test execution evidence is clearly identified", "Reviewer is independent from the implementation specialist"],
         },
       ];
       const tasks = taskSpecs.map(spec => createTask({
