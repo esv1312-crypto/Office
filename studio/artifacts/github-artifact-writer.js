@@ -173,7 +173,7 @@ export function createGithubArtifactWriter({
           code: "ARTIFACT_READBACK_FAILED",
         });
       }
-      const persistedBytes = Buffer.from(readBackBody.content.replace(/\\s/g, ""), "base64");
+      const persistedBytes = Buffer.from(readBackBody.content.replace(/\s/g, ""), "base64");
       const persistedChecksum = createHash("sha256").update(persistedBytes).digest("hex");
       const expectedBlobSha = response.body?.content?.sha;
       if (persistedChecksum !== checksum ||
