@@ -158,13 +158,40 @@ export function createGithubArtifactWriter({
         }),
         signal,
       });
+
+      // A successful Contents API write is not proof that the intended bytes
+      // are now readable from the target branch. Read the file independently
+      // and compare the exact UTF-8 bytes before reporting persistence success.
+      const readBack = await request(
+        `${url}?ref=${encodeURIComponent(targetBranch)}`,
+        { method: "GET", signal },
+      );
+      const readBackBody = readBack.body;
+      if (readBack.notFound || readBackBody?.encoding !== "base64" ||
+          typeof readBackBody?.content !== "string") {
+        throw Object.assign(new Error("Artifact repository read-back could not verify the saved file"), {
+          code: "ARTIFACT_READBACK_FAILED",
+        });
+      }
+      const persistedBytes = Buffer.from(readBackBody.content.replace(/\s/g, ""), "base64");
+      const persistedChecksum = createHash("sha256").update(persistedBytes).digest("hex");
+      const expectedBlobSha = response.body?.content?.sha;
+      if (persistedChecksum !== checksum ||
+          (typeof expectedBlobSha === "string" && readBackBody.sha !== expectedBlobSha)) {
+        throw Object.assign(new Error("Artifact repository read-back did not match the submitted content"), {
+          code: "ARTIFACT_READBACK_MISMATCH",
+        });
+      }
+
       return Object.freeze({
         path: safePath,
         branch: targetBranch,
         sha256: checksum,
-        blobSha: response.body?.content?.sha || null,
+        readBackSha256: persistedChecksum,
+        readBackVerified: true,
+        blobSha: readBackBody.sha || expectedBlobSha || null,
         commitSha: response.body?.commit?.sha || null,
-        url: response.body?.content?.html_url || null,
+        url: response.body?.html_url || response.body?.content?.html_url || null,
         bytes: bytes.byteLength,
         provenance: Object.freeze({ ...provenance }),
       });
