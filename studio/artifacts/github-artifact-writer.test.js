@@ -21,7 +21,13 @@ test("writes a new text artifact to the configured branch and returns provenance
     token: "test-token",
     fetchImpl: async (url, options) => {
       calls.push({ url, options });
-      if (options.method === "GET") return response(404);
+      if (options.method === "GET" && calls.length === 1) return response(404);
+      if (options.method === "GET") return response(200, {
+        sha: "blob-sha",
+        encoding: "base64",
+        content: Buffer.from(content, "utf8").toString("base64"),
+        html_url: "https://github.com/example/office/blob/studio-v1-foundation/studio/projects/demo/artifacts/task-1.md",
+      });
       return response(201, {
         content: { sha: "blob-sha", html_url: "https://github.com/example/office/blob/studio-v1-foundation/studio/projects/demo/artifacts/task-1.md" },
         commit: { sha: "commit-sha" },
@@ -33,14 +39,18 @@ test("writes a new text artifact to the configured branch and returns provenance
     path: "studio/projects/demo/artifacts/task-1.md", content, provenance,
   });
 
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.equal(calls[0].options.method, "GET");
   assert.match(calls[0].url, /ref=studio-v1-foundation$/);
   assert.equal(calls[1].options.method, "PUT");
+  assert.equal(calls[2].options.method, "GET");
+  assert.match(calls[2].url, /ref=studio-v1-foundation$/);
   const payload = JSON.parse(calls[1].options.body);
   assert.equal(payload.branch, "studio-v1-foundation");
   assert.equal(Buffer.from(payload.content, "base64").toString("utf8"), content);
   assert.equal(result.sha256, createHash("sha256").update(content).digest("hex"));
+  assert.equal(result.readBackSha256, result.sha256);
+  assert.equal(result.readBackVerified, true);
   assert.equal(result.commitSha, "commit-sha");
   assert.equal(result.path, "studio/projects/demo/artifacts/task-1.md");
   assert.equal(result.provenance.taskId, "task-1");
@@ -48,10 +58,19 @@ test("writes a new text artifact to the configured branch and returns provenance
 
 test("updates an existing file using its current blob SHA", async () => {
   let putPayload;
+  let getCount = 0;
   const writer = createGithubArtifactWriter({
     owner: "example", repo: "office", branch: "studio-v1-foundation", token: "test-token",
     fetchImpl: async (_url, options) => {
-      if (options.method === "GET") return response(200, { sha: "existing-blob" });
+      if (options.method === "GET") {
+        getCount += 1;
+        if (getCount === 1) return response(200, { sha: "existing-blob" });
+        return response(200, {
+          sha: "new-blob",
+          encoding: "base64",
+          content: Buffer.from("updated", "utf8").toString("base64"),
+        });
+      }
       putPayload = JSON.parse(options.body);
       return response(200, { content: { sha: "new-blob" }, commit: { sha: "new-commit" } });
     },
@@ -60,6 +79,38 @@ test("updates an existing file using its current blob SHA", async () => {
     path: "studio/projects/demo/artifacts/task.md", content: "updated", provenance,
   });
   assert.equal(putPayload.sha, "existing-blob");
+});
+
+
+test("fails persistence when independent read-back content differs from the submitted bytes", async () => {
+  let getCount = 0;
+  const writer = createGithubArtifactWriter({
+    owner: "example", repo: "office", branch: "studio-v1-foundation", token: "test-token",
+    fetchImpl: async (_url, options) => {
+      if (options.method === "GET") {
+        getCount += 1;
+        if (getCount === 1) return response(404);
+        return response(200, {
+          sha: "blob-sha",
+          encoding: "base64",
+          content: Buffer.from("different content", "utf8").toString("base64"),
+        });
+      }
+      return response(201, {
+        content: { sha: "blob-sha" },
+        commit: { sha: "commit-sha" },
+      });
+    },
+  });
+
+  await assert.rejects(
+    writer.writeTextArtifact({
+      path: "studio/projects/demo/artifacts/task.md",
+      content: "expected content",
+      provenance,
+    }),
+    error => error.code === "ARTIFACT_READBACK_MISMATCH",
+  );
 });
 
 test("rejects traversal, absolute paths, and paths outside the workspace before network access", async () => {
