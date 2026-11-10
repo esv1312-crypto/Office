@@ -49,3 +49,12 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - PR #132 head `402c453ebff7acf340769a5be32d0052a0c7b43f`: all four checks passed (runtime smoke, isolated tests, node tests, PostgreSQL integration); still open/unmerged.
 - Render Loki log retrieval returned 503; no deploy/environment/DB/model action was taken.
 - Next: investigate GitHub/Render integration and check gating; no manual deployment until explicitly authorized.
+
+## 2026-11-10 — Render source connection investigation
+- Official Render deploy docs say auto-deploy requires a connected Git provider; services using a public Git repository URL require manual deploys.
+- PR #130 merge SHA `42577fa9cd14ce603a865ddde3643851f1c138d9` has four successful GitHub Actions checks with that exact SHA; commit message has no Render skip phrase.
+- Render service API confirms watched branch `studio-v1-foundation`, `autoDeploy=yes`, `autoDeployTrigger=checksPass`, repo URL `https://github.com/esv1312-crypto/Office`, but does not disclose connection mode.
+- Leading unconfirmed hypothesis: service is configured from a public repo URL, not a connected Git-provider integration. Verify on Render Dashboard; do not alter production settings based on this hypothesis.
+- GitHub webhook listing unavailable through connected GitHub fetch; read-only browser attempt could not start because separate TinyFish wallet balance is $0. No top-up initiated.
+- No merge/deploy/config/DB/model actions performed.
+- Next: inspect Render service Settings > Git Provider connection and resolve connection mode; then plan controlled deploy.
