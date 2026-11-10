@@ -141,6 +141,15 @@ const ALIASES = {
   "code review": ["qa.review", "testing"],
   "runtime verification": ["qa.review", "testing", "acceptance.criteria"],
   "acceptance criteria": ["acceptance.criteria"],
+  // Exact phrases emitted by the bounded retry/watchdog diagnostic Director plan.
+  "javascript production code analysis": ["implementation", "coding", "system.design"],
+  "qa watchdog and worker-limit diagnostics": ["implementation", "coding", "system.design"],
+  "evidence-based root-cause analysis": ["implementation", "coding", "system.design"],
+  "minimal unified diff authoring": ["implementation", "coding"],
+  "independent qa verification": ["qa.review", "testing", "acceptance.criteria"],
+  "source path and hash auditing": ["qa.review", "testing", "acceptance.criteria"],
+  "claim and unified diff review": ["qa.review", "testing", "acceptance.criteria"],
+  "read-only compliance review": ["qa.review", "testing", "acceptance.criteria"],
 };
 function normalize(value) { return String(value || "").trim().toLowerCase().replace(/\s+/g, " "); }
 export function competencyCoverage(task, specialist) {
