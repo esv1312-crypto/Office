@@ -144,3 +144,10 @@ export function competencyCoverage(task, specialist) {
 export function hasCompetencyCoverage(task, specialist) {
   return competencyCoverage(task, specialist) > 0;
 }
+
+/** Every explicitly required tool must be granted to the specialist. */
+export function hasRequiredToolCoverage(task, specialist) {
+  const requiredTools = Array.isArray(task?.requiredTools) ? task.requiredTools : [];
+  const allowedTools = new Set((specialist?.allowedTools || []).map(value => String(value).trim()).filter(Boolean));
+  return requiredTools.every(tool => allowedTools.has(String(tool).trim()));
+}
