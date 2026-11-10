@@ -955,3 +955,27 @@ Continue read-only polling of the new owner task row, plan/task rows, Render log
 
 ### Exact next action
 Stop. The one additional deployment authorized by the owner has been used. Do not trigger another deploy, mutate task rows, add competencies, or start another paid run without new explicit owner authorization. The correct next fix is deterministic: add aliases for the Director-generated implementation and QA competency phrases (or constrain planner output to existing canonical terms), add regression tests covering these exact phrases and verify tool coverage; then prepare a fresh plan/key only after the owner authorizes another deployment. Preserve USD 3 cap; remaining internal budget USD 0.936184362.
+
+### 2026-11-11 — PR #136 prepared and all CI checks passed; no merge/deploy
+
+- Re-read the full master notebook and current handoff before code changes.
+- Inspected current production matcher/test and confirmed exact root cause: the eight competency phrases from plan `57f08bbc-85af-4639-b494-2b2914829c57` had no aliases. Existing PR #134 is an older, unrelated vocabulary patch based on a stale base SHA; it was left untouched.
+- Created isolated branch `fix/director-generated-competencies-20261111` directly from production HEAD `6a6b605b0f2b7a96ae685c9bf59f5b21f9e0efb5`.
+- Changed exactly two files:
+  - `studio/core/competency-matching.js`: added aliases for all eight exact Director phrases. Four implementation/diagnostic phrases map to implementation/coding/system.design; four independent QA/audit/review phrases map to qa.review/testing/acceptance.criteria. Tool permission checks were not weakened or changed.
+  - `studio/core/competency-matching.test.js`: added a regression test using the actual active Implementation Specialist and Quality Engineer competency/tool profiles; verifies 4/4 competency coverage per role, full expected tool coverage, and no cross-role competency match.
+- Read both files back from the branch and verified the exact aliases/test. GitHub compare against production showed exactly 2 files, 58 additions, 0 deletions; branch was 2 commits ahead and 0 behind at PR creation.
+- Opened PR #136: https://github.com/esv1312-crypto/Office/pull/136
+  - Head commit: `f253f49361ba0326c131a6e3a9dcb5cedf36a71a`
+  - Base: `studio-v1-foundation`, SHA at PR creation `6a6b605b0f2b7a96ae685c9bf59f5b21f9e0efb5`
+  - PR state open, not merged; GitHub reports mergeable true.
+- All four GitHub Actions checks completed successfully on the PR head:
+  - `Syntax and isolated unit tests`: success
+  - `node-tests`: success
+  - `runtime-smoke`: success
+  - `postgres-integration`: success, including actual runtime process restart durability step.
+- No production code was changed, no merge/deploy performed, no DB/task/env/infrastructure mutation, and no paid model call. PR #134 was not modified. The previous one-deploy authorization remains exhausted; no new deploy is authorized by this PR-preparation approval.
+- Current internal budget re-read: cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362.
+
+### Exact next action
+Await owner decision on PR #136 merge. Do not merge or deploy without explicit approval. After merge approval, merge PR only if it remains current and all checks are green; treat Render deployment as a separate action requiring its own explicit authorization. Once production is updated, create a fresh bounded owner task/plan using the now-covered exact competency vocabulary, with the existing $3 cap and no budget increase.

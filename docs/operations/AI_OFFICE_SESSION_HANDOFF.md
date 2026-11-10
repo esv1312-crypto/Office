@@ -79,3 +79,15 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - No code, task row, DB schema, PR or merge changes. No specialist work or report created.
 - STOP: the one newly authorized deploy has been used. Do not deploy, alter task rows/competencies, or initiate another paid run without fresh explicit owner approval.
 - Next technical fix, when authorized: add explicit matcher aliases for the Director-generated phrases or constrain planner vocabulary to canonical skills, add regression tests for the exact generated phrases, then create a fresh bounded owner run.
+
+## 2026-11-11 — PR #136 prepared; all checks green; awaiting owner merge decision
+
+- Master notebook is authoritative and latest PR entry has been read back and verified.
+- PR: https://github.com/esv1312-crypto/Office/pull/136
+- Branch: `fix/director-generated-competencies-20261111`; head `f253f49361ba0326c131a6e3a9dcb5cedf36a71a`.
+- Exactly two code/test files changed: competency matcher + its test. Eight exact Director phrases are covered; tool authorization logic unchanged.
+- All four checks on the PR head succeeded: Syntax and isolated unit tests; node-tests; runtime-smoke; postgres-integration (including runtime restart durability).
+- PR remains open, unmerged; GitHub reported mergeable=true at final PR read. No production code change, merge, deploy, DB/task/env mutation or paid model call.
+- Budget remains cap $3.00, spent $2.063815638, reserved $0, remaining $0.936184362.
+- The master notebook documentation commit `ff92ba55200f68abc526ff39499ad97eb6ea34cd` was made after PR creation on the base branch. It changes documentation only; PR code/tests remain exactly the two reviewed files. CI passed on the unchanged PR code head.
+- The previous deploy authorization remains exhausted. Do not merge or deploy until explicit owner approval; merge and Render rollout are separate decisions.
