@@ -882,3 +882,23 @@ Poll deploy `dep-dbpo68ajnfac73bsr9dg` and Render app logs. Once live, confirm t
 
 ### Exact next action
 Stop paid execution. Before any future deploy, obtain owner approval for a second bounded attempt and combine the environment cleanup/reconfiguration into one explicitly approved deploy. Re-scope the next task against the actual JavaScript paths above; require exact file paths to avoid blind directory exploration; keep two tasks and two artifacts maximum; tighten QA instructions so independent verification fits the current tool-round limit. First address the stale Lua artifacts as a separate explicitly scoped workspace cleanup. Preserve the USD 3 cap; do not increase it.
+
+### 2026-11-11 — Prepare second bounded owner run with verified JavaScript source pack
+
+- Re-read master notebook and operations handoff before preparation.
+- Confirmed the prior run remains incomplete and its one-shot owner task key must not be reused. Current Neon budget was re-read: cap USD 3.000000000; spent USD 2.061964803; reserved USD 0; remaining USD 0.938035197.
+- Reconfirmed prior plan `b590e0b6-6d4e-4c40-85e8-a4a75cf34986` remains approved with two task rows, but its QA task failed at the 8-round worker limit; it will not be replayed.
+- Read exact production source and test files from `studio-v1-foundation` and created a single verbatim source-reference bundle on `studio-ai-agent-workspace`:
+  - Path: `studio/agent-workspace/ai-office-self-development/retry-watchdog-source-reference.md`
+  - Workspace commit: `884964e802d81bb007bddbdd1507ea52d5f1ef0c`
+  - Blob SHA after read-back: `3643607c05db7982577b462dda3baef04328ae84`
+  - 23,903 characters. Includes runtime limit excerpt from `studio/server.js` and six exact production JS source/test snapshots.
+  - Source provenance SHAs: provider retry policy `7e998b3f4dd9ccae98efcec57adbb2313a17507a`; worker watchdog `ccd77d26d7302971c1d6e5bef23d8aae7e175fd8`; task state `b3dd1e0ab7d4b6f923afab35e8ada580e4585fbc`; provider retry test `8f39998362132d63bee47b47a48bbf49fdd3e9cb`; watchdog test `616525d318f4c9b2bb7dcc7420f27aa844648f33`; task-state test `8be866f6d4d3c9bce5fee763d3c44c4c05968dbf`; server `f43e39ebfcb4f5332d755ddc123d1760b585b331`.
+- The source bundle was fetched back from GitHub and checked for the expected source sections and hashes. The old Lua patch and Lua test remain unchanged and explicitly out of scope.
+- Proposed next owner-run scope: one new unique startup task ID; exactly two tasks (implementation and independent QA); implementation may write only one workspace analysis artifact; QA is read-only and must independently inspect the exact source bundle and analysis artifact, with its review recorded by the control plane. No production edits, no merge/PR/deploy by agents, no DB/schema/infrastructure/env changes by agents, no test execution claim unless actual test execution is available. Explicitly prohibit reading or modifying the stale Lua artifacts.
+- Runtime currently defaults to 8 tool rounds and 16 tool calls. The prior QA failure hit the 8-round ceiling. Proposed one-deploy runtime override is 12 rounds and 24 tool calls (within code-enforced maximums of 20 and 40), to permit bounded QA inspection without unbounded loops.
+- Current budget remaining USD 0.938035197. The ledger cap remains USD 3; no further increase authorized or planned.
+- No model calls or task execution occurred during preparation. One workspace reference file was added; no production source changed.
+
+### Exact next action
+After rereading this entry, perform exactly one Render environment merge update and its automatic single deploy: clear `STUDIO_OWNER_EXECUTE_PLAN_ID` to an empty value (prevent prior-plan replay); set fresh `STUDIO_OWNER_TASK_ID=owner-ai-office-retry-watchdog-diagnosis-20261111-v2`; set the approved organization/project IDs; set the bounded diagnostic brief; set `STUDIO_MAX_TOOL_ROUNDS=12` and `STUDIO_MAX_TOOL_CALLS=24`. Do not change the model budget cap or any provider credential. Monitor that one deploy and stop if the remaining ledger budget gate blocks work. Do not trigger a manual second deploy.
