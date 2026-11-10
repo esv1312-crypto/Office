@@ -841,3 +841,18 @@ The owner explicitly reaffirmed that the assistant must use this notebook as the
 
 ### Exact next action
 Obtain explicit owner approval for the minimal temporary Render owner-task environment update (fresh unique key, bounded task brief, organization/project IDs) and one deployment to trigger the single approved test. Preserve the USD 3 Neon cap; do not increase it again. If approval is not given, continue only read-only checks.
+
+### 2026-11-11 — Authorized one-deploy trigger for existing bounded two-task plan
+
+- Owner explicitly instructed: "включай и начинай" after being asked to authorize the minimal Render owner-task environment update and one deployment.
+- Re-read the master notebook before acting. Rechecked live Neon budget: cap USD 3.000000000; spend USD 2.030667303; reserved USD 0; remaining USD 0.969332697.
+- Reconfirmed live organization `Universal AI Studio` ID `67ae686f-fc54-40f0-988b-9b8f5a8a1dc9` and project `AI Office Self-Development` ID `d8a125e7-bacb-41a5-854a-cc34fe97e516`.
+- Re-read `studio/server.js` at production branch `studio-v1-foundation`. It has a dedicated `STUDIO_OWNER_EXECUTE_PLAN_ID` startup path that loads an already-approved plan and calls the workflow runner. This is safer and cheaper than creating a new plan: the existing approved plan `b590e0b6-6d4e-4c40-85e8-a4a75cf34986` already contains exactly two bounded tasks (one implementation, one independent QA) with explicit workspace-only scope and exact read-back acceptance criteria.
+- Rechecked both plan tasks in Neon: both remain `planned`, unassigned, and the plan remains `approved`, version 2. The implementation task requires list/read/write workspace tools; QA requires list/read only. Task descriptions prohibit production edits, merge, deploy, env/secrets/infrastructure/DB changes, and unsupported test execution claims.
+- Confirmed Render service remains on `studio-v1-foundation`, autoDeploy enabled, latest prior deploy `dep-dbpgnrbm8hqs73dsaomg` LIVE at commit `63e5df00b1a74c96ba7236d8fe347d669e087263`.
+- Applied one Render environment merge update, setting only `STUDIO_OWNER_EXECUTE_PLAN_ID=b590e0b6-6d4e-4c40-85e8-a4a75cf34986`. Render confirmed the environment update and automatically triggered exactly one deployment: `dep-dbpo68ajnfac73bsr9dg`, initial status `build_in_progress`, started `2026-11-11T20:48:33.786136Z`. No manual second deploy was triggered.
+- No code, production source, DB schema, task rows, model budget cap, API keys or other environment variables were changed by this step. No model call is yet confirmed by this step.
+- **Execution is pending.** Do not report the plan as running or completed until deploy logs show the owner-execution path and Neon task/ledger state confirms actual execution. The hard USD 3 ledger cap remains authoritative; stop if remaining budget is insufficient or any required evidence/QA gate fails.
+
+### Exact next action
+Poll deploy `dep-dbpo68ajnfac73bsr9dg` and Render app logs. Once live, confirm the startup log identifies the saved plan and execution round; then inspect Neon task state, persisted workspace artifacts, independent QA evidence and exact budget spend. After each meaningful action, update and read back this notebook. Do not trigger another deploy.
