@@ -613,3 +613,16 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 - **Status:** CI-green and open; not merged and not deployed. Do not merge/trigger a possible production auto-deploy until the owner authorizes the production rollout, because Render is configured `autoDeploy=yes` / `checksPass`.
 - **Safety:** no Neon schema migration, production write, Render environment change, deploy, owner-plan execution or paid model call was performed by this PR work.
 
+### 2026-11-10 — Render auto-deploy investigation (read-only)
+
+- **Render service:** `ai-office-runtime`, ID `srv-davoj1s9v7es738jino0`.
+- **Verified settings:** `autoDeploy=yes`, `autoDeployTrigger=checksPass`, watched branch `studio-v1-foundation`, repository `esv1312-crypto/Office`.
+- **Last successful/live deploy:** `dep-dboqi9p5efls73en1f2g`, commit `a032dbfce8f87a9f13ce07e15a490be8c1354256`, started 2026-11-09 11:06:15 UTC, finished 11:07:18 UTC, trigger `api`.
+- **PR #130:** merged 2026-11-09 12:33:11 UTC, merge commit `42577fa9cd14ce603a865ddde3643851f1c138d9`. Despite the merge, Render's deployment list still contains only the 2026-11-09 11:06 deploy as live; there is no deploy for PR #130 or later main-branch commit.
+- **Render event audit:** from 2026-11-09 12:30 UTC through 2026-11-10 23:59 UTC, the service event query returned an empty list. No `build_started`, `deploy_started`, `commit_ignored`, or deploy-failure event was recorded for the merged PR.
+- **GitHub branch check:** `studio-v1-foundation` HEAD remains `cfe469136c0d7ad3c9a1acff0ceb82383536e102` (PR #131 merge), which includes PR #130, while Render still runs `a032dbf...`.
+- **Conclusion:** confirmed that the configured auto-deploy did not create a deploy after PR #130. Evidence does **not** identify the exact cause (e.g. webhook delivery/subscription or check-gating issue); do not claim a root cause without delivery evidence.
+- **PR #132:** latest head at audit time `402c453ebff7acf340769a5be32d0052a0c7b43f`; all four checks now passed: runtime-smoke, syntax/isolated unit tests, node tests, PostgreSQL integration. PR remains open and unmerged.
+- **Tool limitation:** Render log retrieval returned HTTP 503 from Loki during this audit; event and deploy APIs remained available.
+- **Safety:** read-only investigation only. No deploy, manual trigger, environment change, merge, Neon write, paid model call or owner-plan execution.
+- **Next:** inspect Render/GitHub connection and check-gating state if available. Once deployment is explicitly authorized, perform a controlled rollout of PR #130 and #132, then verify exact commit, deploy ID, health and startup logs.
