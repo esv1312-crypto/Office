@@ -93,11 +93,11 @@ test("maps Director self-development task vocabulary to implementation and QA ro
   };
   assert.equal(hasRequiredToolCoverage(implementationTask, readOnlyArchitect), false);
 
-  const qaTask = { requiredCompetencies: ["Independent code review"] };
+  const qaTask = { requiredCompetencies: ["Independent code review", "acceptance criteria"] };
   const qualitySpecialist = {
     competencies: ["qa.review", "testing", "acceptance.criteria"],
     allowedTools: ["list_repo_directory", "read_repo_file"],
   };
-  assert.equal(competencyCoverage(qaTask, qualitySpecialist), 1);
+  assert.equal(competencyCoverage(qaTask, qualitySpecialist), 2);
   assert.equal(hasRequiredToolCoverage(qaTask, qualitySpecialist), true);
 });
