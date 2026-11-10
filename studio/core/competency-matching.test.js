@@ -101,3 +101,52 @@ test("maps Director self-development task vocabulary to implementation and QA ro
   assert.equal(competencyCoverage(qaTask, qualitySpecialist), 2);
   assert.equal(hasRequiredToolCoverage(qaTask, qualitySpecialist), true);
 });
+
+test("routes every exact retry/watchdog Director phrase to the correct active specialist", () => {
+  const implementationTask = {
+    requiredCompetencies: [
+      "JavaScript production code analysis",
+      "QA watchdog and worker-limit diagnostics",
+      "evidence-based root-cause analysis",
+      "minimal unified diff authoring",
+    ],
+    requiredTools: ["read_repo_file", "write_repo_file"],
+  };
+  const implementationSpecialist = {
+    competencies: [
+      "implementation", "coding", "documentation", "code patching",
+      "test development", "regression testing", "source code modification",
+    ],
+    allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"],
+  };
+
+  const qaTask = {
+    requiredCompetencies: [
+      "independent QA verification",
+      "source path and hash auditing",
+      "claim and unified diff review",
+      "read-only compliance review",
+    ],
+    requiredTools: ["read_repo_file"],
+  };
+  const qualitySpecialist = {
+    competencies: [
+      "qa.review", "testing", "security.review", "acceptance.criteria",
+      "code review", "quality assurance", "test coverage analysis",
+      "safety assessment", "platform.qa",
+    ],
+    allowedTools: ["list_repo_directory", "read_repo_file"],
+  };
+
+  assert.equal(competencyCoverage(implementationTask, implementationSpecialist), 4);
+  assert.equal(hasCompetencyCoverage(implementationTask, implementationSpecialist), true);
+  assert.deepEqual(requiredToolsForTask(implementationTask), ["read_repo_file", "write_repo_file"]);
+  assert.equal(hasRequiredToolCoverage(implementationTask, implementationSpecialist), true);
+  assert.equal(hasCompetencyCoverage(implementationTask, qualitySpecialist), false);
+
+  assert.equal(competencyCoverage(qaTask, qualitySpecialist), 4);
+  assert.equal(hasCompetencyCoverage(qaTask, qualitySpecialist), true);
+  assert.deepEqual(requiredToolsForTask(qaTask), ["read_repo_file"]);
+  assert.equal(hasRequiredToolCoverage(qaTask, qualitySpecialist), true);
+  assert.equal(hasCompetencyCoverage(qaTask, implementationSpecialist), false);
+});
