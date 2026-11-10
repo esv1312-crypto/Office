@@ -76,12 +76,57 @@ export function createDirectorRuntime({
       const permitted = await authorize({ actor, action: "director.plan.create", project });
       if (permitted !== true) throw Object.assign(new Error("Plan creation is not authorized"), { code: "PLAN_FORBIDDEN" });
 
-      const generated = await planningGateway.generatePlan({
-        request: userRequest,
-        project: { id: projectId, organizationId, productProfileId, name: project.name },
-        constraints,
-      });
-      const proposal = validateProposal(generated);
+      // A syntactically valid planner response can still violate the Director's
+      // stricter plan contract. Give the configured planner exactly one bounded
+      // correction attempt; never persist a partial or invalid proposal.
+      let proposal = null;
+      let validationRetryUsed = false;
+      let validationFeedback = null;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const planningRequest = attempt === 1
+          ? userRequest
+          : [
+              userRequest,
+              "",
+              "DIRECTOR VALIDATION CORRECTION REQUIRED:",
+              `The previous proposal failed deterministic validation: ${validationFeedback}`,
+              "Return a complete corrected plan that satisfies every field and item-count limit. Do not omit required fields.",
+            ].join("\n");
+        const generated = await planningGateway.generatePlan({
+          request: planningRequest,
+          project: { id: projectId, organizationId, productProfileId, name: project.name },
+          constraints,
+        });
+        try {
+          proposal = validateProposal(generated);
+          break;
+        } catch (error) {
+          if (!(error instanceof TypeError)) throw error;
+          validationFeedback = String(error.message || "Plan schema validation failed").slice(0, 1000);
+          if (attempt === 2) {
+            throw Object.assign(
+              new Error(`Planner returned an invalid proposal after one correction attempt: ${validationFeedback}`),
+              { code: "INVALID_PLAN_PROPOSAL", cause: error },
+            );
+          }
+          validationRetryUsed = true;
+        }
+      }
+      if (!proposal) {
+        throw Object.assign(new Error("Planner did not produce a valid proposal"), {
+          code: "INVALID_PLAN_PROPOSAL",
+        });
+      }
+      if (validationRetryUsed) {
+        proposal = {
+          ...proposal,
+          modelSnapshot: {
+            ...proposal.modelSnapshot,
+            validationRetryUsed: true,
+            validationFeedback,
+          },
+        };
+      }
       const at = now();
       if (typeof at !== "string" || Number.isNaN(Date.parse(at))) throw new TypeError("Director clock returned an invalid timestamp");
 
