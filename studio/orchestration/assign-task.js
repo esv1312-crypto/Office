@@ -1,4 +1,4 @@
-import { hasCompetencyCoverage } from "../core/competency-matching.js";
+import { hasCompetencyCoverage, hasRequiredToolCoverage } from "../core/competency-matching.js";
 /**
  * Governed deterministic assignment.
  * AI may recommend a specialist later; this policy remains the final gate.
@@ -17,6 +17,11 @@ export function createTaskAssignment({ store, authorize, now = () => new Date().
       if (task.projectId && specialist.projectIds?.length &&
           !specialist.projectIds.includes(task.projectId)) {
         throw Object.assign(new Error("Specialist is not permitted in this project"), { code: "PROJECT_SCOPE_MISMATCH" });
+      }
+      if (!hasRequiredToolCoverage(task, specialist)) {
+        throw Object.assign(new Error("Specialist does not have every tool required by the task"), {
+          code: "SPECIALIST_TOOL_CAPABILITY_MISMATCH",
+        });
       }
       if (!hasCompetencyCoverage(task, specialist)) {
         throw Object.assign(new Error("Specialist does not cover any of the task's required competencies"), {
