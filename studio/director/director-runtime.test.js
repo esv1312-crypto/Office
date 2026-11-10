@@ -32,7 +32,7 @@ function setup({ allowed = true, generated = proposal } = {}) {
   const saved = [];
   let id = 0;
   const runtime = createDirectorRuntime({
-    planningGateway: { generatePlan: async input => { saved.push({ planningInput: input }); return generated; } },
+    planningGateway: { generatePlan: async input => { saved.push({ planningInput: input }); return Array.isArray(generated) ? generated.shift() : generated; } },
     store: { createPlanWithTasks: async input => {
       saved.push({ persistedInput: input });
       return { plan: input.plan, tasks: input.tasks };
@@ -67,6 +67,31 @@ test("rejects a plan task that omits the requiredTools declaration", async () =>
     /requiredTools must be an array/,
   );
   assert.equal(saved.length, 1);
+});
+
+test("retries once with deterministic validation feedback when a proposal violates the Director contract", async () => {
+  const invalid = { ...proposal, tasks: [{ ...proposal.tasks[0] }] };
+  delete invalid.tasks[0].requiredTools;
+  const { runtime, saved } = setup({ generated: [invalid, proposal] });
+  const result = await runtime.plan({ request: "Do work", project, actor });
+  assert.equal(saved.filter(item => item.planningInput).length, 2);
+  assert.match(saved[1].planningInput.request, /DIRECTOR VALIDATION CORRECTION REQUIRED/);
+  assert.match(saved[1].planningInput.request, /requiredTools must be an array/);
+  assert.equal(result.plan.planningModelSnapshot.validationRetryUsed, true);
+  assert.match(result.plan.planningModelSnapshot.validationFeedback, /requiredTools must be an array/);
+  assert.equal(saved.filter(item => item.persistedInput).length, 1);
+});
+
+test("fails closed with a stable code after the single validation correction attempt", async () => {
+  const invalid = { ...proposal, tasks: [{ ...proposal.tasks[0] }] };
+  delete invalid.tasks[0].requiredTools;
+  const { runtime, saved } = setup({ generated: [invalid, invalid] });
+  await assert.rejects(
+    runtime.plan({ request: "Do work", project, actor }),
+    error => error.code === "INVALID_PLAN_PROPOSAL" && /correction attempt/.test(error.message),
+  );
+  assert.equal(saved.filter(item => item.planningInput).length, 2);
+  assert.equal(saved.filter(item => item.persistedInput).length, 0);
 });
 
 test("does not call planner when owner authorization is denied", async () => {
