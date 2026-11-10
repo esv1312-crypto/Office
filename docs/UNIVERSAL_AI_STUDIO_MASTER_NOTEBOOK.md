@@ -810,3 +810,19 @@ The owner explicitly reaffirmed that the assistant must use this notebook as the
 - **Hard blocker remains:** the live USD 2 ledger is over cap by USD 0.030667303. No paid planner/worker/QA call can be started. No attempt was made to run the old plan, create a new plan, change environment variables, merge, deploy, or write application data.
 - **Exact next action:** pause live model execution until the owner explicitly approves a new budget. If the owner does not approve additional budget, continue only deterministic/read-only work; do not represent the office as having passed end-to-end execution.
 
+### 2026-11-11 — Owner approved +USD 1; launch ledger cap updated
+
+- Owner explicitly approved adding USD 1 to the previously USD 2 launch budget, for one bounded end-to-end validation attempt.
+- Before the change, re-read the master notebook and live Neon ledger. The live account was cap USD 2.000000000, settled spend USD 2.030667303, reserved USD 0.
+- Applied a conditional single-row update to `studio.model_budget_accounts`: set cap to USD 3.000000000 only where the current cap was exactly USD 2.000000000. The statement returned exactly one updated row.
+- Immediate returned ledger values: cap USD 3.000000000; spent USD 2.030667303; reserved USD 0; remaining USD 0.969332697.
+- No model/provider call was made by the budget update. No Render environment change, deployment, merge, or application task execution was made by this step.
+- Authorization scope: one bounded end-to-end test only, under the previously recorded limits (max two tasks, max two files, isolated workspace branch, persisted write and read-back, independent QA; no production source edits, merge, deploy, schema changes or further budget increase). Stop if actual budget gate, external provider funds, specialist routing, read-back or QA evidence fails.
+- The Neon ledger cap is now USD 3. This does not prove that external OpenRouter account funds are available; do not assume provider billing balance from the internal ledger.
+
+### Exact next action after budget increase
+1. Re-read this notebook before every next operation.
+2. Inspect current Render owner-task configuration and existing owner-run state; do not reuse any prior idempotency key.
+3. Confirm the runtime is pointed at the same USD 3 budget key and that the current owner-task mechanism can execute the bounded test without unrelated env changes. If it requires changing env or deploying, stop and seek approval before doing so.
+4. Only if all gates pass, initiate the single owner-authorized bounded test. Verify persisted implementation file, independent read-back, QA acceptance, exact spend and final task states.
+5. Update and read back this notebook after each meaningful action.
