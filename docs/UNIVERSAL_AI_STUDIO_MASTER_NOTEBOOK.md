@@ -4,7 +4,7 @@
 >
 > **Working rule:** Read this notebook first, then inspect the live systems. Never assume an earlier status is still current. Record evidence, not intentions. Do not mark a capability complete until it has been demonstrated.
 
-Last updated: 2026-11-10 (UTC)  
+Last updated: 2026-11-10 (UTC; delegation audit added)  
 Primary repository: `esv1312-crypto/Office`  
 Primary working branch: `studio-v1-foundation`
 
@@ -268,15 +268,22 @@ The Director owns planning, delegation and acceptance. Specialists execute scope
 - Once the deployment path is clear, bring the existing Runtime to commit `42577fa9cd14ce603a865ddde3643851f1c138d9` only through a controlled, verified deployment. Record exact deploy ID and health result.
 - After deployment, verify artifact read-back without starting a paid model task if a deterministic/no-model route is available. If a live worker call would consume paid budget, do not run it without a new owner-approved budget.
 
-### Step 2 — Fix task-to-specialist routing before another self-development run
+### Step 2 — Fix task-to-specialist capability routing before another self-development run
 Use failed plan `73e30858-c2bb-4568-9d55-869df4b2cd7d` as forensic evidence only; do not reset its rows or replay it unchanged.
-- Inspect Director planner/delegation code and persisted task requirements together.
-- Deterministically require implementation-capable specialists with write tools for code-change tasks.
-- Keep Solution Architect and Quality Engineer read-only where appropriate; architecture design and QA review must not be mistaken for source implementation.
-- Keep Roblox-only specialists on Roblox-specific work unless their competencies explicitly cover the task.
-- If no suitable implementation specialist exists, mark the task blocked/unassigned instead of dispatching it with an empty or read-only toolset.
+
+**Confirmed code-level root cause (read from merge commit `42577fa9...`):**
+- `studio/director/director-dispatch.js` selects a specialist when `competencyCoverage(task, specialist) > 0`, then sorts by competency score and specialist ID. It does not check whether the specialist has the tools needed to perform the task.
+- `studio/orchestration/assign-task.js` and `studio/storage/postgres-assignment-store.js` enforce active status, organization/project scope and at least one matching competency, but do not enforce write/execute capability.
+- `studio/gateways/openai-compatible-gateways.js` later grants only tools named in `specialist.allowedTools`. A specialist with read-only tools therefore receives no write capability; a worker with no matching configured tools is explicitly instructed that no tool execution is available.
+- Database evidence matches the code: the task “Product profile and skill extensibility framework” was assigned to Solution Architect, whose tools are only `list_repo_directory` and `read_repo_file`; its saved report is a design/draft, not source implementation. The “Staged rollout and blocker isolation register” task has no assignee. The Implementation Specialist has workspace write access, but not shell/test execution.
+
+**Required fix direction:**
+- Introduce explicit task execution capabilities (for example repository-read, workspace-write, test-execute, QA-review, deployment) separately from domain competencies.
+- Map each specialist's actual granted tools/runtime adapters to those capabilities; dispatch and durable assignment must require the task's required capabilities, not merely any competency overlap.
+- Validate existing assignments again when resuming a task; do not resume a stale read-only assignment for an implementation task.
+- If no specialist has the required capability set, leave the task blocked/unassigned with a precise reason.
 - Gate QA on exact persisted implementation evidence and read-back, not a worker narrative claim.
-- Add focused regression tests for role-fit, missing specialist, write-capability requirement and QA gating. Prepare a narrow PR; do not alter production or spend model budget during the audit.
+- Add regression tests for role-fit, missing specialist, write-capability requirement, stale assignment resume and QA gating. Prepare a narrow PR; do not alter production or spend model budget during the audit.
 
 ### Step 3 — Resume production work only after explicit budget approval
 - Main budget available after reservations is approximately USD 0.030288152; this is not a usable new-run budget.
@@ -561,6 +568,25 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 - **Action:** reconstructed missing history from merged GitHub PRs/commits, PR #130 CI evidence, Render deploy/log evidence and Neon persisted state. Restored the fuller notebook history that existed on `studio-operations-notebook` but was absent from the merged `studio-v1-foundation` copy.
 - **Changes prepared:** updated master notebook current-state and next-objective sections; replaced stale 2026-10-21 session handoff with the verified 2026-11-10 continuation point.
 - **Branch:** `docs/restore-master-notebook-20261110`, created from `42577fa9cd14ce603a865ddde3643851f1c138d9`.
-- **Status:** write/read-back and PR creation are still pending; do not call the restoration complete until both files are verified on the branch and PR exists.
-- **Next:** verify exact notebook/handoff contents on the restoration branch, open a documentation PR into `studio-v1-foundation`, then resume PR #130 deployment reconciliation and role-fit audit.
+- **Read-back:** both files were fetched back from the restoration branch and key markers verified.
+- **PR:** opened [#131](https://github.com/esv1312-crypto/Office/pull/131) into `studio-v1-foundation`; initial three checks (node tests, PostgreSQL integration and runtime smoke) all passed. A subsequent documentation update records the code-level delegation audit; its checks must also pass before merge.
+- **Next:** merge PR #131 after its latest checks pass, then resume PR #130 deployment reconciliation and the capability-routing fix.
+
+### 2026-11-10 — Director delegation audit: competency overlap is not execution capability
+
+- **Source inspection:** `studio/director/director-dispatch.js`, `studio/orchestration/assign-task.js`, `studio/storage/postgres-assignment-store.js`, `studio/gateways/openai-compatible-gateways.js`, `studio/contracts/specialist.js`, and `studio/server.js` at `studio-v1-foundation` HEAD `42577fa9cd14ce603a865ddde3643851f1c138d9`.
+- **Confirmed selection behavior:** `chooseSpecialist()` accepts any active, in-scope specialist with competency coverage greater than zero and ranks by coverage count. It does not test whether the specialist has the tools/capabilities required by the task.
+- **Confirmed assignment behavior:** the application and PostgreSQL assignment guards re-check organization, project, active status and competency coverage, but do not validate execution capabilities.
+- **Confirmed worker behavior:** the model gateway filters actual tool definitions using the assigned specialist's `allowedTools`. Read-only specialists therefore cannot write; if no configured tools match, the worker receives an explicit no-tool instruction and can only return text.
+- **Database examples:** “Product profile and skill extensibility framework” (task `59b24b46-30e0-4857-a883-b3ff1b98af7a`) was assigned to Solution Architect with only `list_repo_directory` and `read_repo_file`; the resulting artifact is a report/draft, not an implementation patch. “Staged rollout and blocker isolation register” (task `18fc8462-1395-471c-9bae-e230dfa212dc`) is ready with no assignee. The Implementation Specialist has `write_repo_file` but no shell/test execution tool.
+- **Conclusion:** competency overlap is being used as a proxy for execution capability. This is the confirmed structural cause of some wrong/read-only assignments; it is not just a prompt wording issue.
+- **Next fix:** add explicit, extensible task capability requirements and enforce them in Director selection, durable assignment and resume paths. Keep domain competencies separate. Missing capability must produce a blocked/unassigned task rather than a misleading assignment.
+- **No changes to runtime code or production were made during this audit.**
+
+### 2026-11-10 — Render auto-deploy reconciliation
+
+- **Service settings:** Render reports `autoDeploy=yes`, trigger `checksPass`, branch `studio-v1-foundation`, health path `/health/ready`.
+- **Event evidence:** latest service event remains deploy `dep-dboqi9p5efls73en1f2g` ending 2026-11-09 11:07:18 UTC. No deploy event was returned after that timestamp in the queried history.
+- **Mismatch:** PR #130 merged at 12:33:11 UTC, after the latest Render deploy. Despite auto-deploy being configured for checks passing, the service did not show a corresponding deploy for merge commit `42577fa9...` in the available deploy/event listing.
+- **Status:** auto-deploy configuration is confirmed; successful auto-deploy of PR #130 is not. Investigate the missing deploy trigger/event before manually deploying or restarting production.
 
