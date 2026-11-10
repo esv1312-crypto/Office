@@ -65,12 +65,40 @@ test("routes all competencies from the Universal AI Studio master plan to the ac
   }
 });
 
+test("maps universal self-development competencies to the active implementation, architecture, and QA team", () => {
+  const architect = { competencies: ["architecture", "system.design", "source code analysis"] };
+  const implementation = { competencies: ["implementation", "coding", "test development", "testing"] };
+  const quality = { competencies: ["qa.review", "testing", "security.review", "acceptance.criteria", "code review"] };
+
+  assert.ok(competencyCoverage({ requiredCompetencies: [
+    "Node.js server code analysis", "SQLite schema/backward-compatibility review",
+    "test harness inspection",
+  ] }, architect) > 0);
+  assert.ok(competencyCoverage({ requiredCompetencies: [
+    "Node.js", "error handling", "secret redaction", "backward-compatible persistence",
+    "test authoring", "Node.js test harness", "redaction assertions",
+  ] }, implementation) > 0);
+  assert.ok(competencyCoverage({ requiredCompetencies: [
+    "code review", "scope control", "evidence reporting",
+  ] }, quality) > 0);
+});
+
 test("requires every explicit task tool to be granted to the specialist", () => {
   const task = { requiredTools: ["write_repo_file", "read_repo_file"] };
   assert.equal(hasRequiredToolCoverage(task, { allowedTools: ["write_repo_file", "read_repo_file"] }), true);
   assert.equal(hasRequiredToolCoverage(task, { allowedTools: ["read_repo_file"] }), false);
   assert.equal(hasRequiredToolCoverage(task, { allowedTools: [] }), false);
   assert.equal(hasRequiredToolCoverage({ requiredTools: [] }, { allowedTools: [] }), true);
+  // The worker may use a guarded full-file write after reading the file when
+  // patch_repo_file is not granted on its specialist record.
+  assert.equal(hasRequiredToolCoverage(
+    { requiredTools: ["read_repo_file", "patch_repo_file"] },
+    { allowedTools: ["read_repo_file", "write_repo_file"] },
+  ), true);
+  assert.equal(hasRequiredToolCoverage(
+    { requiredTools: ["patch_repo_file"] },
+    { allowedTools: ["read_repo_file"] },
+  ), false);
   const inferredTask = { requiredCompetencies: ["Extensibility engineering"], requiredTools: [] };
   assert.deepEqual(requiredToolsForTask(inferredTask), ["write_repo_file", "read_repo_file"]);
   assert.equal(hasRequiredToolCoverage(inferredTask, { allowedTools: ["read_repo_file"] }), false);
