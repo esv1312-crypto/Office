@@ -91,7 +91,7 @@ export function createDirectorRuntime({
               "DIRECTOR VALIDATION CORRECTION REQUIRED:",
               `The previous proposal failed deterministic validation: ${validationFeedback}`,
               "Return a complete corrected plan that satisfies every field and item-count limit. Do not omit required fields.",
-            ].join("\\n");
+            ].join("\n");
         const generated = await planningGateway.generatePlan({
           request: planningRequest,
           project: { id: projectId, organizationId, productProfileId, name: project.name },
