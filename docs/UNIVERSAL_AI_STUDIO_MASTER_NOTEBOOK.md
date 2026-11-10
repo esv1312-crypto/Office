@@ -691,3 +691,58 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 ### Correction to the budget-account identifier in the preceding entry
 
 The exact Neon budget_key is **universal-ai-studio-launch-budget-v1**. The preceding entry's first budget bullet contains a transcription typo in the identifier (it says universal-ai-office-launch-budget-v1); all cap/spend figures and the targeted account update refer to universal-ai-studio-launch-budget-v1. This correction is authoritative.
+
+---
+
+## Mandatory operating protocol — read before every action
+
+**This is a standing instruction for every assistant, agent, Work session and continuation working on Universal AI Studio. It is not optional.**
+
+### Before EVERY project action
+1. Read this entire master notebook, including the latest continuation entry. Do this before each meaningful step, not merely once at the beginning of a chat.
+2. Identify the last verified stopping point and the next numbered action. Do not infer the next step from chat history when the notebook is available.
+3. Reconcile the relevant live source of truth before acting:
+   - GitHub: current branch HEAD, PR state, CI checks, changed files and latest notebook commit.
+   - Render: exact deployed commit, deploy status, runtime health and relevant environment configuration.
+   - Neon: current task/plan state, specialist assignments and budget ledger when relevant.
+4. Check the safety limits and permissions recorded here. In particular, do not initiate paid model calls, increase a budget, alter production configuration, merge, deploy or mutate production data unless the current recorded authorization explicitly permits that exact action.
+5. If the notebook and live systems disagree, stop and reconcile the discrepancy. Record the conflict as NOT VERIFIED; do not silently choose the more convenient version.
+6. Only then perform the next action. Do not repeat completed work or restart a failed plan unless the notebook explicitly authorizes it.
+
+### After EVERY meaningful action
+1. Record what was attempted and what actually happened.
+2. Include exact evidence: repository/branch, file paths, commit or PR, deploy ID and deployed SHA, health result, database task/plan IDs, test/check names and outcomes, or exact error.
+3. Distinguish CONFIRMED, FAILED and NOT VERIFIED. Never report an intended or requested action as completed.
+4. Record any cost/budget impact and whether a model call was made.
+5. Update the current state, unresolved risks and the exact next action before ending the session or handing work to another chat/session.
+6. Read the updated notebook back from GitHub and verify the saved content. A successful write response alone is not enough.
+
+### Session handoff
+Every new chat or Work session must start by opening this file and the operations handoff file, then reconciling live systems. The handoff must point to the exact next action and must not ask the owner to repeat project history.
+
+**Failure rule:** if the notebook cannot be read or updated, say so explicitly and stop project changes. Never pretend to have followed this protocol.
+
+---
+
+## Session update — 2026-11-11 — continuation state reconciled from prior verified project record
+
+### Confirmed implementation history after the earlier 2026-11-10 entries
+- PR #133 — Director bounded validation retry — merged. Merge commit: `0e9881f7886efe03d691426a5a6449618fc134b4`. The fix allows one bounded planner correction after a TypeError during proposal validation, then fails closed with a stable error. Four CI checks passed.
+- PR #135 — competency vocabulary routing fix — merged. Final PR head: `b8d5b3a56e03d545c7a532cfb9365c325767df28`. Merge/production commit: `63e5df00b1a74c96ba7236d8fe347d669e087263`. Four CI checks passed. Added aliases for orchestration/runtime implementation tasks and independent code review/acceptance criteria so implementation and QA specialists can be matched by competency.
+- Render deployment for commit `63e5df00b1a74c96ba7236d8fe347d669e087263`: deploy `dep-dbp9vb08v5cc73dl4460`, reported LIVE; readiness endpoint returned ready with database connected. Startup logs confirmed the old one-shot owner task key was already claimed/completed and self-development launch was skipped because the organization ID was intentionally blank.
+- The earlier test attempt created plan `b590e0b6-6d4e-4c40-85e8-a4a75cf34986` with two tasks (implementation and independent QA), but both were left planned/unassigned because dispatch returned `NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES`. This was traced to competency phrases not represented in the alias map. PR #135 addresses those phrases.
+- **Important:** PR #135 deployment and passing CI do not prove that a fresh Director plan now routes correctly or that a worker has written code. The existing plan was created before PR #135 and must not be treated as proof of post-fix execution.
+- A separate Work thread was created for the next bounded end-to-end test: `01a1c3c2-68fa-7d42-bc45-8df32a9da870`. The handoff was created, but no evidence in the current record proves the test was actually started or completed. Do not report it as running or successful without inspecting that thread/runtime state.
+- Budget records conflict across historical snapshots. One verified earlier snapshot showed cap USD 3.00, spend USD 2.030667303, reserved USD 0, remaining USD 0.969332697; a later notebook entry records a targeted cap correction to USD 2.00 with spend USD 2.030667303 (over cap). Render startup logs also reported runtime budget 3USD while the Neon cap had been changed to 2USD. **Current budget state is NOT VERIFIED.** Re-read the live Neon ledger and Render environment before any model call. No paid model call is authorized by this note; do not spend or increase the cap.
+- The bounded test brief previously authorized by the owner had these limits: one small real runtime/orchestration defect; at most two tasks (implementation plus independent QA); at most two files; isolated branch `studio-ai-agent-workspace`; persisted write plus independent read-back; no production source edits, merge, deploy, schema change or budget increase. Treat that authorization as limited to that one test attempt; verify whether it remains unconsumed before any new paid execution. If uncertain, stop and ask.
+
+### Exact next action
+1. Read this notebook and `docs/operations/AI_OFFICE_SESSION_HANDOFF.md` again.
+2. Read the live Neon budget ledger and Render environment/deploy status; reconcile the conflicting budget/configuration snapshots without changing anything.
+3. Inspect the saved plan `b590e0b6-6d4e-4c40-85e8-a4a75cf34986` and the organization specialist capability profiles using read-only queries. Confirm whether PR #135 aliases now make both tasks eligible; do not assume this from source code alone.
+4. Inspect whether the Work handoff thread has already run the bounded test. If not, do not initiate a paid call until budget and remaining authorization are explicitly verified.
+5. If all gates are satisfied, perform only the previously authorized bounded test. Require a real changed workspace file, persisted read-back evidence, independent QA result and exact cost. Stop on any missing evidence or capability mismatch.
+6. Update this notebook after each step and verify every update by reading it back.
+
+### Current session conduct
+The owner explicitly reaffirmed that the assistant must use this notebook as the continuous project history and must consult it before every project step. Do not send the owner back to repeat the project history. Do not claim a reminder, test, write, deployment or verification succeeded unless the corresponding system confirms it.
