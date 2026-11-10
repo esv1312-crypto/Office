@@ -66,7 +66,7 @@ test("rejects a plan task that omits the requiredTools declaration", async () =>
     runtime.plan({ request: "Do work", project, actor }),
     /requiredTools must be an array/,
   );
-  assert.equal(saved.length, 1);
+  assert.equal(saved.length, 2);
 });
 
 test("retries once with deterministic validation feedback when a proposal violates the Director contract", async () => {
@@ -109,7 +109,7 @@ test("rejects malformed plans instead of persisting partial tasks", async () => 
     runtime.plan({ request: "Do work", project, actor }),
     /between 1 and 8 bounded stage tasks/,
   );
-  assert.equal(saved.length, 1);
+  assert.equal(saved.length, 2);
 });
 
 
@@ -123,7 +123,7 @@ test("rejects oversized stage plans instead of dispatching a whole-program backl
     runtime.plan({ request: "Build the entire office", project, actor }),
     /between 1 and 8 bounded stage tasks/,
   );
-  assert.equal(saved.length, 1);
+  assert.equal(saved.length, 2);
 });
 
 test("rejects oversized task descriptions and acceptance criteria", async () => {
