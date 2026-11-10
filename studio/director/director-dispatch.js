@@ -1,20 +1,20 @@
-import { competencyCoverage } from "../core/competency-matching.js";
+import { competencyCoverage, hasRequiredToolCoverage } from "../core/competency-matching.js";
 /**
  * Dispatch approved plan tasks to compatible active specialists.
  * Assignment is deterministic; PostgreSQL remains the final authorization/scope gate.
  *
  * Director models may describe competencies in natural language while the
  * specialist directory stores canonical capability IDs. This adapter maps
- * the known Roblox pilot vocabulary to those IDs and scores partial coverage:
- * cross-functional tasks still get a primary owner instead of being stranded
- * because one specialist cannot possess every skill in the task brief.
+ * natural-language competencies and separately enforces every explicitly
+ * required worker tool before a specialist can be selected or resumed.
  */
 function chooseSpecialist(task, specialists, organizationId) {
   return specialists
     .filter(specialist => specialist.status === "active" &&
       specialist.organizationId === organizationId &&
       (!specialist.projectIds?.length || specialist.projectIds.includes(task.projectId)) &&
-      competencyCoverage(task, specialist) > 0)
+      competencyCoverage(task, specialist) > 0 &&
+      hasRequiredToolCoverage(task, specialist))
     .sort((a, b) => competencyCoverage(task, b) - competencyCoverage(task, a) || a.id.localeCompare(b.id))[0] || null;
 }
 
@@ -96,7 +96,9 @@ export function createDirectorDispatch({
             specialist.id === task.assigneeSpecialistId &&
             specialist.status === "active" &&
             specialist.organizationId === loaded.organizationId &&
-            (!specialist.projectIds?.length || specialist.projectIds.includes(task.projectId)));
+            (!specialist.projectIds?.length || specialist.projectIds.includes(task.projectId)) &&
+            competencyCoverage(task, specialist) > 0 &&
+            hasRequiredToolCoverage(task, specialist));
           if (existingAssignee) {
             report.assigned.push({
               taskId: task.id, specialistId: existingAssignee.id,
@@ -117,8 +119,10 @@ export function createDirectorDispatch({
         const specialist = chooseSpecialist(task, specialists, loaded.organizationId);
         if (!specialist) {
           report.blocked.push({
-            taskId: task.id, reason: "No active specialist has a matching competency and project access",
+            taskId: task.id, code: "NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES",
+            reason: "No active, in-scope specialist covers the task competencies and every required worker tool",
             requiredCompetencies: task.requiredCompetencies || [],
+            requiredTools: task.requiredTools || [],
           });
           continue;
         }
