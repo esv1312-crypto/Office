@@ -746,3 +746,53 @@ Every new chat or Work session must start by opening this file and the operation
 
 ### Current session conduct
 The owner explicitly reaffirmed that the assistant must use this notebook as the continuous project history and must consult it before every project step. Do not send the owner back to repeat the project history. Do not claim a reminder, test, write, deployment or verification succeeded unless the corresponding system confirms it.
+
+---
+
+## Read-only reconciliation — 2026-11-11 — budget, deployment and saved validation plan
+
+### Actions performed
+- Re-read this master notebook and `docs/operations/AI_OFFICE_SESSION_HANDOFF.md` before continuing.
+- Read-only inspection only. No model/provider calls, no DB writes, no Render configuration changes, no deploys, no merges, no GitHub source writes other than this notebook update.
+- Neon project `curly-lake-89933498`, branch `br-lingering-sea-ba372y8i`, database `ai_office_db`.
+- Render service `srv-davoj1s9v7es738jino0`, workspace `tea-d61lnoq4d50c73ac3hgg`.
+
+### Current budget — CONFIRMED from live Neon ledger
+- Account `universal-ai-studio-launch-budget-v1`: cap USD 2.000000000; settled spend USD 2.030667303; reserved USD 0; remaining USD -0.030667303.
+- The account is over its current cap by USD 0.030667303. Do not start any planner, worker, QA or other paid model call. Do not increase/reset the cap.
+- The reservation ledger has 1,272 settled rows for this budget key; summed actual cost matches USD 2.030667303. There are no currently reserved rows.
+- The code in `studio/gateways/postgres-model-budget.js` (blob `0586db4097eb835ab8c7987b15a262ba789c4e73`) checks `spent + reserved + requested > cap` inside a transaction before inserting a reservation, and throws `MODEL_BUDGET_EXHAUSTED` / HTTP 402. Existing account cap is initialized with `LEAST(existing cap, configured cap)`; startup config cannot raise the existing USD 2 account to USD 3 through this path. The `snapshot()` method clamps displayed remaining to zero. The live account ledger, not the startup banner, is authoritative for admission.
+- Unit test file `studio/gateways/postgres-model-budget.test.js` (blob `ac104c0d0c99227d87be1f8c550503458c63afd1`) covers ledger-derived snapshots, reservations, settlement and failure handling. This inspection did not execute tests.
+
+### Render deployment — CONFIRMED
+- Service settings still show branch `studio-v1-foundation`, repo `https://github.com/esv1312-crypto/Office`, autoDeploy=yes / checksPass, Node runtime, health path `/health/ready`.
+- Latest deploy listing: `dep-dbpgnrbm8hqs73dsaomg`, status `live`, commit `63e5df00b1a74c96ba7236d8fe347d669e087263`, started 2026-11-10T12:19:57Z, finished 2026-11-10T12:20:31Z. Previous deploy `dep-dbp9vb08v5cc73dl4460` is deactivated.
+- Render startup log at 2026-11-10T12:20:22Z confirms `database=existing-office`, `provider=openrouter`, `artifactStore=github+postgres`, model `deepseek/deepseek-v4.1-flash-1017`, and banner `budget=3USD`. This is the configured runtime banner, not the authoritative spend cap.
+- Render service detail API does not expose environment variable values. Therefore the exact current value of `STUDIO_MODEL_BUDGET_USD` is NOT VERIFIED from environment settings; the latest startup log shows the runtime loaded a 3USD budget value.
+- Prior health check evidence in the notebook showed ready/database connected after this deploy. A fresh health endpoint read through the web fetcher was inaccessible in this pass, so fresh health is NOT VERIFIED here.
+- Do not change `STUDIO_MODEL_BUDGET_USD` or trigger a deploy without explicit owner authorization.
+
+### Saved bounded validation plan — CONFIRMED from live Neon
+- Plan `b590e0b6-6d4e-4c40-85e8-a4a75cf34986` remains `approved`, version 2.
+- Its two tasks remain `planned` and unassigned:
+  - `18945cd3-bede-4706-9264-9df851f74624`: implementation task; required tools list/read/write; required competencies include Orchestration/runtime code analysis, Minimal defect isolation, Patch and test artifact authoring, Evidence-based read-back verification.
+  - `a125f642-388b-4166-bad0-d9da7dff9d90`: independent QA task; required tools list/read; required competencies include Independent code review, QA acceptance-criteria validation, Test artifact adequacy review, Evidence and status reporting.
+- Current active specialist profiles confirm:
+  - Implementation Specialist `993751a5-f825-4f7b-9a65-4f9166af5326`: implementation/coding competencies; list/read/write repo tools.
+  - Quality Engineer `d812b95b-5752-4f79-ac2c-73c873282325`: QA/testing/acceptance competencies; list/read repo tools.
+  - Solution Architect is read-only.
+- Current source `studio/core/competency-matching.js` (blob `f0252da46bdad4a7265412c030bc3fee4675c949`) includes aliases for `Orchestration/runtime code analysis`, `Independent code review`, and `acceptance criteria`. Its `requiredToolsForTask` infers read/write tools for implementation/coding, and `hasRequiredToolCoverage` requires every declared/inferred tool.
+- Regression test `studio/core/competency-matching.test.js` (blob `1fccb4096a041d9247ec443a07e133eb126f4ba8`) explicitly verifies the implementation alias routes to the write-capable specialist, rejects a read-only architect for write tasks, and matches the QA vocabulary to Quality Engineer.
+- **Assessment:** based on current task payloads, specialist profiles and matcher code, the two saved tasks now appear eligible for Implementation Specialist and Quality Engineer respectively. This is a deterministic source/profile assessment only. The tasks remain unassigned; no fresh Director dispatch or post-PR #135 assignment has been observed. Do not claim live routing has passed.
+- Owner run `owner-ai-office-single-proof-2026-11-10-v2` is `needs_attention`, error `NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES`, linked to the saved plan. Do not reuse this one-shot key.
+
+### Work handoff status
+- Work thread `01a1c3c2-68fa-7d42-bc45-8df32a9da870` was created in a separate Work session. This chat has no connector action that can inspect its thread execution history. Its actual execution state is therefore NOT VERIFIED; do not claim it ran or completed.
+- No new owner-task run or paid model call was initiated during this reconciliation.
+
+### Exact next action
+1. Continue with read-only validation of the dispatch/assignment path and existing CI evidence; do not call a model.
+2. If owner wants a live Director/worker/QA execution, first explain the hard blocker: ledger is over the USD 2 cap. Obtain explicit approval for a new budget before any paid run; do not silently raise the cap.
+3. Separately ask for explicit authorization before aligning Render's configured budget banner from 3USD to 2USD; no environment change or deploy is authorized by this entry.
+4. After each further meaningful action, update this notebook and read the saved content back.
+
