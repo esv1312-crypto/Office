@@ -108,3 +108,14 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - No Render deploy, env/config change, DB/task mutation, owner run, or paid model call was performed. Render deployment requires separate explicit owner approval; previous deploy authorization is already exhausted.
 - Last verified internal budget: cap $3.00, spent $2.063815638, reserved $0, remaining $0.936184362.
 - Next: inspect the merged production branch/runtime deployment state. Do not trigger a deploy until the owner explicitly authorizes it.
+
+
+## 2026-11-11 — PR #136 deployed and runtime readiness verified
+
+- PR #136 merge commit: `23a0654233b68eb12e3b8bae14bdb6a9319927d2`.
+- Render `ai-office-runtime` auto-deploy setting is `checksPass`; the merge commit had zero detected checks, so no automatic deploy was created. One owner-authorized manual latest-branch deploy was run: `dep-dbponeon74is73cp3eo0`, source commit `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0`.
+- Build succeeded; deploy reached `live`; `/health/ready` returned `{\"status\":\"ready\",\"database\":\"connected\"}`.
+- No new owner task, specialist run, or paid model call launched. Startup says the old owner task is already claimed/complete and self-development was skipped because organization ID is not configured.
+- Runtime logs surfaced 2 dependency audit vulnerabilities (1 moderate, 1 high) and a PostgreSQL SSL-mode deprecation warning. Record for separate review; no dependency updates were made.
+- Budget snapshot from authoritative notebook remains cap $3.00, spent $2.063815638, reserved $0, remaining $0.936184362; external provider balance not verified.
+- Competency matcher fix is deployed, but fresh end-to-end owner dispatch remains NOT VERIFIED. Do not initiate paid execution until budget and a bounded test are re-authorized.
