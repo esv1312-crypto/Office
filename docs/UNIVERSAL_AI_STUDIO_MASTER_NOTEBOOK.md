@@ -687,3 +687,7 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 6. Render health is ready with database connected. Render deploy API last reported update_in_progress, despite successful build, new instance startup and passing health endpoint; record as such unless a later API check confirms completion.
 
 **Notebook maintenance rule reaffirmed:** read this file before continuing; after every substantial action, update this notebook with exact evidence and the new stopping point. Never rely on chat memory as a substitute for this record.
+
+### Correction to the budget-account identifier in the preceding entry
+
+The exact Neon budget_key is **universal-ai-studio-launch-budget-v1**. The preceding entry's first budget bullet contains a transcription typo in the identifier (it says universal-ai-office-launch-budget-v1); all cap/spend figures and the targeted account update refer to universal-ai-studio-launch-budget-v1. This correction is authoritative.
