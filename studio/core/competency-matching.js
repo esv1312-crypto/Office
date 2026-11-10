@@ -140,6 +140,7 @@ const ALIASES = {
   "independent implementation review": ["qa.review", "testing"],
   "code review": ["qa.review", "testing"],
   "runtime verification": ["qa.review", "testing", "acceptance.criteria"],
+  "acceptance criteria": ["acceptance.criteria"],
 };
 function normalize(value) { return String(value || "").trim().toLowerCase().replace(/\s+/g, " "); }
 export function competencyCoverage(task, specialist) {
