@@ -19,12 +19,12 @@ Continue building Universal AI Studio: a cloud-first, autonomous and extensible 
 - That plan is `approved` but not completed: 23 tasks, 20 failed, 2 QA, 1 ready, 0 completed.
 - Main Neon budget bucket: cap $2.00, spent $1.523881098, reserved $0.445830750, available $0.030288152. This is insufficient for a new production run.
 - Separate test bucket: cap $0.25, spent $0.114364030, reserved $0.
-- PR #132 is open and CI-green on head `4d9093f0515178d45d62898578aefdae75b2e4ef`. It enforces exact required worker tools at planning, dispatch, assignment, resume and retry. **It is not merged or deployed.**
+- PR #132 is open and CI-green on latest head `d5c421f061ef1310741b5766ef4bae9332306360`. It enforces exact required worker tools at planning, dispatch, assignment, resume and retry. **It is not merged or deployed.**
 
 ## Confirmed delegation root cause and fix
 Director dispatch previously accepted any active, in-scope specialist with positive competency overlap. The durable assignment guard repeated competency checks but did not verify tool capabilities. The worker gateway later granted only tools in `specialist.allowedTools`. Therefore a read-only architect could be assigned an implementation task and produce a draft instead of a persisted source change.
 
-PR #132 adds task `requiredTools`, exposes available tool names to the planner, infers workspace read/write requirements for implementation/coding competencies, and enforces tool coverage in Director selection, assignment, resume and retry. Latest CI passed: node tests, PostgreSQL integration and isolated syntax/unit tests.
+PR #132 adds task `requiredTools`, exposes available tool names to the planner, infers workspace read/write requirements for implementation/coding competencies, and enforces tool coverage in Director selection, assignment, resume and retry. Latest CI passed on PR head `d5c421f...`: node tests run 42732294331, PostgreSQL integration run 42732294330, isolated syntax/unit tests run 42732294747.
 
 ## Exact next actions
 1. Investigate why Render auto-deploy did not create a deploy for PR #130 despite `autoDeploy=yes` / `checksPass`. Do not blindly restart or manually deploy. Record exact deploy ID, commit and health.
