@@ -40,3 +40,12 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - Keep code/work artifacts in GitHub/cloud storage, not the management chat.
 - Do not repeat a test if the same SHA/environment has already passed and its evidence is still valid.
 - Never print or store secrets/tokens.
+
+## 2026-11-10 Render auto-deploy audit
+- Settings verified: `autoDeploy=yes`, `autoDeployTrigger=checksPass`, branch `studio-v1-foundation`.
+- PR #130 merged at 12:33:11 UTC, but the last/live Render deploy remains `dep-dboqi9p5efls73en1f2g` at commit `a032dbfce8f87a9f13ce07e15a490be8c1354256`, started 11:06:15 UTC, trigger API.
+- Render deployment list has no subsequent deploy. Event query from 2026-11-09 12:30 UTC to 2026-11-10 23:59 UTC returned no events. The exact missed-trigger cause is **not established**.
+- GitHub main branch HEAD is `cfe469136c0d7ad3c9a1acff0ceb82383536e102`; production is behind.
+- PR #132 head `402c453ebff7acf340769a5be32d0052a0c7b43f`: all four checks passed (runtime smoke, isolated tests, node tests, PostgreSQL integration); still open/unmerged.
+- Render Loki log retrieval returned 503; no deploy/environment/DB/model action was taken.
+- Next: investigate GitHub/Render integration and check gating; no manual deployment until explicitly authorized.
