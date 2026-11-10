@@ -200,10 +200,11 @@ The Director owns planning, delegation and acceptance. Specialists execute scope
 - Repository: `esv1312-crypto/Office`.
 - Production/working branch: `studio-v1-foundation`.
 - Latest branch HEAD verified: `42577fa9cd14ce603a865ddde3643851f1c138d9`.
-- Latest merged PR: [#130 — Require independent read-back verification for saved artifacts](https://github.com/esv1312-crypto/Office/pull/130), merged 2026-11-09 12:33:11 UTC.
+- Latest merged PR: [#131 — restore Universal AI Studio master notebook and session handoff](https://github.com/esv1312-crypto/Office/pull/131), merge commit `cfe469136c0d7ad3c9a1acff0ceb82383536e102`. PR #130 is the latest merged code change; PR #131 is documentation-only.
 - PR #130 changed `studio/artifacts/github-artifact-writer.js` and its tests. After a successful Contents API write, the writer independently reads the exact file back from the configured branch, verifies SHA-256 of persisted bytes against submitted UTF-8 content and checks the blob SHA when available. It returns `readBackVerified: true` only after verification; failures raise explicit read-back error codes.
 - PR #130 CI: all four checks passed on merge commit `42577fa9cd14ce603a865ddde3643851f1c138d9`: `node-tests`, `postgres-integration`, `runtime-smoke`, and `Syntax and isolated unit tests`. Workflow runs: 42617971061, 42617970757, 42617970803 and 42617970786.
 - PR #129 is merged: [Calibrate model budget reservations and bound worker output](https://github.com/esv1312-crypto/Office/pull/129), merge commit `a032dbfce8f87a9f13ce07e15a490be8c1354256`.
+- PR #132 — [Require execution tools before assigning or resuming tasks](https://github.com/esv1312-crypto/Office/pull/132) is open, CI-green on head `4d9093f0515178d45d62898578aefdae75b2e4ef`; not merged or deployed. It introduces explicit task `requiredTools`, inference of workspace read/write requirements for implementation/coding competencies, and capability gates in dispatch, assignment, resume and failed-task retry.
 - PRs #119–#128 were merged before #129; details are in Activity log.
 
 ### Render production state
@@ -589,4 +590,26 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 - **Event evidence:** latest service event remains deploy `dep-dboqi9p5efls73en1f2g` ending 2026-11-09 11:07:18 UTC. No deploy event was returned after that timestamp in the queried history.
 - **Mismatch:** PR #130 merged at 12:33:11 UTC, after the latest Render deploy. Despite auto-deploy being configured for checks passing, the service did not show a corresponding deploy for merge commit `42577fa9...` in the available deploy/event listing.
 - **Status:** auto-deploy configuration is confirmed; successful auto-deploy of PR #130 is not. Investigate the missing deploy trigger/event before manually deploying or restarting production.
+
+### 2026-11-10 — PR #131 merged: master notebook and session handoff restored
+
+- **PR:** [#131 — docs: restore Universal AI Studio master notebook and session handoff](https://github.com/esv1312-crypto/Office/pull/131).
+- **Branch:** `docs/restore-master-notebook-20261110`.
+- **Merge commit:** `cfe469136c0d7ad3c9a1acff0ceb82383536e102`.
+- **Checks:** node tests, PostgreSQL integration and runtime smoke all passed on final PR head `f9c6c70275a3dd33213b06bc6fbd32332033bc38`.
+- **Files restored:** `docs/UNIVERSAL_AI_STUDIO_MASTER_NOTEBOOK.md` and `docs/operations/AI_OFFICE_SESSION_HANDOFF.md`. The fuller history from the operations-notebook branch is now restored to `studio-v1-foundation`; current state and handoff include the 2026-11-10 audit.
+- **Read-back:** both files were fetched from the branch after writing; after merge, both were fetched again from `studio-v1-foundation` and key markers verified.
+- **Production impact:** documentation only; no Render deploy, environment change, Neon write or model call.
+
+### 2026-11-10 — PR #132: task execution capability routing fix prepared
+
+- **PR:** [#132 — Require execution tools before assigning or resuming tasks](https://github.com/esv1312-crypto/Office/pull/132).
+- **Branch:** `fix/task-execution-capability-routing-20261110`.
+- **Latest tested head:** `4d9093f0515178d45d62898578aefdae75b2e4ef`.
+- **Root cause:** positive competency overlap was treated as sufficient to select a specialist even when their `allowedTools` were read-only or empty. The worker gateway then filtered actual tools to that specialist's grants, so the worker could only return a draft/report. The issue also affected existing assignments and failed-task retries.
+- **Changes:** new task `requiredTools` declaration; planner receives the exact available worker tool names; task plans must declare tool requirements; implementation/coding competencies infer `write_repo_file` + `read_repo_file` as a safety net; Director selection, assignment service, PostgreSQL assignment, existing-task resume and failed-task retry all enforce full tool coverage. Missing capability produces an explicit blocked result rather than a misleading assignment.
+- **Tests:** regression coverage added for task creation/contract, planner tool declaration, dispatch choosing a write-capable specialist over a read-only specialist, no capable specialist, stale assigned-task resume, assignment service, PostgreSQL assignment and failed-task retry.
+- **CI history:** initial PR run exposed two test-fixture/compatibility failures (legacy assigned task omitted competencies; PostgreSQL integration planner fixture omitted requiredTools). Both were corrected. Latest head `4d9093f...` passed all three checks: node tests (run 42732146745), PostgreSQL integration (run 42732146630), and isolated syntax/unit tests (run 42732146623).
+- **Status:** CI-green and open; not merged and not deployed. Do not merge/trigger a possible production auto-deploy until the owner authorizes the production rollout, because Render is configured `autoDeploy=yes` / `checksPass`.
+- **Safety:** no Neon schema migration, production write, Render environment change, deploy, owner-plan execution or paid model call was performed by this PR work.
 
