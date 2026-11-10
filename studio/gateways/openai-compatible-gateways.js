@@ -203,6 +203,9 @@ export function createOpenAiCompatibleGateways({
   return Object.freeze({
     planningGateway: Object.freeze({
       async generatePlan({ request, project, constraints = {}, signal }) {
+        const availableToolNames = [...new Set((workerTools?.definitions || [])
+          .map(item => item?.function?.name)
+          .filter(name => typeof name === "string" && name.trim()))];
         const messages = [
           {
             role: "system",
@@ -210,7 +213,9 @@ export function createOpenAiCompatibleGateways({
               "You are the planning director of a universal digital product studio.",
               "Convert the owner's request into a safe, concrete execution plan.",
               "Return only a JSON object with title, objective, summary, acceptanceCriteria, and tasks.",
-              "Each task must include title, description, requiredCompetencies, and acceptanceCriteria.",
+              "Each task must include title, description, requiredCompetencies, requiredTools, and acceptanceCriteria.",
+              "requiredTools must be an array of exact tool names from the availableTools list supplied with the request. Use an empty array only when no worker tool is needed.",
+              "Any task that creates or modifies source/workspace files must require write_repo_file. Any task that verifies persisted file contents must require read_repo_file. Never request a tool that is not in availableTools.",
               "Create a bounded first-stage plan of 1 to 8 small, independently verifiable tasks, not a complete multi-stage roadmap.",
               "Each task must deliver exactly one narrow outcome, normally touching no more than 1 to 3 closely related files and requiring no more than 8 tool calls.",
               "Do not assign repo-wide reconnaissance, whole-subsystem rewrites, or multiple unrelated deliverables to one task.",
@@ -223,7 +228,7 @@ export function createOpenAiCompatibleGateways({
           },
           {
             role: "user",
-            content: JSON.stringify({ request, project, constraints }),
+            content: JSON.stringify({ request, project, constraints, availableTools: availableToolNames }),
           },
         ];
 
