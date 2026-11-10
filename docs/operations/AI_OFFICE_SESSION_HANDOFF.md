@@ -98,3 +98,13 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - CI rerun on synchronized head passed all four checks: isolated syntax/unit, node-tests, runtime-smoke, postgres-integration (including runtime restart durability).
 - PR #136 is open, unmerged; GitHub reports mergeable=true. No production change, merge, deploy, DB/task/env change, or paid model call.
 - Await explicit merge authorization. Deployment requires separate explicit authorization.
+
+
+## 2026-11-11 — PR #136 merged; Render deployment still requires separate approval
+
+- Owner explicitly approved merging PR #136. Pre-merge verification: PR open and mergeable, ahead 5 / behind 0, exact two-file diff (competency matcher + regression test), and all four CI workflows successful on head `6addd4f9f46832e9ad2308df52f18058d47228fb`.
+- GitHub merge succeeded. Merge commit: `23a0654233b68eb12e3b8bae14bdb6a9319927d2`.
+- Post-merge verification: PR reports closed and merged; matcher and regression-test files were read back from `studio-v1-foundation` and contain the expected aliases and QA regression coverage.
+- No Render deploy, env/config change, DB/task mutation, owner run, or paid model call was performed. Render deployment requires separate explicit owner approval; previous deploy authorization is already exhausted.
+- Last verified internal budget: cap $3.00, spent $2.063815638, reserved $0, remaining $0.936184362.
+- Next: inspect the merged production branch/runtime deployment state. Do not trigger a deploy until the owner explicitly authorizes it.
