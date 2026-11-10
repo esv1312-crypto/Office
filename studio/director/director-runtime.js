@@ -105,7 +105,7 @@ export function createDirectorRuntime({
           validationFeedback = String(error.message || "Plan schema validation failed").slice(0, 1000);
           if (attempt === 2) {
             throw Object.assign(
-              new Error("Planner returned an invalid proposal after one correction attempt"),
+              new Error(`Planner returned an invalid proposal after one correction attempt: ${validationFeedback}`),
               { code: "INVALID_PLAN_PROPOSAL", cause: error },
             );
           }
