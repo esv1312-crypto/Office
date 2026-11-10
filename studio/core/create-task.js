@@ -5,11 +5,14 @@ import { assertStudioTask } from "../contracts/task.js";
  * The caller owns ID generation, persistence, and authorization.
  */
 export function createTask({
-  id, projectId, title, description = "", requiredCompetencies = [], acceptanceCriteria = [], at,
+  id, projectId, title, description = "", requiredCompetencies = [], requiredTools = [], acceptanceCriteria = [], at,
 }) {
   if (!Array.isArray(requiredCompetencies) ||
       requiredCompetencies.some(value => typeof value !== "string" || !value.trim())) {
     throw new TypeError("Task requiredCompetencies must be an array of non-empty strings");
+  }
+  if (!Array.isArray(requiredTools) || requiredTools.some(value => typeof value !== "string" || !value.trim())) {
+    throw new TypeError("Task requiredTools must be an array of non-empty strings");
   }
   if (!Array.isArray(acceptanceCriteria) ||
       acceptanceCriteria.some(value => typeof value !== "string" || !value.trim())) {
@@ -21,6 +24,7 @@ export function createTask({
     title: typeof title === "string" ? title.trim() : title,
     description,
     requiredCompetencies: [...requiredCompetencies],
+    requiredTools: [...new Set(requiredTools.map(value => value.trim()))],
     acceptanceCriteria: [...acceptanceCriteria],
     status: "draft",
     assigneeSpecialistId: null,
