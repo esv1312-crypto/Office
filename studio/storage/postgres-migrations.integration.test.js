@@ -101,6 +101,7 @@ test("real PostgreSQL workflow completes Director plan -> approval -> Worker -> 
               title: "Build the first Roblox district module",
               description: "Create the first bounded, documented Luau module for the football-fans district.",
               requiredCompetencies: ["roblox.lua"],
+              requiredTools: [],
               acceptanceCriteria: ["Output contains a Luau module", "Output explains setup and validation"],
             }],
             modelSnapshot: { provider: "integration-test", model: "planner-fake", instructionVersion: 1 },
