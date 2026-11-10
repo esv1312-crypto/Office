@@ -145,9 +145,24 @@ export function hasCompetencyCoverage(task, specialist) {
   return competencyCoverage(task, specialist) > 0;
 }
 
-/** Every explicitly required tool must be granted to the specialist. */
+/**
+ * Return explicit task tool requirements plus a conservative write/read
+ * requirement when the task competencies include implementation or coding.
+ * This prevents a planner omission from routing code work to a read-only role.
+ */
+export function requiredToolsForTask(task) {
+  const explicit = Array.isArray(task?.requiredTools) ? task.requiredTools : [];
+  const implementationCompetency = (task?.requiredCompetencies || []).some(requirement => {
+    const key = normalize(requirement);
+    const aliases = [key, ...(ALIASES[key] || []).map(normalize)];
+    return aliases.some(value => value === "implementation" || value === "coding");
+  });
+  const inferred = implementationCompetency ? ["write_repo_file", "read_repo_file"] : [];
+  return [...new Set([...explicit, ...inferred].map(value => String(value).trim()).filter(Boolean))];
+}
+
+/** Every explicit or inferred task tool must be granted to the specialist. */
 export function hasRequiredToolCoverage(task, specialist) {
-  const requiredTools = Array.isArray(task?.requiredTools) ? task.requiredTools : [];
   const allowedTools = new Set((specialist?.allowedTools || []).map(value => String(value).trim()).filter(Boolean));
-  return requiredTools.every(tool => allowedTools.has(String(tool).trim()));
+  return requiredToolsForTask(task).every(tool => allowedTools.has(tool));
 }
