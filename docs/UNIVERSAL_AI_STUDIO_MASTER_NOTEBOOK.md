@@ -796,3 +796,17 @@ The owner explicitly reaffirmed that the assistant must use this notebook as the
 3. Separately ask for explicit authorization before aligning Render's configured budget banner from 3USD to 2USD; no environment change or deploy is authorized by this entry.
 4. After each further meaningful action, update this notebook and read the saved content back.
 
+### 2026-11-11 — Read-only dispatch/assignment path validation after PR #135
+
+- Re-read the master notebook before this validation.
+- Inspected current source on `studio-v1-foundation`:
+  - `studio/director/director-dispatch.js`, blob `50609b4960682b3f591e40f0327ea075f79e5bcd`: `chooseSpecialist` requires both positive competency coverage and `hasRequiredToolCoverage`; existing-assignee resume also checks required tools; blocked dispatch returns `NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES` with the required tool list.
+  - `studio/orchestration/assign-task.js`, blob `1f3f59f3556a3ab87f55a0475a574c13f7797534`: durable assignment wrapper rejects missing required-tool coverage and missing competency coverage before calling the store.
+  - `studio/storage/postgres-assignment-store.js`, blob `ad6cd9ae5da162f09a0db4a1a906804673a79d68`: PostgreSQL assignment guard independently checks tool coverage and competency coverage.
+  - `studio/director/director-dispatch.test.js`, blob `5928dbc84525d97aafda99620320c69ac0d8ed93`: regression test verifies that a write-capable specialist is preferred over a read-only specialist and that missing capability returns an explicit blocked result.
+  - `studio/orchestration/assign-task.test.js`, blob `75d03046e70c6086f7e68183ac96c2fc915836b6`, and `studio/storage/postgres-assignment-store.test.js`, blob `3aed9f882badcdddc94d58b1d513fc2474a47da5`: regression coverage includes tool-capability guards in assignment layers.
+- **Code assessment:** the former competency-only routing defect is addressed at Director selection, application assignment and durable PostgreSQL assignment layers. Existing test sources cover these guards. The test files were inspected but not executed in this read-only session; their latest CI result remains the previously recorded four passing PR #135 workflows.
+- **Saved-plan compatibility assessment:** the current two tasks declare tool requirements that match Implementation Specialist and Quality Engineer profiles. The current alias map gives each task at least one competency match. This predicts eligibility but does not establish an actual assignment because both DB rows remain `planned` with null assignees.
+- **Hard blocker remains:** the live USD 2 ledger is over cap by USD 0.030667303. No paid planner/worker/QA call can be started. No attempt was made to run the old plan, create a new plan, change environment variables, merge, deploy, or write application data.
+- **Exact next action:** pause live model execution until the owner explicitly approves a new budget. If the owner does not approve additional budget, continue only deterministic/read-only work; do not represent the office as having passed end-to-end execution.
+
