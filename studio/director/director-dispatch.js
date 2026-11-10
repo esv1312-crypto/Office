@@ -103,7 +103,11 @@ export function createDirectorDispatch({
               reason: "Assigned specialist does not have every worker tool required to resume this task",
               requiredTools: task.requiredTools || [],
             });
-          } else if (existingAssignee && competencyCoverage(task, existingAssignee) > 0) {
+          } else if (existingAssignee && (
+            !Array.isArray(task.requiredCompetencies) ||
+            task.requiredCompetencies.length === 0 ||
+            competencyCoverage(task, existingAssignee) > 0
+          )) {
             report.assigned.push({
               taskId: task.id, specialistId: existingAssignee.id,
               taskStatus: "assigned", resumed: true,
