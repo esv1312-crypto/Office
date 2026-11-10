@@ -1006,3 +1006,15 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
 - Post-merge verification: PR reports closed/merged; both matcher and regression-test files were read back from `studio-v1-foundation` and contain the expected changes.
 - No Render deploy, environment/config mutation, database/task mutation, owner execution, or paid model call was performed. A new explicit owner approval is required for any Render deployment; previous deploy authorization is exhausted.
 - Last verified internal budget remains cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362.
+
+
+## 2026-11-11 — PR #136 deployed to Render and readiness verified
+
+- Owner explicitly authorized the Render rollout after approving the PR #136 merge.
+- Render service `ai-office-runtime` is linked to `studio-v1-foundation` with autoDeploy=`yes` and trigger `checksPass`. The merge commit had zero detected GitHub checks/workflow runs, so Render correctly did not auto-deploy (Render docs: zero checks detected means no auto-deploy).
+- One manual latest-branch deploy was triggered under the owner's authorization: `dep-dbponeon74is73cp3eo0`, source commit `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0` (docs handoff commit containing the merged matcher fix).
+- Render build succeeded and deploy reached terminal status `live` at 2026-11-10T21:26:01Z. New instance started successfully; service health endpoint returned `{\"status\":\"ready\",\"database\":\"connected\"}` after rollout.
+- Runtime logs show configured provider/model `openrouter` / `deepseek/deepseek-v4.1-flash-1017`, budget cap `3USD`. Startup confirmed old owner task key already claimed/complete and skipped self-development launch because organization ID is not configured. No new owner run, specialist execution, or paid model call was initiated by this deploy.
+- Build output reported 2 dependency audit vulnerabilities (1 moderate, 1 high); not changed during this bounded deploy. SSL mode deprecation warning also appeared. Track separately; do not run automatic dependency remediation without review.
+- Health/readiness is verified; the competency routing fix is deployed. Full owner-run dispatch behavior is NOT YET VERIFIED against a fresh task. Existing internal budget snapshot remains cap $3.00, spent $2.063815638, reserved $0, remaining $0.936184362; external OpenRouter balance remains unverified.
+- Render docs note `After CI Checks Pass` requires at least one detected CI check; if no checks are present, it will not deploy. Current service setting is unchanged.
