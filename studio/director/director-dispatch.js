@@ -96,10 +96,14 @@ export function createDirectorDispatch({
             specialist.id === task.assigneeSpecialistId &&
             specialist.status === "active" &&
             specialist.organizationId === loaded.organizationId &&
-            (!specialist.projectIds?.length || specialist.projectIds.includes(task.projectId)) &&
-            competencyCoverage(task, specialist) > 0 &&
-            hasRequiredToolCoverage(task, specialist));
-          if (existingAssignee) {
+            (!specialist.projectIds?.length || specialist.projectIds.includes(task.projectId)));
+          if (existingAssignee && !hasRequiredToolCoverage(task, existingAssignee)) {
+            report.blocked.push({
+              taskId: task.id, code: "ASSIGNED_SPECIALIST_CAPABILITY_MISMATCH",
+              reason: "Assigned specialist does not have every worker tool required to resume this task",
+              requiredTools: task.requiredTools || [],
+            });
+          } else if (existingAssignee && competencyCoverage(task, existingAssignee) > 0) {
             report.assigned.push({
               taskId: task.id, specialistId: existingAssignee.id,
               taskStatus: "assigned", resumed: true,
@@ -107,7 +111,7 @@ export function createDirectorDispatch({
           } else {
             report.blocked.push({
               taskId: task.id, code: "ASSIGNED_SPECIALIST_UNAVAILABLE",
-              reason: "Assigned task cannot be resumed because its specialist is inactive or outside project scope",
+              reason: "Assigned task cannot be resumed because its specialist is inactive, outside project scope, or no longer covers the task",
             });
           }
           continue;
