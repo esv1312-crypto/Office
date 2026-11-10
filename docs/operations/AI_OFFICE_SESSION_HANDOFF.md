@@ -91,3 +91,10 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - Budget remains cap $3.00, spent $2.063815638, reserved $0, remaining $0.936184362.
 - The master notebook documentation commit `ff92ba55200f68abc526ff39499ad97eb6ea34cd` was made after PR creation on the base branch. It changes documentation only; PR code/tests remain exactly the two reviewed files. CI passed on the unchanged PR code head.
 - The previous deploy authorization remains exhausted. Do not merge or deploy until explicit owner approval; merge and Render rollout are separate decisions.
+
+## 2026-11-11 — PR #136 synchronized and CI rerun green
+- Master notebook entry has been updated and read back.
+- Feature branch synchronized with the latest docs-only base commits using merge commit `66ca9b4f147b101eb16ea1f8e626b65a19efc2ee`; PR diff remains exactly the two competency matcher/test files.
+- CI rerun on synchronized head passed all four checks: isolated syntax/unit, node-tests, runtime-smoke, postgres-integration (including runtime restart durability).
+- PR #136 is open, unmerged; GitHub reports mergeable=true. No production change, merge, deploy, DB/task/env change, or paid model call.
+- Await explicit merge authorization. Deployment requires separate explicit authorization.
