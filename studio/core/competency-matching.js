@@ -132,7 +132,30 @@ const ALIASES = {
   "access control design": ["security.review"],
   "audit logging": ["security.review"],
   "secrets management": ["security.review"],
+
+  // Universal self-development tasks often describe practical skills rather
+  // than the canonical capability IDs stored on the specialist records.
+  "node.js server code analysis": ["source code analysis", "architecture"],
+  "sqlite schema/backward-compatibility review": ["system.design", "architecture"],
+  "test harness inspection": ["testing", "test coverage analysis"],
+  "test authoring": ["test development", "testing"],
+  "node.js test harness": ["test development", "testing"],
+  "redaction assertions": ["testing", "security.review"],
+  "node.js": ["implementation", "coding"],
+  "error handling": ["implementation", "coding"],
+  "secret redaction": ["security.review"],
+  "backward-compatible persistence": ["implementation", "coding", "system.design"],
+  "scope control": ["acceptance.criteria", "qa.review"],
+  "evidence reporting": ["technical documentation", "acceptance.criteria"],
 };
+// A full-file write is an allowed fallback for a patch request when a
+// specialist has read/write access but the optimistic patch helper is not
+// granted on that specialist record. The worker still must read before
+// writing and read back after the write.
+const TOOL_ALIASES = {
+  patch_repo_file: ["write_repo_file"],
+};
+
 function normalize(value) { return String(value || "").trim().toLowerCase().replace(/\s+/g, " "); }
 export function competencyCoverage(task, specialist) {
   const available = new Set((specialist?.competencies || []).map(normalize));
@@ -164,5 +187,5 @@ export function requiredToolsForTask(task) {
 /** Every explicit or inferred task tool must be granted to the specialist. */
 export function hasRequiredToolCoverage(task, specialist) {
   const allowedTools = new Set((specialist?.allowedTools || []).map(value => String(value).trim()).filter(Boolean));
-  return requiredToolsForTask(task).every(tool => allowedTools.has(tool));
+  return requiredToolsForTask(task).every(tool => [tool, ...(TOOL_ALIASES[tool] || [])].some(candidate => allowedTools.has(candidate)));
 }
