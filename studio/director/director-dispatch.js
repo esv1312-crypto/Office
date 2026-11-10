@@ -1,4 +1,4 @@
-import { competencyCoverage, hasRequiredToolCoverage } from "../core/competency-matching.js";
+import { competencyCoverage, hasRequiredToolCoverage, requiredToolsForTask } from "../core/competency-matching.js";
 /**
  * Dispatch approved plan tasks to compatible active specialists.
  * Assignment is deterministic; PostgreSQL remains the final authorization/scope gate.
@@ -101,7 +101,7 @@ export function createDirectorDispatch({
             report.blocked.push({
               taskId: task.id, code: "ASSIGNED_SPECIALIST_CAPABILITY_MISMATCH",
               reason: "Assigned specialist does not have every worker tool required to resume this task",
-              requiredTools: task.requiredTools || [],
+              requiredTools: requiredToolsForTask(task),
             });
           } else if (existingAssignee && (
             !Array.isArray(task.requiredCompetencies) ||
