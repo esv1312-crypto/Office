@@ -995,3 +995,14 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
 - No merge/deploy, production code change, task/DB/env mutation, or paid model call. Existing $3 cap and budget ledger unchanged.
 - Await explicit owner decision for merge; Render deployment remains a separate approval.
 
+
+
+### 2026-11-11 — PR #136 merged into production branch; deployment not authorized
+
+- Owner explicitly approved merge. Before merge, re-read this notebook and the session handoff from `studio-v1-foundation`; rechecked PR metadata and compared exact base/head.
+- PR #136 head: `6addd4f9f46832e9ad2308df52f18058d47228fb`; exact diff: two files only — `studio/core/competency-matching.js` (+9) and `studio/core/competency-matching.test.js` (+49), no deletions.
+- All four CI workflows associated with that exact head completed successfully: AI-OFFICE unit tests, runtime smoke integration, Universal AI Studio isolated tests, and PostgreSQL integration tests.
+- GitHub successfully merged PR #136. Merge commit: `23a0654233b68eb12e3b8bae14bdb6a9319927d2`.
+- Post-merge verification: PR reports closed/merged; both matcher and regression-test files were read back from `studio-v1-foundation` and contain the expected changes.
+- No Render deploy, environment/config mutation, database/task mutation, owner execution, or paid model call was performed. A new explicit owner approval is required for any Render deployment; previous deploy authorization is exhausted.
+- Last verified internal budget remains cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362.
