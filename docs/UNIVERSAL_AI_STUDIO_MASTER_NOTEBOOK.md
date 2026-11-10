@@ -626,3 +626,14 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 - **Tool limitation:** Render log retrieval returned HTTP 503 from Loki during this audit; event and deploy APIs remained available.
 - **Safety:** read-only investigation only. No deploy, manual trigger, environment change, merge, Neon write, paid model call or owner-plan execution.
 - **Next:** inspect Render/GitHub connection and check-gating state if available. Once deployment is explicitly authorized, perform a controlled rollout of PR #130 and #132, then verify exact commit, deploy ID, health and startup logs.
+
+### 2026-11-10 — Render auto-deploy source-path hypothesis (read-only)
+
+- Retrieved current Render documentation at `https://render.com/docs/deploys.md` and `https://render.com/docs/health-checks.md`.
+- Render docs explicitly state that auto-deploy requires a connected Git provider; services configured with a public Git repository URL require manual deploys. For `After CI Checks Pass`, Render deploys only after detecting one or more checks for the new commit and all checks conclude `success`, `neutral`, or `skipped`.
+- PR #130 merge commit `42577fa9cd14ce603a865ddde3643851f1c138d9` has four GitHub Actions checks, all completed successfully. Their recorded head SHA is exactly the merge commit SHA. The commit message contains no documented Render skip phrase.
+- Render service API exposes repo URL, watched branch, `autoDeploy=yes`, and `autoDeployTrigger=checksPass`, but does not expose whether the repo is connected through Git-provider OAuth versus configured as a public repository URL.
+- **Leading hypothesis, not yet confirmed:** this service may have been configured using a public repository URL rather than a connected Git provider. This would explain why settings show auto-deploy enabled but merges do not produce deploys. Verify the source connection in Render Dashboard before changing anything.
+- GitHub webhook listing was unavailable through the connected GitHub fetch interface. Read-only browser inspection of GitHub repository settings could not start because the separate TinyFish wallet has a $0 balance; no top-up was initiated. Existing GitHub connector and Render APIs remain usable.
+- No service setting, webhook, deployment, environment variable, database row, or paid model execution was changed.
+- Next safe step: verify Render's Git provider connection on the service Settings page. If it is a public-repo URL, connect the Git provider through Render Dashboard and re-check branch/CI settings. Do not replace the production service or create a second production service. Only after connection is verified should a controlled deploy be planned.
