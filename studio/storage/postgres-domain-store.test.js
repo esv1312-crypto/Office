@@ -233,6 +233,41 @@ test("requeues a failed task for one bounded retry and records an audit event", 
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
 
+test("does not retry a failed task when the previous specialist lacks required tools", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("SELECT t.*") && sql.includes("FROM studio.tasks")) {
+        return { rows: [{
+          id: "task-tool-mismatch", project_id: "project-1", organization_id: "org-1",
+          status: "failed", version: 4, assignee_specialist_id: "read-only",
+          payload: { id: "task-tool-mismatch", requiredCompetencies: ["implementation"],
+            requiredTools: ["write_repo_file"], failureReason: "worker stopped" },
+        }] };
+      }
+      if (sql.includes("FROM studio.specialists")) {
+        return { rows: [{
+          id: "read-only", organization_id: "org-1", status: "active",
+          payload: { id: "read-only", competencies: ["implementation"], allowedTools: ["read_repo_file"], projectIds: [] },
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    },
+    release() {},
+  };
+  const store = createPostgresDomainStore({
+    pool: { async connect() { return client; } },
+    createId: () => "retry-event-tool-mismatch",
+  });
+  await assert.rejects(
+    store.retryFailedTask({ taskId: "task-tool-mismatch", expectedVersion: 4, at, actorId: "owner-1" }),
+    error => error.code === "TASK_RETRY_TOOL_CAPABILITY_MISMATCH",
+  );
+  assert.equal(calls.some(call => call.sql.includes("UPDATE studio.tasks SET status = 'assigned'")), false);
+  assert.equal(calls.at(-1).sql, "ROLLBACK");
+});
+
 test("does not exceed the configured failed-task retry limit", async () => {
   const calls = [];
   const client = {
