@@ -67,3 +67,15 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - Startup explicitly skipped self-development launch because organization ID is not configured; no owner plan or new paid model job was launched.
 - Old 23-task failed plan remains failed; do not replay unchanged. Await new owner-approved budget before paid execution.
 - Auto-deploy source connection remains unverified; manual deployment success does not prove auto-deploy is fixed.
+
+## 2026-11-11 — Second bounded owner attempt stopped at dispatch
+
+- Master notebook is authoritative; latest entry records the full evidence and was read back from GitHub.
+- One additional deployment authorized by owner: `dep-dbpoa6etlv9c739uh6u0`, LIVE on commit `cb15769168f3327d70af6eec54700343df50d432`.
+- New owner run `owner-ai-office-retry-watchdog-diagnosis-20261111-v2` created plan `57f08bbc-85af-4639-b494-2b2914829c57`, exactly two tasks, but no specialists assigned: `NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES`, assigned=0, executions=0, QA=0, blocked=2.
+- Deterministic cause: current matcher blob `f0252da46bdad4a7265412c030bc3fee4675c949` lacks aliases for the exact new Director-generated competency phrases. Implementation and QA specialists have compatible tools but zero competency coverage. See master notebook for exact task IDs, phrases and specialist profiles.
+- Budget: cap $3.00, spent $2.063815638, reserved $0, remaining $0.936184362. Only one planner call was made in this run; no worker/QA calls.
+- Runtime config now 12 rounds / 24 calls, but this was not exercised. Old owner plan startup trigger is cleared; new one-shot owner task key is already claimed as needs_attention.
+- No code, task row, DB schema, PR or merge changes. No specialist work or report created.
+- STOP: the one newly authorized deploy has been used. Do not deploy, alter task rows/competencies, or initiate another paid run without fresh explicit owner approval.
+- Next technical fix, when authorized: add explicit matcher aliases for the Director-generated phrases or constrain planner vocabulary to canonical skills, add regression tests for the exact generated phrases, then create a fresh bounded owner run.
