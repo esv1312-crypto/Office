@@ -55,6 +55,20 @@ test("turns owner request into proposed plan and draft tasks", async () => {
   assert.deepEqual(saved[1].persistedInput.plan.planningModelSnapshot, proposal.modelSnapshot);
 });
 
+test("rejects a plan task that omits the requiredTools declaration", async () => {
+  const generated = {
+    ...proposal,
+    tasks: [{ ...proposal.tasks[0] }],
+  };
+  delete generated.tasks[0].requiredTools;
+  const { runtime, saved } = setup({ generated });
+  await assert.rejects(
+    runtime.plan({ request: "Do work", project, actor }),
+    /requiredTools must be an array/,
+  );
+  assert.equal(saved.length, 1);
+});
+
 test("does not call planner when owner authorization is denied", async () => {
   const { runtime, saved } = setup({ allowed: false });
   await assert.rejects(
