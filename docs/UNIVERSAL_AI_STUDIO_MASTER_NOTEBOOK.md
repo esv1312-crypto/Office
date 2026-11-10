@@ -200,10 +200,11 @@ The Director owns planning, delegation and acceptance. Specialists execute scope
 - Repository: `esv1312-crypto/Office`.
 - Production/working branch: `studio-v1-foundation`.
 - Latest branch HEAD verified: `42577fa9cd14ce603a865ddde3643851f1c138d9`.
-- Latest merged PR: [#130 — Require independent read-back verification for saved artifacts](https://github.com/esv1312-crypto/Office/pull/130), merged 2026-11-09 12:33:11 UTC.
+- Latest merged PR: [#131 — restore Universal AI Studio master notebook and session handoff](https://github.com/esv1312-crypto/Office/pull/131), merge commit `cfe469136c0d7ad3c9a1acff0ceb82383536e102`. PR #130 is the latest merged code change; PR #131 is documentation-only.
 - PR #130 changed `studio/artifacts/github-artifact-writer.js` and its tests. After a successful Contents API write, the writer independently reads the exact file back from the configured branch, verifies SHA-256 of persisted bytes against submitted UTF-8 content and checks the blob SHA when available. It returns `readBackVerified: true` only after verification; failures raise explicit read-back error codes.
 - PR #130 CI: all four checks passed on merge commit `42577fa9cd14ce603a865ddde3643851f1c138d9`: `node-tests`, `postgres-integration`, `runtime-smoke`, and `Syntax and isolated unit tests`. Workflow runs: 42617971061, 42617970757, 42617970803 and 42617970786.
 - PR #129 is merged: [Calibrate model budget reservations and bound worker output](https://github.com/esv1312-crypto/Office/pull/129), merge commit `a032dbfce8f87a9f13ce07e15a490be8c1354256`.
+- PR #132 — [Require execution tools before assigning or resuming tasks](https://github.com/esv1312-crypto/Office/pull/132) is open, CI-green on head `4d9093f0515178d45d62898578aefdae75b2e4ef`; not merged or deployed. It introduces explicit task `requiredTools`, inference of workspace read/write requirements for implementation/coding competencies, and capability gates in dispatch, assignment, resume and failed-task retry.
 - PRs #119–#128 were merged before #129; details are in Activity log.
 
 ### Render production state
@@ -590,3 +591,49 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 - **Mismatch:** PR #130 merged at 12:33:11 UTC, after the latest Render deploy. Despite auto-deploy being configured for checks passing, the service did not show a corresponding deploy for merge commit `42577fa9...` in the available deploy/event listing.
 - **Status:** auto-deploy configuration is confirmed; successful auto-deploy of PR #130 is not. Investigate the missing deploy trigger/event before manually deploying or restarting production.
 
+### 2026-11-10 — PR #131 merged: master notebook and session handoff restored
+
+- **PR:** [#131 — docs: restore Universal AI Studio master notebook and session handoff](https://github.com/esv1312-crypto/Office/pull/131).
+- **Branch:** `docs/restore-master-notebook-20261110`.
+- **Merge commit:** `cfe469136c0d7ad3c9a1acff0ceb82383536e102`.
+- **Checks:** node tests, PostgreSQL integration and runtime smoke all passed on final PR head `f9c6c70275a3dd33213b06bc6fbd32332033bc38`.
+- **Files restored:** `docs/UNIVERSAL_AI_STUDIO_MASTER_NOTEBOOK.md` and `docs/operations/AI_OFFICE_SESSION_HANDOFF.md`. The fuller history from the operations-notebook branch is now restored to `studio-v1-foundation`; current state and handoff include the 2026-11-10 audit.
+- **Read-back:** both files were fetched from the branch after writing; after merge, both were fetched again from `studio-v1-foundation` and key markers verified.
+- **Production impact:** documentation only; no Render deploy, environment change, Neon write or model call.
+
+### 2026-11-10 — PR #132: task execution capability routing fix prepared
+
+- **PR:** [#132 — Require execution tools before assigning or resuming tasks](https://github.com/esv1312-crypto/Office/pull/132).
+- **Branch:** `fix/task-execution-capability-routing-20261110`.
+- **Latest tested head:** `4d9093f0515178d45d62898578aefdae75b2e4ef`.
+- **Root cause:** positive competency overlap was treated as sufficient to select a specialist even when their `allowedTools` were read-only or empty. The worker gateway then filtered actual tools to that specialist's grants, so the worker could only return a draft/report. The issue also affected existing assignments and failed-task retries.
+- **Changes:** new task `requiredTools` declaration; planner receives the exact available worker tool names; task plans must declare tool requirements; implementation/coding competencies infer `write_repo_file` + `read_repo_file` as a safety net; Director selection, assignment service, PostgreSQL assignment, existing-task resume and failed-task retry all enforce full tool coverage. Missing capability produces an explicit blocked result rather than a misleading assignment.
+- **Tests:** regression coverage added for task creation/contract, planner tool declaration, dispatch choosing a write-capable specialist over a read-only specialist, no capable specialist, stale assigned-task resume, assignment service, PostgreSQL assignment and failed-task retry.
+- **CI history:** initial PR run exposed two test-fixture/compatibility failures (legacy assigned task omitted competencies; PostgreSQL integration planner fixture omitted requiredTools). Both were corrected. Latest PR head `d5c421f...` passed all three checks: node tests (run 42732294331), PostgreSQL integration (run 42732294330), and isolated syntax/unit tests (run 42732294747).
+- **Status:** CI-green and open; not merged and not deployed. Do not merge/trigger a possible production auto-deploy until the owner authorizes the production rollout, because Render is configured `autoDeploy=yes` / `checksPass`.
+- **Safety:** no Neon schema migration, production write, Render environment change, deploy, owner-plan execution or paid model call was performed by this PR work.
+
+### 2026-11-10 — Render auto-deploy investigation (read-only)
+
+- **Render service:** `ai-office-runtime`, ID `srv-davoj1s9v7es738jino0`.
+- **Verified settings:** `autoDeploy=yes`, `autoDeployTrigger=checksPass`, watched branch `studio-v1-foundation`, repository `esv1312-crypto/Office`.
+- **Last successful/live deploy:** `dep-dboqi9p5efls73en1f2g`, commit `a032dbfce8f87a9f13ce07e15a490be8c1354256`, started 2026-11-09 11:06:15 UTC, finished 11:07:18 UTC, trigger `api`.
+- **PR #130:** merged 2026-11-09 12:33:11 UTC, merge commit `42577fa9cd14ce603a865ddde3643851f1c138d9`. Despite the merge, Render's deployment list still contains only the 2026-11-09 11:06 deploy as live; there is no deploy for PR #130 or later main-branch commit.
+- **Render event audit:** from 2026-11-09 12:30 UTC through 2026-11-10 23:59 UTC, the service event query returned an empty list. No `build_started`, `deploy_started`, `commit_ignored`, or deploy-failure event was recorded for the merged PR.
+- **GitHub branch check:** `studio-v1-foundation` HEAD remains `cfe469136c0d7ad3c9a1acff0ceb82383536e102` (PR #131 merge), which includes PR #130, while Render still runs `a032dbf...`.
+- **Conclusion:** confirmed that the configured auto-deploy did not create a deploy after PR #130. Evidence does **not** identify the exact cause (e.g. webhook delivery/subscription or check-gating issue); do not claim a root cause without delivery evidence.
+- **PR #132:** latest head at audit time `402c453ebff7acf340769a5be32d0052a0c7b43f`; all four checks now passed: runtime-smoke, syntax/isolated unit tests, node tests, PostgreSQL integration. PR remains open and unmerged.
+- **Tool limitation:** Render log retrieval returned HTTP 503 from Loki during this audit; event and deploy APIs remained available.
+- **Safety:** read-only investigation only. No deploy, manual trigger, environment change, merge, Neon write, paid model call or owner-plan execution.
+- **Next:** inspect Render/GitHub connection and check-gating state if available. Once deployment is explicitly authorized, perform a controlled rollout of PR #130 and #132, then verify exact commit, deploy ID, health and startup logs.
+
+### 2026-11-10 — Render auto-deploy source-path hypothesis (read-only)
+
+- Retrieved current Render documentation at `https://render.com/docs/deploys.md` and `https://render.com/docs/health-checks.md`.
+- Render docs explicitly state that auto-deploy requires a connected Git provider; services configured with a public Git repository URL require manual deploys. For `After CI Checks Pass`, Render deploys only after detecting one or more checks for the new commit and all checks conclude `success`, `neutral`, or `skipped`.
+- PR #130 merge commit `42577fa9cd14ce603a865ddde3643851f1c138d9` has four GitHub Actions checks, all completed successfully. Their recorded head SHA is exactly the merge commit SHA. The commit message contains no documented Render skip phrase.
+- Render service API exposes repo URL, watched branch, `autoDeploy=yes`, and `autoDeployTrigger=checksPass`, but does not expose whether the repo is connected through Git-provider OAuth versus configured as a public repository URL.
+- **Leading hypothesis, not yet confirmed:** this service may have been configured using a public repository URL rather than a connected Git provider. This would explain why settings show auto-deploy enabled but merges do not produce deploys. Verify the source connection in Render Dashboard before changing anything.
+- GitHub webhook listing was unavailable through the connected GitHub fetch interface. Read-only browser inspection of GitHub repository settings could not start because the separate TinyFish wallet has a $0 balance; no top-up was initiated. Existing GitHub connector and Render APIs remain usable.
+- No service setting, webhook, deployment, environment variable, database row, or paid model execution was changed.
+- Next safe step: verify Render's Git provider connection on the service Settings page. If it is a public-repo URL, connect the Git provider through Render Dashboard and re-check branch/CI settings. Do not replace the production service or create a second production service. Only after connection is verified should a controlled deploy be planned.

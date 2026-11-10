@@ -1,5 +1,5 @@
 import { insertOutboxEvent } from "./postgres-outbox-store.js";
-import { hasCompetencyCoverage } from "../core/competency-matching.js";
+import { hasCompetencyCoverage, hasRequiredToolCoverage } from "../core/competency-matching.js";
 /**
  * PostgreSQL repositories for Studio projects, specialists, and tasks.
  * The caller injects a pg-compatible pool; this module never connects or migrates.
@@ -178,8 +178,8 @@ export function createPostgresDomainStore({ pool, createId }) {
                (id, organization_id, project_id, aggregate_type, aggregate_id, event_type, payload, occurred_at)
              VALUES ($1,$2,$3,'task',$4,'task.created',$5::jsonb,$6)`,
             [eventIdValue, project.organization_id, projectId, task.id,
-              JSON.stringify({ title: task.title, planId, requiredCompetencies: task.requiredCompetencies }), at]);
-          await insertOutboxEvent(client, { eventId: eventIdValue, organizationId: project.organization_id, projectId, aggregateType: "task", aggregateId: task.id, eventType: "task.created", payload: { title: task.title, planId, requiredCompetencies: task.requiredCompetencies }, occurredAt: at });
+              JSON.stringify({ title: task.title, planId, requiredCompetencies: task.requiredCompetencies, requiredTools: task.requiredTools || [] }), at]);
+          await insertOutboxEvent(client, { eventId: eventIdValue, organizationId: project.organization_id, projectId, aggregateType: "task", aggregateId: task.id, eventType: "task.created", payload: { title: task.title, planId, requiredCompetencies: task.requiredCompetencies, requiredTools: task.requiredTools || [] }, occurredAt: at });
         }
         return { plan, tasks, eventId: createdEventId };
       });
@@ -380,6 +380,11 @@ export function createPostgresDomainStore({ pool, createId }) {
         const projectIds = Array.isArray(specialistPayload.projectIds) ? specialistPayload.projectIds : [];
         if (projectIds.length && !projectIds.includes(row.project_id)) {
           throw Object.assign(new Error("Previous specialist is outside the task project scope"), { code: "TASK_RETRY_PROJECT_SCOPE_MISMATCH" });
+        }
+        if (!hasRequiredToolCoverage(row.payload || {}, specialistPayload)) {
+          throw Object.assign(new Error("Previous specialist lacks one or more tools required by the task"), {
+            code: "TASK_RETRY_TOOL_CAPABILITY_MISMATCH",
+          });
         }
         if (!hasCompetencyCoverage(row.payload || {}, specialistPayload)) {
           throw Object.assign(new Error("Previous specialist no longer covers the task"), { code: "TASK_RETRY_COMPETENCY_MISMATCH" });

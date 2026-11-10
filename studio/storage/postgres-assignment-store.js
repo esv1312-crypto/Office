@@ -1,4 +1,4 @@
-import { hasCompetencyCoverage } from "../core/competency-matching.js";
+import { hasCompetencyCoverage, hasRequiredToolCoverage } from "../core/competency-matching.js";
 import { insertOutboxEvent } from "./postgres-outbox-store.js";
 /**
  * Atomic PostgreSQL assignment adapter for the independent Studio schema.
@@ -47,6 +47,11 @@ export function createPostgresAssignmentStore({ pool, createId }) {
         const projectIds = Array.isArray(specialistPayload.projectIds) ? specialistPayload.projectIds : [];
         if (projectIds.length && !projectIds.includes(task.project_id)) {
           throw Object.assign(new Error("Specialist is not permitted in this project"), { code: "PROJECT_SCOPE_MISMATCH" });
+        }
+        if (!hasRequiredToolCoverage(payload, specialistPayload)) {
+          throw Object.assign(new Error("Specialist does not have every tool required by the task"), {
+            code: "SPECIALIST_TOOL_CAPABILITY_MISMATCH",
+          });
         }
         if (!hasCompetencyCoverage(payload, specialistPayload)) {
           throw Object.assign(new Error("Specialist does not cover any of the task's required competencies"), {

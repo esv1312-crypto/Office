@@ -16,11 +16,13 @@ const proposal = {
     title: "Build district blockout",
     description: "Create the first playable district layout.",
     requiredCompetencies: ["roblox", "lua"],
+    requiredTools: [],
     acceptanceCriteria: ["All key zones exist", "Spawn is accessible"],
   }, {
     title: "Implement fan group flow",
     description: "Create a basic join and leave flow.",
     requiredCompetencies: ["lua", "gameplay-systems"],
+    requiredTools: [],
     acceptanceCriteria: ["Players can join", "Players can leave"],
   }],
   modelSnapshot: { provider: "test", model: "planner-fixture", version: "1" },
@@ -49,7 +51,22 @@ test("turns owner request into proposed plan and draft tasks", async () => {
   assert.equal(result.tasks.length, 2);
   assert.equal(result.tasks[0].status, "draft");
   assert.deepEqual(result.tasks[0].requiredCompetencies, ["roblox", "lua"]);
+  assert.deepEqual(result.tasks[0].requiredTools, []);
   assert.deepEqual(saved[1].persistedInput.plan.planningModelSnapshot, proposal.modelSnapshot);
+});
+
+test("rejects a plan task that omits the requiredTools declaration", async () => {
+  const generated = {
+    ...proposal,
+    tasks: [{ ...proposal.tasks[0] }],
+  };
+  delete generated.tasks[0].requiredTools;
+  const { runtime, saved } = setup({ generated });
+  await assert.rejects(
+    runtime.plan({ request: "Do work", project, actor }),
+    /requiredTools must be an array/,
+  );
+  assert.equal(saved.length, 1);
 });
 
 test("does not call planner when owner authorization is denied", async () => {

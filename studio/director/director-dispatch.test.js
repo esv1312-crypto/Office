@@ -8,11 +8,11 @@ const specialists = [
   { id: "a-dev", organizationId: "org-1", status: "active", competencies: ["lua", "roblox"] },
   { id: "wrong-org", organizationId: "org-2", status: "active", competencies: ["lua", "roblox"] },
 ];
-function setup(tasks) {
+function setup(tasks, team = specialists) {
   const calls = [];
   const store = {
     loadApprovedPlanForDispatch: async () => ({ plan, organizationId: "org-1", tasks }),
-    listActiveSpecialists: async () => specialists,
+    listActiveSpecialists: async () => team,
     retryFailedTask: async ({ taskId, expectedVersion, maxAttempts }) => {
       calls.push(["retry", taskId, expectedVersion, maxAttempts]);
       const task = tasks.find(item => item.id === taskId);
@@ -141,6 +141,55 @@ test("limits each dispatch stage and explicitly defers remaining runnable tasks"
   assert.deepEqual(result.deferred.map(item => item.taskId), ["task-3", "task-4"]);
   assert.ok(result.deferred.every(item => item.code === "EXECUTION_BATCH_LIMIT"));
   assert.equal(calls.filter(item => item[0] === "assign").length, 2);
+});
+
+test("requires every task tool and prefers a write-capable specialist over a higher competency read-only specialist", async () => {
+  const team = [
+    { id: "architect", organizationId: "org-1", status: "active",
+      competencies: ["architecture", "system.design", "integration", "technical documentation"],
+      allowedTools: ["list_repo_directory", "read_repo_file"] },
+    { id: "implementer", organizationId: "org-1", status: "active",
+      competencies: ["implementation", "coding"], allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"] },
+  ];
+  const task = {
+    id: "task-write", projectId: "project-1", status: "planned", version: 1,
+    requiredCompetencies: ["Plugin architecture", "Domain modeling", "Configuration design", "Extensibility engineering"],
+    requiredTools: ["write_repo_file", "read_repo_file"],
+  };
+  const { dispatch } = setup([task], team);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.assigned.length, 1);
+  assert.equal(result.assigned[0].specialistId, "implementer");
+});
+
+test("blocks a task when no active specialist has every required tool", async () => {
+  const team = [{
+    id: "architect", organizationId: "org-1", status: "active",
+    competencies: ["implementation", "coding"], allowedTools: ["list_repo_directory", "read_repo_file"],
+  }];
+  const { dispatch } = setup([{
+    id: "task-needs-write", projectId: "project-1", status: "planned", version: 1,
+    requiredCompetencies: ["implementation"], requiredTools: ["write_repo_file"],
+  }], team);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.blocked[0].code, "NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES");
+  assert.deepEqual(result.blocked[0].requiredTools, ["write_repo_file"]);
+});
+
+test("does not resume an assigned task when its specialist lacks the required write tool", async () => {
+  const team = [{
+    id: "architect", organizationId: "org-1", status: "active",
+    competencies: ["implementation", "coding"], allowedTools: ["read_repo_file"],
+  }];
+  const { dispatch } = setup([{
+    id: "task-stale-tools", projectId: "project-1", status: "assigned", version: 3,
+    assigneeSpecialistId: "architect", requiredCompetencies: ["implementation"],
+    requiredTools: ["write_repo_file"],
+  }], team);
+  const result = await dispatch.dispatch({ planId: "plan-1", actor: { id: "owner" } });
+  assert.equal(result.blocked[0].code, "ASSIGNED_SPECIALIST_CAPABILITY_MISMATCH");
+  assert.equal(result.assigned.length, 0);
 });
 
 test("rejects invalid dispatch batch limits", async () => {

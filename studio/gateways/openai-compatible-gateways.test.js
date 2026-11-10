@@ -30,7 +30,7 @@ test("planner requests structured JSON and returns a provider/model snapshot", a
     summary: "Summary",
     acceptanceCriteria: ["Criterion"],
     tasks: [{ title: "Task", description: "Do work",
-      requiredCompetencies: ["javascript"], acceptanceCriteria: ["It works"] }],
+      requiredCompetencies: ["javascript"], requiredTools: [], acceptanceCriteria: ["It works"] }],
   };
   const { gateways, calls } = fixture({ contents: [JSON.stringify(proposal)] });
   const result = await gateways.planningGateway.generatePlan({
@@ -58,6 +58,7 @@ test("planner retries empty output without JSON mode and accepts fenced JSON", a
       title: "Build the greybox",
       description: "Create the first testable district block.",
       requiredCompetencies: ["roblox.worldbuilding"],
+      requiredTools: [],
       acceptanceCriteria: ["The block is navigable and has a spawn point."],
     }],
   };
@@ -72,6 +73,31 @@ test("planner retries empty output without JSON mode and accepts fenced JSON", a
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].request.response_format, { type: "json_object" });
   assert.equal("response_format" in calls[1].request, false);
+});
+test("planner receives exact available worker tool names and requires task tool declarations", async () => {
+  const proposal = {
+    title: "Implement feature", objective: "Persist source changes", summary: "A small implementation stage.",
+    acceptanceCriteria: ["The source file is persisted"],
+    tasks: [{ title: "Write source", description: "Create one file", requiredCompetencies: ["implementation"],
+      requiredTools: ["write_repo_file", "read_repo_file"], acceptanceCriteria: ["File is read back"] }],
+  };
+  const calls = [];
+  const client = { chat: { completions: { create: async request => {
+    calls.push(request);
+    return { choices: [{ message: { content: JSON.stringify(proposal) } }] };
+  } } } };
+  const gateways = createOpenAiCompatibleGateways({
+    client,
+    workerTools: { definitions: [
+      { type: "function", function: { name: "write_repo_file" } },
+      { type: "function", function: { name: "read_repo_file" } },
+    ] },
+    models: { planner: "planner", worker: "worker", qa: "qa" },
+  });
+  const result = await gateways.planningGateway.generatePlan({ request: "Implement a feature", project: { id: "p1" } });
+  assert.deepEqual(result.tasks[0].requiredTools, ["write_repo_file", "read_repo_file"]);
+  assert.deepEqual(JSON.parse(calls[0].messages[1].content).availableTools, ["write_repo_file", "read_repo_file"]);
+  assert.match(calls[0].messages[0].content, /Any task that creates or modifies source\/workspace files must require write_repo_file/);
 });
 test("worker forwards abort signal and returns text with a model snapshot", async () => {
   const { gateways, calls } = fixture({ contents: ["Implemented the assigned change."] });
@@ -176,6 +202,7 @@ test("planner extracts a balanced JSON object surrounded by explanatory prose", 
       title: "Test parsing",
       description: "Include braces inside a quoted string: {not a nested object}",
       requiredCompetencies: ["testing"],
+      requiredTools: [],
       acceptanceCriteria: ["JSON object is recovered"],
     }],
   };

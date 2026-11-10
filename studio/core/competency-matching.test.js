@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { competencyCoverage, hasCompetencyCoverage } from "./competency-matching.js";
+import { competencyCoverage, hasCompetencyCoverage, hasRequiredToolCoverage, requiredToolsForTask } from "./competency-matching.js";
 
 test("matches canonical competencies without case or whitespace sensitivity", () => {
   const task = { requiredCompetencies: ["Implementation", "CODING", "  Documentation  "] };
@@ -63,4 +63,16 @@ test("routes all competencies from the Universal AI Studio master plan to the ac
       "every planned task must have at least one compatible active specialist: " + competencies.join(", "),
     );
   }
+});
+
+test("requires every explicit task tool to be granted to the specialist", () => {
+  const task = { requiredTools: ["write_repo_file", "read_repo_file"] };
+  assert.equal(hasRequiredToolCoverage(task, { allowedTools: ["write_repo_file", "read_repo_file"] }), true);
+  assert.equal(hasRequiredToolCoverage(task, { allowedTools: ["read_repo_file"] }), false);
+  assert.equal(hasRequiredToolCoverage(task, { allowedTools: [] }), false);
+  assert.equal(hasRequiredToolCoverage({ requiredTools: [] }, { allowedTools: [] }), true);
+  const inferredTask = { requiredCompetencies: ["Extensibility engineering"], requiredTools: [] };
+  assert.deepEqual(requiredToolsForTask(inferredTask), ["write_repo_file", "read_repo_file"]);
+  assert.equal(hasRequiredToolCoverage(inferredTask, { allowedTools: ["read_repo_file"] }), false);
+  assert.equal(hasRequiredToolCoverage(inferredTask, { allowedTools: ["write_repo_file", "read_repo_file"] }), true);
 });

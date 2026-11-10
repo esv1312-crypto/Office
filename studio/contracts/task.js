@@ -14,6 +14,7 @@
  * @property {string} projectId
  * @property {string} title
  * @property {string} [description]
+ * @property {string[]} [requiredTools] Exact worker tool names required by the task.
  * @property {TaskStatus} status
  * @property {string|null} [assigneeSpecialistId]
  * @property {number} version Monotonically increasing aggregate version.
@@ -61,6 +62,9 @@ export function assertStudioTask(task) {
   }
   if (typeof candidate.title !== "string" || !candidate.title.trim()) {
     throw new TypeError("Task title is required");
+  }
+  if (candidate.requiredTools !== undefined && (!Array.isArray(candidate.requiredTools) || candidate.requiredTools.some(value => typeof value !== "string" || !value.trim()))) {
+    throw new TypeError("Task requiredTools must be an array of non-empty strings");
   }
   if (!TASK_STATUSES.includes(/** @type {string} */ (candidate.status))) {
     throw new TypeError("Task status is invalid");
