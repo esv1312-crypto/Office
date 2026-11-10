@@ -40,6 +40,7 @@ function validateProposal(proposal) {
       title: required(task.title, `plan.tasks[${index}].title`),
       description: (() => { const value = required(task.description, `plan.tasks[${index}].description`); if (value.length > 1200) throw new TypeError(`plan.tasks[${index}].description must be 1200 characters or fewer`); return value; })(),
       requiredCompetencies: boundedStrings(task.requiredCompetencies, `plan.tasks[${index}].requiredCompetencies`, 1, 6),
+      requiredTools: (() => { const value = nonEmptyStrings(task.requiredTools, `plan.tasks[${index}].requiredTools`); if (value.length > 8) throw new TypeError(`plan.tasks[${index}].requiredTools must contain 8 items or fewer`); return [...new Set(value.map(item => item.trim()))]; })(),
       acceptanceCriteria: boundedStrings(task.acceptanceCriteria, `plan.tasks[${index}].acceptanceCriteria`, 1, 4),
     };
   });
@@ -106,6 +107,7 @@ export function createDirectorRuntime({
         title: task.title,
         description: task.description,
         requiredCompetencies: task.requiredCompetencies,
+        requiredTools: task.requiredTools,
         acceptanceCriteria: task.acceptanceCriteria,
         at,
       }));
