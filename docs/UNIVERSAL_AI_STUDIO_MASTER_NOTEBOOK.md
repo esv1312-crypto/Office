@@ -979,3 +979,19 @@ Stop. The one additional deployment authorized by the owner has been used. Do no
 
 ### Exact next action
 Await owner decision on PR #136 merge. Do not merge or deploy without explicit approval. After merge approval, merge PR only if it remains current and all checks are green; treat Render deployment as a separate action requiring its own explicit authorization. Once production is updated, create a fresh bounded owner task/plan using the now-covered exact competency vocabulary, with the existing $3 cap and no budget increase.
+
+### 2026-11-11 — PR #136 synchronized with latest docs and CI rerun green
+
+- After recording the PR result, the base branch received two documentation-only commits (master notebook and operations handoff). GitHub compare then showed the PR branch diverged by two documentation commits, so it was synchronized without changing the reviewed code:
+  - Created merge commit `66ca9b4f147b101eb16ea1f8e626b65a19efc2ee` with parents PR head `f253f49361ba0326c131a6e3a9dcb5cedf36a71a` and base docs head `78839925cc97ef756823677cb88f1fb5557e9eb1`.
+  - Feature branch fast-forward updated using expected-head check; branch now ahead 3 / behind 0.
+  - GitHub compare confirms PR diff remains exactly the same two code/test files, 58 additions, 0 deletions. No docs were added to PR diff.
+- GitHub reran all checks for synchronized head `66ca9b4f147b101eb16ea1f8e626b65a19efc2ee`; all four are green:
+  - Syntax and isolated unit tests — success
+  - node-tests — success
+  - runtime-smoke — success
+  - postgres-integration — success, including durable task check across actual runtime process restart.
+- PR #136 remains open and unmerged. GitHub reports mergeable=true after synchronization.
+- No merge/deploy, production code change, task/DB/env mutation, or paid model call. Existing $3 cap and budget ledger unchanged.
+- Await explicit owner decision for merge; Render deployment remains a separate approval.
+
