@@ -51,6 +51,21 @@ test("rejects assignments with zero competency coverage before persistence", asy
   );
 });
 
+test("rejects a specialist missing an explicitly required worker tool", async () => {
+  const assignment = createTaskAssignment({
+    store: { assignTask: async () => assert.fail("must not persist") },
+    authorize: async () => true,
+  });
+  await assert.rejects(
+    assignment.assign({
+      task: { ...task, requiredTools: ["write_repo_file"] },
+      specialist: { ...specialist, allowedTools: ["read_repo_file"] },
+      actor,
+    }),
+    error => error.code === "SPECIALIST_TOOL_CAPABILITY_MISMATCH",
+  );
+});
+
 test("rejects unauthorized assignment", async () => {
   const assignment = createTaskAssignment({
     store: { assignTask: async () => assert.fail("must not persist") },
