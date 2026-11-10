@@ -637,3 +637,14 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 - GitHub webhook listing was unavailable through the connected GitHub fetch interface. Read-only browser inspection of GitHub repository settings could not start because the separate TinyFish wallet has a $0 balance; no top-up was initiated. Existing GitHub connector and Render APIs remain usable.
 - No service setting, webhook, deployment, environment variable, database row, or paid model execution was changed.
 - Next safe step: verify Render's Git provider connection on the service Settings page. If it is a public-repo URL, connect the Git provider through Render Dashboard and re-check branch/CI settings. Do not replace the production service or create a second production service. Only after connection is verified should a controlled deploy be planned.
+
+### 2026-11-10 — PR #132 merged and production deployment verified
+- **PR:** [#132 — require execution tools before assigning or resuming tasks](https://github.com/esv1312-crypto/Office/pull/132), merged via squash.
+- **Merge commit:** `cc67727bc70e9d5cc91adb86617f6f139c0f210c`.
+- **Final CI:** all four checks passed on final PR head `acfd7aa0fef18d9a8cb699da40a252be4c932d25`: syntax/isolated unit tests, node tests, PostgreSQL integration, runtime smoke.
+- **Production deploy:** manually triggered because no automatic deploy appeared after merge despite Render `autoDeploy=yes` / `checksPass`.
+- **Render deploy:** `dep-dbp8s7c9v7es73av8osg`, status `live`, commit exactly `cc67727bc70e9d5cc91adb86617f6f139c0f210c`; build succeeded and deploy ended successfully at 2026-11-10 03:23:45 UTC.
+- **Runtime evidence:** startup log confirms `node studio/server.js`, `database=existing-office`, `artifactStore=github+postgres`, model `deepseek/deepseek-v4.1-flash-1017`, configured budget `2USD`. Readiness endpoint returned `{"status":"ready","database":"connected"}`.
+- **Safety evidence:** startup logs say owner task `owner-master-build-universal-ai-studio-2026-11-08-v1` was already claimed or complete and self-development launch was skipped because organization ID is not configured. No owner plan was re-run and no new paid model job was initiated.
+- **Important:** deployment is live and readiness is confirmed; this does not mean the failed old 23-task plan has been repaired or completed. Do not rerun it unchanged. No new paid work until owner provides and approves a new budget.
+- **Auto-deploy:** still unresolved. The manual deployment succeeded; the Git-provider connection type was not confirmed. Keep investigating separately; do not claim auto-deploy is fixed.
