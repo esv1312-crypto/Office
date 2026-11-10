@@ -58,3 +58,12 @@ PR #132 adds task `requiredTools`, exposes available tool names to the planner, 
 - GitHub webhook listing unavailable through connected GitHub fetch; read-only browser attempt could not start because separate TinyFish wallet balance is $0. No top-up initiated.
 - No merge/deploy/config/DB/model actions performed.
 - Next: inspect Render service Settings > Git Provider connection and resolve connection mode; then plan controlled deploy.
+
+## 2026-11-10 — PR #132 production rollout completed
+- Merged PR #132 using squash; merge SHA `cc67727bc70e9d5cc91adb86617f6f139c0f210c`.
+- Final PR head `acfd7aa0fef18d9a8cb699da40a252be4c932d25`: all four CI checks passed.
+- Manually triggered Render deployment `dep-dbp8s7c9v7es73av8osg` because merge did not automatically create a deploy. It is `live` on exact merge SHA; build and deploy events succeeded.
+- Runtime startup logs confirm database connected and model/budget config loaded. `/health/ready` returned `{"status":"ready","database":"connected"}`.
+- Startup explicitly skipped self-development launch because organization ID is not configured; no owner plan or new paid model job was launched.
+- Old 23-task failed plan remains failed; do not replay unchanged. Await new owner-approved budget before paid execution.
+- Auto-deploy source connection remains unverified; manual deployment success does not prove auto-deploy is fixed.
