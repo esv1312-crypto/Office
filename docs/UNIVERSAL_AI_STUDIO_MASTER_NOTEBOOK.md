@@ -648,3 +648,42 @@ The following merged changes were found by inspecting GitHub's merged pull reque
 - **Safety evidence:** startup logs say owner task `owner-master-build-universal-ai-studio-2026-11-08-v1` was already claimed or complete and self-development launch was skipped because organization ID is not configured. No owner plan was re-run and no new paid model job was initiated.
 - **Important:** deployment is live and readiness is confirmed; this does not mean the failed old 23-task plan has been repaired or completed. Do not rerun it unchanged. No new paid work until owner provides and approves a new budget.
 - **Auto-deploy:** still unresolved. The manual deployment succeeded; the Git-provider connection type was not confirmed. Keep investigating separately; do not claim auto-deploy is fixed.
+
+---
+
+### 2026-11-10 — Production budget correction, Render redeploy and readiness verification
+
+**This entry supersedes older budget/deploy status above wherever they conflict.**
+
+- Owner authorization: restore the production model-budget account cap to USD 2.00, restart/redeploy the existing Render Runtime, and verify readiness. Explicit restriction: do not launch new paid tasks/model jobs.
+- Neon account universal-ai-office-launch-budget-v1: the production account was read and found with cap USD 3.00, settled spend USD 2.030667303, reserved USD 0. The cap was restored to USD 2.00 with a targeted update to the existing account row.
+- Verified post-update ledger: cap USD 2.000000000; settled spend USD 2.030667303; reserved USD 0; remaining USD -0.030667303. The account is over cap by approximately USD 0.030667. No ledger history was reset and no budget was added.
+- Render action: no dedicated restart operation was available through the connected Render actions. With owner authorization, a redeploy of the same production commit was triggered as the restart substitute, without clearing build cache.
+- Deploy: dep-dbpgnrbm8hqs73dsaomg, commit 63e5df00b1a74c96ba7236d8fe347d669e087263, trigger api, build succeeded at 2026-11-10T12:20:07.640148Z. Render deploy status API still reported update_in_progress at the last check; do not describe the deploy API status as fully live/completed.
+- New runtime instance: srv-davoj1s9v7es738jino0-b79mt. Logs show node studio/server.js started at 2026-11-10T12:20:20.321Z; startup at 12:20:22.529Z reports database existing-office, provider openrouter, artifact store github+postgres, model deepseek/deepseek-v4.1-flash-1017, and configured runtime budget 3USD.
+- Health: https://ai-office-runtime-8pir.onrender.com/health/ready was fetched repeatedly after the new instance started and returned {"status":"ready","database":"connected"}. Runtime is responding and connected to Neon.
+- Important unresolved configuration mismatch: Render startup still reports budget=3USD, while the Neon account cap is USD 2.00. The database row remains capped at USD 2.00. Source account initialization uses LEAST(existing cap, configured cap), so the existing row should not be raised by ordinary initialization. However, Render environment alignment to STUDIO_MODEL_BUDGET_USD=2 has not been performed; the owner authorized the database correction and redeploy, not an environment-variable change. Obtain explicit authorization before changing Render environment.
+- Startup idempotency: logs say owner task owner-ai-office-single-proof-2026-11-10-v2 was already claimed or complete. Self-development launch was skipped because the organization ID is not configured. This does not prove that the owner task completed.
+- Paid work: no paid planner, worker, QA or other model task was launched during these actions. Do not start one while the ledger is over cap and until the owner explicitly approves a new budget.
+- Production readiness conclusion: health/readiness is confirmed; full Render deploy completion remains NOT VERIFIED in the deploy status API; runtime budget environment alignment remains unresolved; no paid workflow has been validated after this redeploy.
+
+### 2026-11-10 — PR #132 and #135 production code state reconciliation
+
+- PR #132 (task execution capability routing) is merged. The production branch contains the capability-aware routing implementation described above. Its final CI passed all four checks; the merged code is included in the production revision.
+- PR #135 — Director competency alias vocabulary — is merged and included in latest production commit 63e5df00b1a74c96ba7236d8fe347d669e087263.
+- Source inspection of studio/core/competency-matching.js on studio-v1-foundation confirms aliases: Orchestration/runtime code analysis → implementation, coding, system.design; Runtime orchestration engineering and Workflow orchestration → implementation, coding, system.design; Independent code review and Independent implementation review → qa.review, testing; Runtime verification → qa.review, testing, acceptance.criteria; Acceptance criteria → acceptance.criteria.
+- Current Neon specialist profiles observed during the audit: Implementation Specialist has implementation/coding and source-modification competencies, with list_repo_directory, read_repo_file, write_repo_file; Quality Engineer has QA/review/testing/acceptance competencies, with list/read tools only; Solution Architect is read-only.
+- Deterministic code-path assessment: the saved control-plan task requiring Orchestration/runtime code analysis and list/read/write tools should be eligible for Implementation Specialist; the task requiring Independent code review and list/read tools should be eligible for Quality Engineer. This is a code/profile assessment, not proof of a fresh Director plan or a live assignment.
+- Existing control plan b590e0b6-6d4e-4c40-85e8-a4a75cf34986 was created before PR #135 deployed. Its two tasks remain planned with no assignee in the last verified state. Do not claim the new alias routing has been exercised through a new plan.
+- A new planner call/plan would consume paid model budget. No new plan was created and no paid task was run because the account is over its approved cap and no new budget was authorized.
+
+### 2026-11-10 — Exact continuation point after this session
+
+1. Keep all paid model execution disabled; production ledger is over cap by USD 0.030667303.
+2. Ask the owner before changing Render environment to align STUDIO_MODEL_BUDGET_USD from the observed runtime value 3 to 2.
+3. If continuing read-only, inspect the deterministic budget gate and tests to confirm requests are blocked when available budget is negative; do not invoke a model provider.
+4. Continue validating PR #132/#135 competency and capability routing using deterministic code/tests and persisted state only. Do not create a new paid Director plan.
+5. Keep the control plan b590e0b6-6d4e-4c40-85e8-a4a75cf34986 as unexecuted evidence; do not assume its tasks were assigned or completed.
+6. Render health is ready with database connected. Render deploy API last reported update_in_progress, despite successful build, new instance startup and passing health endpoint; record as such unless a later API check confirms completion.
+
+**Notebook maintenance rule reaffirmed:** read this file before continuing; after every substantial action, update this notebook with exact evidence and the new stopping point. Never rely on chat memory as a substitute for this record.
