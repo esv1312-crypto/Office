@@ -76,3 +76,28 @@ test("requires every explicit task tool to be granted to the specialist", () => 
   assert.equal(hasRequiredToolCoverage(inferredTask, { allowedTools: ["read_repo_file"] }), false);
   assert.equal(hasRequiredToolCoverage(inferredTask, { allowedTools: ["write_repo_file", "read_repo_file"] }), true);
 });
+
+test("maps Director self-development task vocabulary to implementation and QA roles", () => {
+  const implementationTask = { requiredCompetencies: ["Orchestration/runtime code analysis"] };
+  const implementationSpecialist = {
+    competencies: ["implementation", "coding", "documentation"],
+    allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"],
+  };
+  assert.equal(competencyCoverage(implementationTask, implementationSpecialist), 1);
+  assert.deepEqual(requiredToolsForTask(implementationTask), ["write_repo_file", "read_repo_file"]);
+  assert.equal(hasRequiredToolCoverage(implementationTask, implementationSpecialist), true);
+
+  const readOnlyArchitect = {
+    competencies: ["architecture", "system.design", "technical documentation"],
+    allowedTools: ["list_repo_directory", "read_repo_file"],
+  };
+  assert.equal(hasRequiredToolCoverage(implementationTask, readOnlyArchitect), false);
+
+  const qaTask = { requiredCompetencies: ["Independent code review"] };
+  const qualitySpecialist = {
+    competencies: ["qa.review", "testing", "acceptance.criteria"],
+    allowedTools: ["list_repo_directory", "read_repo_file"],
+  };
+  assert.equal(competencyCoverage(qaTask, qualitySpecialist), 1);
+  assert.equal(hasRequiredToolCoverage(qaTask, qualitySpecialist), true);
+});
