@@ -4,7 +4,7 @@
 >
 > **Working rule:** Read this notebook first, then inspect the live systems. Never assume an earlier status is still current. Record evidence, not intentions. Do not mark a capability complete until it has been demonstrated.
 
-Last updated: 2026-11-10 (UTC; delegation audit added)  
+Last updated: 2026-11-11 (UTC; post-PR #136 live-state reconciliation)
 Primary repository: `esv1312-crypto/Office`  
 Primary working branch: `studio-v1-foundation`
 
@@ -186,116 +186,106 @@ The latest Render deploy observed on 2026-11-08 was triggered by commit:
 
 ---
 
-## 7. Current state — 2026-11-10 (reconciled against GitHub, Render and Neon)
+## 7. Current state — 2026-11-11 (post-PR #136 reconciliation)
 
 ### Mission and architecture
-Universal AI Studio remains a cloud-first, autonomous, extensible production studio for Roblox and other games, mobile/web applications, websites, SaaS, AI products and automations. It is not Roblox-only and not merely a collection of chatbots.
-
-The intended production flow is:
+Universal AI Studio remains a cloud-first, autonomous and extensible production studio. The required workflow is:
 `INTAKE → RECON → PLAN → DELEGATE → EXECUTE → VERIFY → FIX → RETEST → EVIDENCE`.
-
-The Director owns planning, delegation and acceptance. Specialists execute scoped work. Runtime/cloud tools perform deterministic actions; models are used for interpretation, planning, generation and ambiguous decisions. GitHub stores source/workspace artifacts, Render hosts the runtime, Neon stores durable state and budget accounting, and OpenRouter routes model requests.
+The owner gives one goal; the Director plans and delegates; specialists execute scoped work; independent QA verifies persisted results. GitHub stores source and artifacts, Render hosts the runtime, Neon stores durable state and budget accounting, and OpenRouter routes model requests.
 
 ### GitHub source state
 - Repository: `esv1312-crypto/Office`.
-- Production/working branch: `studio-v1-foundation`.
-- Latest branch HEAD verified: `42577fa9cd14ce603a865ddde3643851f1c138d9`.
-- Latest merged PR: [#131 — restore Universal AI Studio master notebook and session handoff](https://github.com/esv1312-crypto/Office/pull/131), merge commit `cfe469136c0d7ad3c9a1acff0ceb82383536e102`. PR #130 is the latest merged code change; PR #131 is documentation-only.
-- PR #130 changed `studio/artifacts/github-artifact-writer.js` and its tests. After a successful Contents API write, the writer independently reads the exact file back from the configured branch, verifies SHA-256 of persisted bytes against submitted UTF-8 content and checks the blob SHA when available. It returns `readBackVerified: true` only after verification; failures raise explicit read-back error codes.
-- PR #130 CI: all four checks passed on merge commit `42577fa9cd14ce603a865ddde3643851f1c138d9`: `node-tests`, `postgres-integration`, `runtime-smoke`, and `Syntax and isolated unit tests`. Workflow runs: 42617971061, 42617970757, 42617970803 and 42617970786.
-- PR #129 is merged: [Calibrate model budget reservations and bound worker output](https://github.com/esv1312-crypto/Office/pull/129), merge commit `a032dbfce8f87a9f13ce07e15a490be8c1354256`.
-- PR #132 — [Require execution tools before assigning or resuming tasks](https://github.com/esv1312-crypto/Office/pull/132) is open, CI-green on head `4d9093f0515178d45d62898578aefdae75b2e4ef`; not merged or deployed. It introduces explicit task `requiredTools`, inference of workspace read/write requirements for implementation/coding competencies, and capability gates in dispatch, assignment, resume and failed-task retry.
-- PRs #119–#128 were merged before #129; details are in Activity log.
+- Primary branch: `studio-v1-foundation`.
+- Branch HEAD verified during this reconciliation: `1299d1c3794af8315d8e59329e9878786d2347c1` (documentation-only commit; no production code change after PR #136).
+- PR #136 is merged. Merge commit: `23a0654233b68eb12e3b8bae14bdb6a9319927d2`.
+- The deployed source includes the competency aliases for all eight Director-generated implementation/QA phrases.
+- Current source read-back confirms `studio/director/director-dispatch.js` requires both positive competency coverage and full required-tool coverage before selecting/resuming a specialist.
+- `studio/orchestration/assign-task.js` and `studio/storage/postgres-assignment-store.js` independently enforce required-tool coverage and competency coverage before durable assignment.
+- Regression tests cover: write-capable specialist preferred over read-only specialist; no assignment when no specialist has every required tool; stale assigned task not resumed if its specialist lacks write access; exact Director-generated implementation/QA phrases and corresponding tool coverage.
+- PR #134 remains open from an older attempt. It is not the current production fix; do not merge it without a fresh diff review.
+- GitHub file read-backs during this audit:
+  - `director-dispatch.js`: `50609b4960682b3f591e40f0327ea075f79e5bcd`
+  - `assign-task.js`: `1f3f59f3556a3ab87f55a0475a574c13f7797534`
+  - `postgres-assignment-store.js`: `ad6cd9ae5da162f09a0db4a1a906804673a79d68`
+  - `competency-matching.js`: `47f11c06881ca5873868d4a251f9a2dc54292a66`
+  - `director-dispatch.test.js`: `5928dbc84525d97aafda99620320c69ac0d8ed93`
+  - `assign-task.test.js`: `75d03046e70c6086f7e68183ac96c2fc915836b6`
+  - `competency-matching.test.js`: `a2413408c455162fd0b06563c186b2fc13cf44e1`
 
 ### Render production state
 - Service: `ai-office-runtime`, ID `srv-davoj1s9v7es738jino0`.
 - Runtime URL: https://ai-office-runtime-8pir.onrender.com
-- Latest Render deploy found: `dep-dboqi9p5efls73en1f2g`, status `live`, commit `a032dbfce8f87a9f13ce07e15a490be8c1354256` (PR #129), started 2026-11-09 11:06:15 UTC and finished 11:07:18 UTC.
-- **Important divergence:** GitHub branch HEAD is PR #130 commit `42577fa9...`, but latest Render deploy is still PR #129 commit `a032dbf...`. PR #130 is merged and CI-green but is **not yet confirmed deployed to Render**. Do not describe its artifact read-back fix as live until a Render deploy of `42577fa9...` is verified.
-- Runtime startup log at 2026-11-09 11:07:07 UTC confirms `provider=openrouter`, `artifactStore=github+postgres`, `model=deepseek/deepseek-v4.1-flash-1017`, `budget=2USD`.
-- Startup log at 11:07:09 UTC says the owner task was already claimed or complete. This deploy did not launch a duplicate copy of the owner task.
-- Render deploy listing showed no later deploy than PR #129 at this reconciliation.
+- Service remains `not_suspended`, configured on branch `studio-v1-foundation`, start command `node studio/server.js`, health path `/health/ready`, auto-deploy `checksPass`.
+- Latest deploy verified: `dep-dbponeon74is73cp3eo0`, status `live`, source commit `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0`; deploy/build events succeeded at 2026-11-10 21:26 UTC.
+- The deployed runtime contains the PR #136 matcher fix. No later deploy was present in the latest deployment listing.
+- The readiness endpoint returned `{"status":"ready","database":"connected"}` immediately after that deployment. A fresh readiness check was not established during the 2026-11-11 audit; current health is therefore **NOT VERIFIED in this audit**. Render app/request logs queried for 2026-11-11 10:00–11:08 UTC returned no records.
+- Build reported two dependency audit vulnerabilities (one moderate, one high) and a PostgreSQL SSL-mode deprecation warning. Do not run automatic dependency remediation without review.
 
-### Model configuration and hard budget
-- Configured model: `deepseek/deepseek-v4.1-flash-1017` for default, planner, worker and QA.
-- Render environment previously verified: `STUDIO_ALLOW_PAID_MODELS=true`, `STUDIO_MODEL_BUDGET_USD=2`, budget key `universal-ai-studio-launch-budget-v1`; all four model selectors point to the same DeepSeek V4.1 Flash model.
-- Hard owner-approved shared cap: **USD 2.00**. Do not increase it or start new paid model jobs without explicit owner approval and a new budget.
-- Neon ledger rechecked 2026-11-10:
-  - `universal-ai-studio-launch-budget-v1`: cap $2.000000000; settled spend $1.523881098; reserved $0.445830750; available after reservations $0.030288152.
-  - `deepseek-v4-flash-0731-test-2026-11-09`: cap $0.250000000; settled spend $0.114364030; reserved $0; available $0.135635970.
-- These are internal Neon accounting buckets, not separate payment cards/bank balances. External OpenRouter invoice reconciliation has not been established by this audit; do not state exact external charges as fact.
-- Main production budget has only about three cents available after reservations. **No new paid worker/planner/QA calls are authorized.** Keep the budget key and historical rows intact; do not reset, top up or bypass the ledger.
-- PR #129 calibration: exact known DeepSeek Flash model IDs use 8 UTF-8 bytes per estimated input token; unknown models retain the conservative 2-byte estimate. Each worker request is capped at 4,000 output tokens while the task-wide ceiling remains 12,000. Provider-reported usage/cost is still reconciled. Configured price assumptions were not lowered.
-
-### Director run and self-development plan — actual Neon state
+### Neon owner-run and task state
 - Organization: `Universal AI Studio`, ID `67ae686f-fc54-40f0-988b-9b8f5a8a1dc9`.
 - Self-development project: `AI Office Self-Development`, ID `d8a125e7-bacb-41a5-854a-cc34fe97e516`.
-- Roblox Fan District project is separate: `df2f0007-199c-4619-a67b-cb5de7bb082a`.
-- Owner task key: `owner-master-build-universal-ai-studio-2026-11-08-v1`.
-- Neon owner-task row currently says `failed`, plan ID `73e30858-c2bb-4568-9d55-869df4b2cd7d`, error code `EMPTY_MODEL_OUTPUT`; updated 2026-11-08 19:14:47 UTC. It is a one-shot task key and must not be blindly re-triggered.
-- Plan title: `Universal AI Studio: Evidence-Based Restore/Rebuild and Staged Delivery Plan`; status `approved`; 23 tasks total: 20 failed, 2 in QA, 1 ready, 0 completed. Approved does not mean completed.
-- Execution error counts in Neon: 16 worker tool-call round limit; 14 shared $2 budget exhausted; 10 empty model output; 9 total tool-call budget; 6 expired worker leases/recovery; 4 cumulative tool-result context budget; 2 cumulative prompt-token budget; 1 model deadline; plus 9 executions in QA without an error.
-- Assignment audit found mismatches: some architecture/recon tasks assigned to Solution Architect (read-only); implementation tasks to Implementation Specialist; some tasks to Roblox-only roles; one rollout task had no assignee. This is a real delegation/role-fit problem, not a reason to rerun the same plan.
-- Some worker artifacts under `studio/projects/<project>/artifacts/` are narrative reports/drafts. Their existence alone does not prove source code was implemented.
-- Two distinct GitHub persistence paths:
-  1. Specialist code/patch workspace writes go to isolated branch `studio-ai-agent-workspace` under `studio/agent-workspace/`.
-  2. Final worker text/report artifacts go to `studio/projects/` on `studio-v1-foundation`.
-  Never confuse a saved report with an implementation patch.
-- Real workspace files were previously confirmed in the isolated workspace branch, including Roblox source directories and self-development files. Do not claim every planned implementation task succeeded.
+- Latest owner task key: `owner-ai-office-retry-watchdog-diagnosis-20261111-v2`.
+- Owner run status: `needs_attention`; plan `57f08bbc-85af-4639-b494-2b2914829c57`; error `NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES`.
+- This plan contains exactly two tasks, both still `planned` and unassigned:
+  - Implementation diagnostic task `f1bd5366-16ec-49f0-b31b-d6937319ec27`, requiring `read_repo_file` and `write_repo_file`.
+  - Independent read-only QA task `537ab82e-5686-4ecb-bbec-2b54340a3c60`, requiring `read_repo_file`.
+- Live Neon directory confirms Implementation Specialist `993751a5-f825-4f7b-9a65-4f9166af5326` is active and has `read_repo_file` + `write_repo_file`; Quality Engineer `d812b95b-5752-4f79-ac2c-73c873282325` is active and has `read_repo_file`.
+- Current competency matcher contains aliases for all exact phrases generated by this plan. Static source and regression tests now show the intended implementation/QA role fit and required-tool gates.
+- The existing failed/needs-attention plan is historical evidence only. It has not been automatically reassigned or resumed.
+- Artifact count for this plan: 0. QA review count: 0. No implementation or independent QA execution is proven.
 
-### Verified/not verified matrix
+### Model budget
+- Main key: `universal-ai-studio-launch-budget-v1`.
+- Hard cap: USD 3.000000000.
+- Settled spend: USD 2.063815638.
+- Reserved: USD 0.
+- Internal remaining balance: USD 0.936184362.
+- Separate test bucket remains: cap USD 0.25, spent USD 0.114364030, reserved USD 0.
+- These are Neon internal accounting values, not external OpenRouter invoice/balance confirmation. External provider balance remains unverified.
+- Do not increase the cap, reset the ledger, use another key to bypass the cap, or start paid planner/worker/QA work without fresh explicit owner approval.
+
+### Verified / not verified
 | Item | Status |
 |---|---|
-| Universal AI Studio mission and cloud architecture | Confirmed as active objective |
-| Runtime deployed on Render | Confirmed live on PR #129 commit |
-| OpenRouter + DeepSeek V4.1 Flash configuration | Confirmed by Render startup log |
-| Shared $2 budget ledger | Confirmed in Neon; $0.030288152 available after reservations |
-| PR #129 calibration/output cap | Merged and deployed |
-| PR #130 independent artifact read-back | Merged; four CI checks passed; **Render deployment not yet verified** |
-| Owner master plan completed | False; 20 failed, 2 QA, 1 ready, 0 completed |
-| Full autonomous office accepted end-to-end | Not proven |
-| Specialist workspace writes | Proven for some prior files; not proof all planned tasks succeeded |
-| New paid model work | Not authorized; do not start |
-
----
-
+| PR #136 competency alias fix | Merged and deployed |
+| Director dispatch checks competency and required tools | Confirmed in current source |
+| Durable assignment store checks competency and required tools | Confirmed in current source |
+| Regression tests for role/tool fit and stale-assignment blocking | Present; PR #136 CI was green |
+| Latest Render deployment | Live |
+| Fresh Render readiness during this audit | Not verified |
+| Latest owner plan assignments | 0 of 2; both unassigned |
+| Persisted artifacts for latest owner plan | 0 |
+| Independent QA reviews for latest owner plan | 0 |
+| Full live Director → implementation → QA workflow after PR #136 | Not yet proven |
+| Paid execution authorization | Not granted for another run |
 ## 8. Immediate next objective
 
-**Resume from the actual stopping point. Do not restart the failed 23-task plan and do not spend the remaining production budget.**
+**Prove the repaired live workflow with one fresh, tightly bounded validation run. Do not replay the old plan or spend without approval.**
 
-### Step 1 — Reconcile PR #130 with production
-- PR #130 is merged and all four CI checks passed, but Render is still confirmed only on PR #129 commit `a032dbf...`.
-- Inspect Render auto-deploy/events and current service state. Do not blindly redeploy or restart.
-- Once the deployment path is clear, bring the existing Runtime to commit `42577fa9cd14ce603a865ddde3643851f1c138d9` only through a controlled, verified deployment. Record exact deploy ID and health result.
-- After deployment, verify artifact read-back without starting a paid model task if a deterministic/no-model route is available. If a live worker call would consume paid budget, do not run it without a new owner-approved budget.
+### Step 1 — Preserve current production
+- Do not redeploy merely to retry the old plan. PR #136 is already present in the latest LIVE Render deployment.
+- Do not alter production source, environment, task rows, budget rows or specialist permissions as part of a validation attempt unless separately authorized.
+- Recheck `/health/ready` before any new run; if unavailable, stop and diagnose readiness first.
 
-### Step 2 — Fix task-to-specialist capability routing before another self-development run
-Use failed plan `73e30858-c2bb-4568-9d55-869df4b2cd7d` as forensic evidence only; do not reset its rows or replay it unchanged.
+### Step 2 — Use deterministic evidence before model execution
+- The current source already enforces competency AND required-tool coverage in Director selection, assignment service and PostgreSQL assignment store.
+- Current tests cover exact Director phrases, write-vs-read-only role selection, missing tool coverage and stale assignment resume.
+- Current Neon specialist profiles show the Implementation Specialist and Quality Engineer have the exact tools required by the two diagnostic tasks.
+- Do not rewrite the routing layer again unless a new failing deterministic test or live trace demonstrates a defect.
+- The prior plan `57f08bbc-85af-4639-b494-2b2914829c57` remains `needs_attention`/unassigned and has zero artifacts/QA. Treat it as forensic evidence; do not replay it or reset its rows.
 
-**Confirmed code-level root cause (read from merge commit `42577fa9...`):**
-- `studio/director/director-dispatch.js` selects a specialist when `competencyCoverage(task, specialist) > 0`, then sorts by competency score and specialist ID. It does not check whether the specialist has the tools needed to perform the task.
-- `studio/orchestration/assign-task.js` and `studio/storage/postgres-assignment-store.js` enforce active status, organization/project scope and at least one matching competency, but do not enforce write/execute capability.
-- `studio/gateways/openai-compatible-gateways.js` later grants only tools named in `specialist.allowedTools`. A specialist with read-only tools therefore receives no write capability; a worker with no matching configured tools is explicitly instructed that no tool execution is available.
-- Database evidence matches the code: the task “Product profile and skill extensibility framework” was assigned to Solution Architect, whose tools are only `list_repo_directory` and `read_repo_file`; its saved report is a design/draft, not source implementation. The “Staged rollout and blocker isolation register” task has no assignee. The Implementation Specialist has workspace write access, but not shell/test execution.
-
-**Required fix direction:**
-- Introduce explicit task execution capabilities (for example repository-read, workspace-write, test-execute, QA-review, deployment) separately from domain competencies.
-- Map each specialist's actual granted tools/runtime adapters to those capabilities; dispatch and durable assignment must require the task's required capabilities, not merely any competency overlap.
-- Validate existing assignments again when resuming a task; do not resume a stale read-only assignment for an implementation task.
-- If no specialist has the required capability set, leave the task blocked/unassigned with a precise reason.
-- Gate QA on exact persisted implementation evidence and read-back, not a worker narrative claim.
-- Add regression tests for role-fit, missing specialist, write-capability requirement, stale assignment resume and QA gating. Prepare a narrow PR; do not alter production or spend model budget during the audit.
-
-### Step 3 — Resume production work only after explicit budget approval
-- Main budget available after reservations is approximately USD 0.030288152; this is not a usable new-run budget.
-- Owner task key is already failed/claimed and one-shot. Do not restart it by redeploying.
-- Do not set `STUDIO_SELF_DEVELOPMENT_ORGANIZATION_ID`, invoke owner execute/resume, create another plan, reset Neon rows or increase the budget until the user explicitly approves a new budget and launch.
-- When authorized, create a new bounded plan with role-fit assignments, dependency-aware small stages, independent QA and artifact read-back; do not reuse the failed 23-task plan.
+### Step 3 — Fresh bounded live validation (approval required)
+Only after explicit owner approval for another paid run:
+- Create a new one-shot owner task key and a fresh plan; do not reuse any previously claimed key.
+- Keep scope to one small source-grounded diagnostic implementation task and one dependent read-only QA task.
+- Expected assignment: Implementation Specialist `993751a5-f825-4f7b-9a65-4f9166af5326` for implementation; Quality Engineer `d812b95b-5752-4f79-ac2c-73c873282325` for independent QA.
+- Keep the existing hard cap at USD 3.00 and never exceed the internal remaining balance of USD 0.936184362. No cap increase and no alternate budget key.
+- Stop immediately if the run assigns the wrong role, lacks tool coverage, creates no persisted artifact, exceeds scope, or approaches the budget gate.
+- Acceptance requires a real assignment/execution record, persisted workspace patch, exact source read-back and SHA, relevant test evidence, independent QA tied to that exact content, and reconciled Neon spend.
+- A narrative report, approved plan, or `ready` status alone is not implementation proof.
 
 ### Acceptance gate
-A platform implementation task is accepted only with a real assignment and execution record, source-grounded inspection, persisted workspace code/patch, exact read-back, branch + commit/blob SHA, relevant test evidence, and independent QA tied to that exact content. A markdown report alone is not an implementation deliverable.
-
----
+A platform implementation task is accepted only with a real assignment and execution record, source-grounded inspection, persisted workspace code/patch, exact read-back, branch + commit/blob SHA, relevant test evidence, and independent QA tied to that exact content.
 
 ## 9. How to maintain this notebook
 
