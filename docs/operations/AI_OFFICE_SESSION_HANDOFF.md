@@ -1,29 +1,29 @@
 # AI Office — Session handoff
 
-Last reconciled: 2026-11-11 (UTC; bounded-run preflight)
+Last reconciled: 2026-11-11 (UTC; bounded workflow draft PR #137)
 Primary repository: https://github.com/esv1312-crypto/Office
 Primary branch: `studio-v1-foundation`
 Master notebook: [docs/UNIVERSAL_AI_STUDIO_MASTER_NOTEBOOK.md](../UNIVERSAL_AI_STUDIO_MASTER_NOTEBOOK.md)
 
-## Current status after owner approval
+## Current status
 
-- Owner approved one fresh live validation run, exactly two tasks, internal budget ceiling USD 0.936184362, no cap increase. No Render deploy or production env/config change is included.
-- **The run has NOT STARTED.** No model calls, reservations, plan/task mutations, or spend occurred.
-- Budget re-read: cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. External OpenRouter balance unverified.
-- Render service `ai-office-runtime` is not suspended and latest deploy remains `dep-dbponeon74is73cp3eo0`, source `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0`. First readiness request returned 503; second returned 200 `{"status":"ready","database":"connected"}`. Render logs show a new instance start at 2026-11-11T11:13:05Z; correlation with the transient 503 is plausible but causality is NOT VERIFIED.
-- The self-development launch route is unsuitable for this approval: it can update specialist profiles and creates/resumes a hard-coded three-task Sprint 2 plan before execution. Do not call it.
-- Standard Studio routes exist for plan creation, approval and execution, with an execution batch cap of 1–3, but require owner authentication. Production reports `auth=legacy-owner-token`; middleware uses the secret `OFFICE_AUDIT_TOKEN`. Do not ask the owner to paste this secret into chat and do not expose it.
-- Existing Actions workflows are not compatible with the exact approved run: current live runtime smoke performs multiple legacy checks; four-employee workflow submits four legacy tasks; Pognali audit is read-only and legacy API. Do not substitute them.
-- No compatible invocation path is currently available through connected read-only tools.
+- Owner approved exactly one bounded live validation using the existing internal remaining budget USD 0.936184362, without increasing the USD 3 hard cap. No Render deploy or production config changes were authorized.
+- The live run has **NOT STARTED**. No model call, budget reservation, plan/task mutation, or spend has occurred.
+- Prepared isolated branch `ops/bounded-two-task-live-validation-20261111` and opened draft PR #137: https://github.com/esv1312-crypto/Office/pull/137.
+- Workflow path: `.github/workflows/office-bounded-two-task-live-validation.yml`; branch head `7566507dbf3637313730b1b4677d6ff71a59b13b`; file blob SHA `2f4fb364db2ceb806b79b2954ed9d93cc179a004`.
+- PR #137 is OPEN, DRAFT, not merged. It adds exactly one file (290 lines). Secret expression readback was corrected and verified.
+- Workflow is a draft only. **NOT VERIFIED:** Actions secret `OFFICE_AUDIT_TOKEN` exists; live Studio endpoint response shapes match strict workflow assumptions; current specialist IDs/competency labels still match; workflow passes GitHub Actions validation.
+- Do not dispatch this workflow yet. First review its exact request/response contract and the active specialist profiles. If corrections are needed, update the draft and re-read the changed file.
+- The workflow contains no Render deployment or production env/config mutation. However, merging into `studio-v1-foundation` may interact with Render autoDeploy `checksPass`; do not merge without separate explicit owner approval.
+- Existing internal budget last confirmed before this preparation: cap USD 3.000000000, spent USD 2.063815638, reserved USD 0, remaining USD 0.936184362. No fresh ledger read after PR creation; external OpenRouter balance remains unverified.
 
 ## Next safe step
 
-Prepare (not merge) a temporary GitHub Actions workflow on an isolated branch and open a PR. It must use the existing GitHub Actions secret without printing it, call only the standard authenticated Studio plan → approve → execute endpoints, constrain the plan to exactly two tasks, enforce the internal budget cap/remaining amount, record plan/task IDs and execution evidence, and stop on scope mismatch, missing artifact, QA failure, or budget gate. It must not call legacy `/api/tasks`, change Render environment, or deploy.
-Review the PR and all side effects. **Do not merge** without separate owner approval because a production-branch merge may interact with Render auto-deploy. Do not execute the run until the workflow is merged and the exact two-task and budget safeguards are verified.
+Review PR #137 against the current production handler response schemas and the active Neon specialist profiles; check whether the GitHub Actions secret is configured without exposing its value. Then correct any mismatch, verify GitHub workflow validation, and update the PR. **Do not merge, deploy, or dispatch** without separate explicit approval. The one-run owner authorization remains unspent.
 
 ## Operating rules
 
-- Read the master notebook before continuing; verify GitHub, Render and Neon live state before each significant action.
+- Read this master notebook before continuing; verify GitHub, Render and Neon live state before each significant action.
 - Record only observed results; mark missing evidence NOT VERIFIED.
 - Keep code and artifacts in GitHub/cloud storage, not the management chat.
 - Never print, request in chat, or store secrets/tokens.
