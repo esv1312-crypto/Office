@@ -1,6 +1,6 @@
 # AI Office — Session handoff
 
-Last reconciled: 2026-11-10 (UTC)
+Last reconciled: 2026-11-11 (UTC; post-PR #136 live-state audit)
 Primary repository: https://github.com/esv1312-crypto/Office
 Primary branch: `studio-v1-foundation`
 Master notebook: [docs/UNIVERSAL_AI_STUDIO_MASTER_NOTEBOOK.md](../UNIVERSAL_AI_STUDIO_MASTER_NOTEBOOK.md)
@@ -8,34 +8,33 @@ Master notebook: [docs/UNIVERSAL_AI_STUDIO_MASTER_NOTEBOOK.md](../UNIVERSAL_AI_S
 ## Mission
 Continue building Universal AI Studio: a cloud-first, autonomous and extensible production studio for Roblox and other games, apps, websites, SaaS, AI products and automations. It must accept one owner goal, plan, delegate, execute real work, verify it, repair failures and return evidence. It is not Roblox-only.
 
-## Current verified checkpoint
-- GitHub `studio-v1-foundation` HEAD: `cfe469136c0d7ad3c9a1acff0ceb82383536e102`.
-- PR #131 merged: master notebook and session handoff restored. The current notebook contains activity history through PR #132 preparation and the 2026-11-10 reconciliation.
-- PR #130 merged and CI-green: https://github.com/esv1312-crypto/Office/pull/130. It adds mandatory independent read-back verification to `studio/artifacts/github-artifact-writer.js`.
-- Latest Render deploy: `dep-dboqi9p5efls73en1f2g`, `live`, commit `a032dbfce8f87a9f13ce07e15a490be8c1354256` (PR #129). **PR #130 commit is not yet verified deployed.**
-- Render is configured for auto-deploy on passing checks, branch `studio-v1-foundation`, but no deploy event after 2026-11-09 11:07:18 UTC was found. PR #130 merged later at 12:33:11 UTC.
-- Runtime startup log confirms OpenRouter, `github+postgres` artifact store, `deepseek/deepseek-v4.1-flash-1017`, shared budget cap $2.
-- Neon owner task `owner-master-build-universal-ai-studio-2026-11-08-v1` is `failed`, error `EMPTY_MODEL_OUTPUT`, plan `73e30858-c2bb-4568-9d55-869df4b2cd7d`.
-- That plan is `approved` but not completed: 23 tasks, 20 failed, 2 QA, 1 ready, 0 completed.
-- Main Neon budget bucket: cap $2.00, spent $1.523881098, reserved $0.445830750, available $0.030288152. This is insufficient for a new production run.
-- Separate test bucket: cap $0.25, spent $0.114364030, reserved $0.
-- PR #132 is open and CI-green on latest head `d5c421f061ef1310741b5766ef4bae9332306360`. It enforces exact required worker tools at planning, dispatch, assignment, resume and retry. **It is not merged or deployed.**
+## Current verified checkpoint — 2026-11-11
 
-## Confirmed delegation root cause and fix
-Director dispatch previously accepted any active, in-scope specialist with positive competency overlap. The durable assignment guard repeated competency checks but did not verify tool capabilities. The worker gateway later granted only tools in `specialist.allowedTools`. Therefore a read-only architect could be assigned an implementation task and produce a draft instead of a persisted source change.
-
-PR #132 adds task `requiredTools`, exposes available tool names to the planner, infers workspace read/write requirements for implementation/coding competencies, and enforces tool coverage in Director selection, assignment, resume and retry. Latest CI passed on PR head `d5c421f...`: node tests run 42732294331, PostgreSQL integration run 42732294330, isolated syntax/unit tests run 42732294747.
+- GitHub `studio-v1-foundation` HEAD before this documentation reconciliation: `1299d1c3794af8315d8e59329e9878786d2347c1`. This audit makes documentation-only commits with `[skip render]`; no production code changes are made.
+- PR #136 is merged at `23a0654233b68eb12e3b8bae14bdb6a9319927d2`; its competency alias fix is included in the latest LIVE Render deployment.
+- Latest Render deploy: `dep-dbponeon74is73cp3eo0`, status `live`, source commit `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0`. Service `ai-office-runtime` is not suspended and tracks `studio-v1-foundation`. The readiness endpoint passed immediately after deployment; a fresh readiness check was not established during this audit.
+- Current source read-back confirms Director dispatch, assignment service and PostgreSQL assignment store all require both competency coverage and full required-tool coverage. Tests cover write-capable vs read-only role selection, missing tool coverage, stale assignment blocking, and the exact Director-generated competency phrases.
+- Latest Neon owner run `owner-ai-office-retry-watchdog-diagnosis-20261111-v2` remains `needs_attention`, plan `57f08bbc-85af-4639-b494-2b2914829c57`, error `NO_SPECIALIST_WITH_REQUIRED_CAPABILITIES`. It contains two `planned` tasks, both unassigned; artifact count 0; QA review count 0.
+- Current live specialist profiles are compatible with those task tool requirements: Implementation Specialist `993751a5-f825-4f7b-9a65-4f9166af5326` has `read_repo_file` and `write_repo_file`; Quality Engineer `d812b95b-5752-4f79-ac2c-73c873282325` has `read_repo_file`. The deployed matcher now covers the exact phrases. This is static compatibility evidence, not proof that a new live dispatch has succeeded.
+- Main internal budget: cap USD 3.00; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. External OpenRouter balance/invoice is unverified.
+- Open PR #134 is from an older attempt and is not the current production fix. Do not merge without a fresh diff review.
+- Render reported two dependency audit vulnerabilities (one moderate, one high) and a PostgreSQL SSL-mode deprecation warning. Track separately; do not run automatic remediation.
 
 ## Exact next actions
-1. Investigate why Render auto-deploy did not create a deploy for PR #130 despite `autoDeploy=yes` / `checksPass`. Do not blindly restart or manually deploy. Record exact deploy ID, commit and health.
-2. Review PR #132 final diff and keep it unmerged until production rollout is explicitly authorized; merging may trigger Render auto-deploy.
-3. Once rollout is authorized, merge/deploy PR #130 and PR #132 in a controlled sequence, verifying each exact commit, Render deploy ID, health and logs.
-4. Do not rerun plan `73e30858...`, reset Neon rows, set self-development startup variables or call owner execute/resume.
-5. Do not start paid model work or increase the $2 budget without explicit new owner approval and a new budget.
+
+1. Preserve the current LIVE runtime. Do not redeploy simply to retry the old plan.
+2. Before any new live validation, recheck `/health/ready`; if readiness fails, stop and diagnose.
+3. Do not replay plan `57f08bbc-85af-4639-b494-2b2914829c57`, reset its rows, or reuse its one-shot owner task key.
+4. Deterministic source/tests and current specialist tool profiles now support the intended role fit. Do not rewrite routing again unless new failing evidence demonstrates a defect.
+5. A fresh bounded owner run is the next end-to-end proof, but it requires fresh explicit owner approval because it can consume paid model budget. Keep the existing USD 3 cap; do not use an alternate key or exceed the internal remaining USD 0.936184362.
+6. If authorized, create a new one-shot key and fresh plan limited to one small implementation task and one dependent read-only QA task. Expected assignments: Implementation Specialist for write task; Quality Engineer for read-only QA.
+7. Stop if wrong role assignment, missing tools, no persisted artifact, scope drift, or budget gate occurs.
+8. Accept implementation only with assignment/execution record, persisted workspace patch, exact read-back and SHA, relevant test evidence, independent QA tied to the same content, and reconciled spend.
 
 ## Operating rules
+
 - Read the master notebook before continuing; check live GitHub, Render and Neon state rather than trusting this handoff alone.
-- After every meaningful action, update the master notebook and this handoff with UTC time, branch/SHA, plan/task/deploy/run IDs, exact result, evidence, failures and next step.
+- After every meaningful action, update the master notebook and this handoff with UTC date/time, branch/SHA, plan/task/deploy/run IDs, exact result, evidence, failures and next step.
 - Record only what happened. Use `NOT VERIFIED` if evidence is missing.
 - Keep code/work artifacts in GitHub/cloud storage, not the management chat.
 - Do not repeat a test if the same SHA/environment has already passed and its evidence is still valid.
