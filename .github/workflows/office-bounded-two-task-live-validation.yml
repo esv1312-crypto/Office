@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 35
     env:
       OFFICE_BASE_URL: https://ai-office-runtime-8pir.onrender.com
-      OFFICE_AUDIT_TOKEN: \${{ secrets.OFFICE_AUDIT_TOKEN }}
+      OFFICE_AUDIT_TOKEN: ${{ secrets.OFFICE_AUDIT_TOKEN }}
     steps:
       - name: Create, approve, execute, and independently verify exactly two tasks
         shell: bash
