@@ -1,0 +1,290 @@
+name: AI Office — one bounded two-task live validation
+
+# Manual only. This workflow must be reviewed and merged separately before it can
+# be dispatched from the default production branch. It never deploys or edits
+# production configuration.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-office-bounded-two-task-live-validation
+  cancel-in-progress: false
+
+jobs:
+  bounded-live-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OFFICE_BASE_URL: https://ai-office-runtime-8pir.onrender.com
+      OFFICE_AUDIT_TOKEN: ${{ secrets.OFFICE_AUDIT_TOKEN }}
+    steps:
+      - name: Create, approve, execute, and independently verify exactly two tasks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          from decimal import Decimal
+
+          BASE = os.environ["OFFICE_BASE_URL"].rstrip("/")
+          TOKEN = os.environ.get("OFFICE_AUDIT_TOKEN", "").strip()
+          PROJECT_ID = "d8a125e7-bacb-41a5-854a-cc34fe97e516"
+          BUDGET_KEY = "universal-ai-studio-launch-budget-v1"
+          HARD_CAP_USD = Decimal("3.000000000")
+          APPROVED_REMAINING_USD = Decimal("0.936184362")
+          IMPLEMENTER_ID = "993751a5-f825-4f7b-9a65-4f9166af5326"
+          QUALITY_ENGINEER_ID = "d812b95b-5752-4f79-ac2c-73c873282325"
+          SOURCE = "studio/agent-workspace/ai-office-self-development/retry-watchdog-source-reference.md"
+          REPORT = "studio/agent-workspace/ai-office-self-development/retry-watchdog-analysis.md"
+
+          if not TOKEN:
+              raise SystemExit("STOP: required GitHub Actions secret OFFICE_AUDIT_TOKEN is missing; secret value is never printed")
+
+          HEADERS = {
+              "x-ai-office-audit-token": TOKEN,
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+          }
+
+          class ApiFailure(Exception):
+              def __init__(self, status, body):
+                  self.status = status
+                  self.body = body
+                  super().__init__(f"HTTP {status}: {body[:1500]}")
+
+          def request(method, path, payload=None, timeout=1200):
+              data = None if payload is None else json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(BASE + path, data=data, headers=HEADERS, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=timeout) as response:
+                      raw = response.read().decode("utf-8", "replace")
+                      return response.status, json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as exc:
+                  raw = exc.read().decode("utf-8", "replace")
+                  try:
+                      detail = json.dumps(json.loads(raw), ensure_ascii=False)
+                  except Exception:
+                      detail = raw
+                  raise ApiFailure(exc.code, detail) from None
+
+          def unwrap(data, key):
+              value = data.get(key)
+              return value if isinstance(value, dict) else data
+
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit("STOP: " + message)
+
+          evidence = {
+              "workflow": "ai-office-bounded-two-task-live-validation",
+              "production_url": BASE,
+              "project_id": PROJECT_ID,
+              "budget_key": BUDGET_KEY,
+              "hard_cap_usd": str(HARD_CAP_USD),
+              "owner_authorized_incremental_ceiling_usd": str(APPROVED_REMAINING_USD),
+              "scope": "exactly one implementation task followed sequentially by one independent read-only QA task",
+              "production_deploy": False,
+              "production_configuration_changes": False,
+              "legacy_task_api_used": False,
+          }
+
+          # Readiness is checked before the first model request.
+          status, health = request("GET", "/health/ready", timeout=45)
+          require(status == 200 and health.get("status") == "ready" and health.get("database") == "connected",
+                  "runtime readiness/database check did not pass")
+          evidence["readiness"] = health
+
+          task_request = f"""
+          OWNER-APPROVED BOUNDED SELF-DEVELOPMENT VALIDATION.
+          Create EXACTLY TWO tasks, in the exact order below. Do not add, split,
+          rename into a different scope, or omit tasks. This is one narrow
+          diagnostic artifact plus one independent read-only QA artifact.
+
+          Project: Universal AI Studio Self-Development.
+          Source evidence is already present at {SOURCE} on the configured
+          studio-ai-agent-workspace branch. Read only that exact file; do not
+          inspect production files or other repository paths.
+
+          TASK 1 — IMPLEMENTATION SPECIALIST:
+          Title: Evidence-based watchdog and worker-limit diagnostic report.
+          Required competencies: implementation, coding.
+          Required tools (exactly): read_repo_file, write_repo_file.
+          Read only {SOURCE}. Analyze the previously observed QA TOOL_ROUND_LIMIT
+          failure, the worker round/call limits, and the watchdog/task-state
+          evidence captured in the source bundle. Cite the exact paths, blob
+          SHAs, and facts supplied by the bundle. Assess whether 12 rounds/24
+          calls is a justified safe remedy; distinguish worker tool rounds,
+          provider calls, QA limits, and watchdog timeouts. Do not infer runtime
+          behavior beyond the supplied evidence. If no concrete defect is
+          proven, explicitly recommend NO PATCH. Write exactly one file:
+          {REPORT}. Then read back that exact file and report its verified path.
+          No other file may be written, and no tests may be claimed as run.
+
+          TASK 2 — QUALITY ENGINEER:
+          Title: Independent verification of watchdog diagnostic report.
+          Required competencies: test coverage analysis, platform.qa.
+          Required tools (exactly): read_repo_file.
+          Run only after Task 1 has completed and its independent QA verdict is
+          accepted. Read only {SOURCE} and {REPORT}. Independently verify every
+          cited path, SHA, factual claim, and recommendation against the source
+          bundle. Check that no unsupported test execution or production change
+          is claimed. Record a PASS, FAIL, or BLOCKED verdict with findings in
+          this task's persisted output/platform QA record. Do not write files,
+          list directories, run tests, browse externally, or change production.
+
+          Plan acceptance: exactly two ordered tasks; Task 1 requires both
+          read_repo_file and write_repo_file; Task 2 is read-only and requires
+          read_repo_file only. No deployment, environment, database/schema,
+          credential, branch, PR, merge, or production source changes.
+          """
+
+          constraints = {
+              "exactTaskCount": 2,
+              "taskOrder": ["implementation", "independent_qa"],
+              "task1RequiredCompetencies": ["implementation", "coding"],
+              "task1RequiredTools": ["read_repo_file", "write_repo_file"],
+              "task2RequiredCompetencies": ["test coverage analysis", "platform.qa"],
+              "task2RequiredTools": ["read_repo_file"],
+              "sequentialExecution": True,
+              "maxAssignmentsPerExecutionCall": 1,
+              "noProductionChanges": True,
+              "noDeployment": True,
+              "noExternalBrowsing": True,
+              "noTestsClaimedWithoutExecutionEvidence": True,
+              "budget": {
+                  "budgetKey": BUDGET_KEY,
+                  "hardCapUsd": str(HARD_CAP_USD),
+                  "ownerAuthorizedIncrementalCeilingUsd": str(APPROVED_REMAINING_USD),
+                  "enforcement": "existing shared Postgres model-budget reservation gate; fail closed on budget exhaustion",
+              },
+          }
+
+          try:
+              _, created = request("POST", f"/api/studio/projects/{PROJECT_ID}/plans", {
+                  "request": task_request,
+                  "constraints": constraints,
+              })
+          except ApiFailure as exc:
+              if exc.status == 402:
+                  raise SystemExit("STOP: shared model-budget gate rejected planning before execution; " + str(exc))
+              raise
+          plan = unwrap(created, "plan")
+          tasks = created.get("tasks")
+          require(isinstance(tasks, list) and len(tasks) == 2,
+                  "Director did not return exactly two tasks; plan remains unapproved")
+          require(plan.get("status") == "proposed" and isinstance(plan.get("id"), str),
+                  "Director did not persist a proposed plan; refusing approval")
+
+          first, second = tasks
+          require(first.get("requiredTools") == ["read_repo_file", "write_repo_file"],
+                  "Task 1 tool scope differs from the approved implementation scope")
+          require(second.get("requiredTools") == ["read_repo_file"],
+                  "Task 2 is not strictly read-only")
+          require(first.get("requiredCompetencies") == ["implementation", "coding"],
+                  "Task 1 competency scope differs from the approved implementation scope")
+          require(second.get("requiredCompetencies") == ["test coverage analysis", "platform.qa"],
+                  "Task 2 competency scope differs from the approved independent-QA scope")
+          require(first.get("id") and second.get("id") and first["id"] != second["id"],
+                  "Task IDs are missing or duplicated")
+          evidence["plan_id"] = plan["id"]
+          evidence["plan_status_before_approval"] = plan["status"]
+          evidence["tasks"] = [
+              {"task_id": first["id"], "title": first.get("title"), "required_tools": first["requiredTools"]},
+              {"task_id": second["id"], "title": second.get("title"), "required_tools": second["requiredTools"]},
+          ]
+
+          try:
+              _, approved = request("POST", f"/api/studio/plans/{plan['id']}/approve", {})
+          except ApiFailure as exc:
+              if exc.status == 402:
+                  raise SystemExit("STOP: shared model-budget gate rejected approval-stage call; " + str(exc))
+              raise
+          approved_plan = unwrap(approved, "plan")
+          require(approved_plan.get("status") == "approved", "persisted owner approval was not confirmed")
+          approved_tasks = approved.get("tasks")
+          require(isinstance(approved_tasks, list) and len(approved_tasks) == 2,
+                  "approval read-back did not confirm exactly two tasks")
+          require(all(item.get("status") == "planned" for item in approved_tasks),
+                  "approved plan tasks are not both in planned state")
+          evidence["approval"] = {"status": approved_plan["status"], "task_count": len(approved_tasks)}
+
+          def execute_one(expected_task_id, expected_specialist_id, label):
+              try:
+                  http_status, result = request(
+                      "POST",
+                      f"/api/studio/plans/{plan['id']}/execute",
+                      {"maxAssignments": 1},
+                      timeout=1800,
+                  )
+              except ApiFailure as exc:
+                  if exc.status == 402:
+                      raise SystemExit("STOP: shared Postgres model-budget gate rejected a model call; no further task will be dispatched. " + str(exc))
+                  raise
+              report = result
+              assigned = (report.get("dispatch") or {}).get("assigned") or []
+              executions = report.get("executions") or []
+              reviews = report.get("qaReviews") or []
+              require(len(assigned) == 1, f"{label}: expected exactly one assignment, got {len(assigned)}")
+              require(assigned[0].get("taskId") == expected_task_id,
+                      f"{label}: dispatcher selected a task other than the next approved task")
+              require(assigned[0].get("specialistId") == expected_specialist_id,
+                      f"{label}: task was not assigned to the expected specialist")
+              require(len(executions) == 1 and executions[0].get("taskId") == expected_task_id,
+                      f"{label}: exactly one matching worker execution was not confirmed")
+              require(executions[0].get("status") == "qa",
+                      f"{label}: worker did not hand off a persisted artifact to QA")
+              require(len(reviews) == 1 and reviews[0].get("taskId") == expected_task_id,
+                      f"{label}: independent QA review record is missing")
+              require(reviews[0].get("verdict") == "accepted" and reviews[0].get("taskStatus") == "completed",
+                      f"{label}: independent QA did not accept the persisted artifact")
+              require(reviews[0].get("artifactId") and reviews[0].get("reviewId"),
+                      f"{label}: artifact or QA review ID is missing")
+              return {
+                  "http_status": http_status,
+                  "status": report.get("status"),
+                  "assigned": assigned[0],
+                  "execution": executions[0],
+                  "qa_review": reviews[0],
+                  "blocked": report.get("blocked") or [],
+              }
+
+          # Task 1 runs alone. Task 2 is not dispatched unless Task 1's own
+          # artifact is persisted and its independent platform QA is accepted.
+          evidence["task1_run"] = execute_one(first["id"], IMPLEMENTER_ID, "Task 1")
+          require(not evidence["task1_run"]["blocked"], "Task 1 produced blocked workflow records")
+          evidence["task2_run"] = execute_one(second["id"], QUALITY_ENGINEER_ID, "Task 2")
+          require(not evidence["task2_run"]["blocked"], "Task 2 produced blocked workflow records")
+
+          evidence["final"] = {
+              "exactly_two_tasks": True,
+              "task1_independent_qa": "accepted",
+              "task2_independent_qa": "accepted",
+              "all_artifacts_have_ids": True,
+              "completed": True,
+              "production_deploy": False,
+              "production_configuration_changes": False,
+          }
+          print(json.dumps(evidence, ensure_ascii=False, indent=2)[:20000], flush=True)
+          summary = [
+              "# AI Office bounded live validation",
+              "",
+              "Plan ID: " + str(evidence["plan_id"]),
+              "Task 1: " + str(first["id"]) + " — independent QA accepted",
+              "Task 2: " + str(second["id"]) + " — independent QA accepted",
+              "Budget key: " + BUDGET_KEY + "; existing hard cap USD " + str(HARD_CAP_USD),
+              "Owner-authorized incremental ceiling at approval: USD " + str(APPROVED_REMAINING_USD),
+              "Production deploy/config changes: none",
+              "Final: PASS",
+              "",
+              json.dumps(evidence, ensure_ascii=False, indent=2),
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "w", encoding="utf-8") as f:
+              f.write("\\n".join(summary) + "\\n")
+          print("PASS: exactly two sequential tasks completed with persisted artifacts and independent accepted QA.", flush=True)
+          PY
