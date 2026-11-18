@@ -154,6 +154,7 @@ export function createDirectorRuntime({
         requiredCompetencies: task.requiredCompetencies,
         requiredTools: task.requiredTools,
         acceptanceCriteria: task.acceptanceCriteria,
+        externalArtifact: constraints.externalArtifact === false ? false : true,
         at,
       }));
       const persisted = await store.createPlanWithTasks({ plan, tasks });
