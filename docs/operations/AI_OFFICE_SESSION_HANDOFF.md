@@ -105,3 +105,8 @@ Review PR #137 against the current production handler response schemas and the a
 - All four GitHub CI workflows passed on current PR head f2483c5c918b9cb999bd4696733d650bbc72ef31 (runs 44341926595, 44341926576, 44341926304, 44341926228).
 - PR #137 remains OPEN, DRAFT, unmerged, mergeable. The manual bounded workflow itself has not been dispatched.
 - YAML lint, OFFICE_AUDIT_TOKEN secret presence, and external provider balance remain NOT VERIFIED. No live run or production mutation occurred.
+
+
+## 2026-11-18 — Ruflo noted for later, no current action
+
+The owner asked to keep Ruflo (https://github.com/ruvnet/ruflo) in the AI-OFFICE project notes as a possible future tool. Current decision is to continue the existing Universal AI Studio work and not install or integrate Ruflo now. If revisited, test a pinned version in an isolated sandbox on one bounded end-to-end task and compare it with the existing runtime. No dependency, deployment, production configuration, or budget change is authorized by this note.
