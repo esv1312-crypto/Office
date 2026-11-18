@@ -1037,3 +1037,74 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
 - IMPORTANT: this is a draft for review, not a verified executable workflow. The GitHub Actions secret `OFFICE_AUDIT_TOKEN` existence is NOT VERIFIED. The exact live response shapes for the plan/approval/execute API and specialist competency labels/IDs still require validation against current production implementation and DB. The workflow must not be dispatched until those checks pass.
 - No workflow run, model request, budget reservation, plan/task creation, production source change, Render config change, or deploy occurred. The owner's one-run authorization remains unspent. Internal budget last confirmed before this preparation: cap USD 3.000000000, spent USD 2.063815638, reserved USD 0, remaining USD 0.936184362; no new ledger read after this draft preparation. External OpenRouter balance remains unverified.
 - Next: review PR #137 against live handler/response schemas, active specialist profiles, and Actions secret presence (without revealing it). Update this notebook and handoff with verified findings. Do not merge or dispatch without separate explicit owner approval; production-branch merge may interact with Render auto-deploy.
+
+
+## 2026-11-18 — PR #137 hardened with task-scoped Worker tool permissions; CI passed
+
+- Re-read the master notebook and session handoff before continuing. Re-fetched PR #137, its workflow, production Studio handlers, route mounting, Director, dispatch, Worker Runtime, QA workflow, and active specialist records.
+- Confirmed PR #137 was open, draft, unmerged. The branch was `ops/bounded-two-task-live-validation-20261111`; original workflow commit `7566507dbf3637313730b1b4677d6ff71a59b13b`.
+- Confirmed active Neon specialist profiles:
+  - Implementation Specialist `993751a5-f825-4f7b-9a65-4f9166af5326`: competencies include `implementation`, `coding`; allowed tools include `read_repo_file`, `write_repo_file`, `list_repo_directory`.
+  - Quality Engineer `d812b95b-5752-4f79-ac2c-73c873282325`: competencies include `test coverage analysis`, `platform.qa`, `qa.review`; allowed tools include `read_repo_file`, `list_repo_directory`.
+- Confirmed the standard Studio control-plane router is mounted in production server code. Handlers implement persisted plan creation, explicit owner approval, and execution with `maxAssignments` limited to 1–3 at the HTTP boundary. Execution returns dispatch, worker execution, and QA review records. The QA workflow explicitly excludes the producing specialist and requires an active independent `qa.review` specialist in the same organization.
+- Found a genuine least-privilege gap: Director assignment verified that a specialist possessed all task-required tools, but Worker Runtime then passed the specialist's full profile tool list to the model. This meant Task 2's declared read-only scope was not enforced at model tool exposure.
+- Updated `studio/agents/worker-runtime.js` on the isolated PR branch:
+  - Resolve the task's required tool set from the persisted task using `requiredToolsForTask`.
+  - When the task has explicit or inferred required tools, expose only that task-scoped list to the model, not the specialist's broader profile list.
+  - Fail closed with `TASK_TOOL_PERMISSION_MISMATCH` before model invocation when the task requires any tool absent from the specialist profile.
+  - Preserve existing behavior for legacy tasks with no explicit or inferred task tool requirements.
+- Updated `studio/agents/worker-runtime.test.js` with regression tests confirming a read-only task receives only `read_repo_file`, and a missing required tool prevents model invocation and records failure.
+- GitHub readback confirmed the modified source and test blobs:
+  - Worker Runtime blob `5cfcba6710700da67c39366aca0942a3c1e92dd4`.
+  - Worker Runtime test blob `a1ff714316961d2d68179f12ba6adab61ae670b7`.
+- CI for head commit `81be75907bea34038c7679c7c6d4611814a773f7` completed successfully:
+  - AI-OFFICE unit tests — success.
+  - AI-OFFICE runtime smoke integration — success.
+  - Universal AI Studio isolated tests — success, including Studio JavaScript syntax and unit tests.
+  - AI-OFFICE PostgreSQL integration tests — success.
+- PR #137 metadata re-read after changes: OPEN, DRAFT, not merged, mergeable; 5 changed files (workflow + master notebook + handoff + Worker Runtime + tests), 425 additions, 14 deletions. PR description updated to reflect the five-file scope and safeguards. Synced the isolated PR branch with current production base using merge commit `81be75907bea34038c7679c7c6d4611814a773f7` (parents: base `b369b826aee09cf05b304f4f65dacd49d9456e77` and prior feature head `a7427bc16ae6d8c6dec28214c0f412563aef1d33`). At sync time, compare showed the branch aligned with current production base (0 behind); subsequent commits on the feature branch only reconciled these journal entries. No merge was performed.
+- GitHub Actions secret `OFFICE_AUDIT_TOKEN` presence remains **NOT VERIFIED** because connected GitHub inspection does not expose secrets. The workflow checks for an empty/missing secret and exits before any API request or model call; it never prints the secret value.
+- Workflow-specific GitHub Actions syntax validation remains **NOT VERIFIED**. The four successful CI runs validate the application source/tests, not the manual-only workflow itself. The workflow's live API assumptions have been checked against source but have not been exercised against production.
+- Re-read Neon budget ledger: cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. External OpenRouter balance remains unverified.
+- Render service listing confirms `ai-office-runtime` remains linked to `studio-v1-foundation` with autoDeploy trigger `checksPass`; this work made no Render changes. No workflow dispatch, model call, budget reservation, new plan/task, merge, production source change, deployment, or environment/config mutation occurred. The owner's one bounded live-run authorization remains unspent.
+- Next safe steps: validate the manual workflow YAML independently; obtain a safe yes/no confirmation that `OFFICE_AUDIT_TOKEN` is configured without exposing its value; re-read the budget and production readiness immediately before any authorized run. PR merge and live dispatch remain separate approval gates; do not merge because a production-branch merge can interact with Render autoDeploy `checksPass`. No deploy or production configuration change is authorized.
+
+
+
+## 2026-11-18 — PR #137 isolated from global lease-recovery side effects
+
+- During a deeper review of the production execute handler, found an additional scope risk: every `POST /api/studio/plans/:planId/execute` unconditionally ran `runtime.recovery.recover({actor, limit: 50})` before dispatch. The PostgreSQL recovery query is global across projects in the Studio database; it can reassign unrelated expired running tasks, not just tasks in the approved plan.
+- Read the recovery implementation and SQL query. A read-only Neon query at this check found zero currently expired running executions, but that did not eliminate the race or global side-effect risk during a later live run.
+- Added an explicit opt-out `skipExpiredExecutionRecovery: true` request flag in `studio/http/studio-http-handlers.js`. Default behavior is unchanged; only a caller explicitly requesting it skips the global maintenance sweep and receives `{ recovered: 0, tasks: [], skipped: true }`.
+- Added a regression test in `studio/http/studio-http-handlers.test.js` proving the explicit skip avoids the recovery call while still executing the approved plan with the requested batch size.
+- Updated the bounded workflow to send the skip flag on each execute request and fail closed unless the response confirms the global sweep was skipped with zero recovered tasks. This prevents unrelated tasks from being mutated as a side effect of the two-task validation.
+- Read back all five modified application/workflow files from the PR branch. Blob SHAs:
+  - `studio/http/studio-http-handlers.js`: `ed372e506ac6e9c9a1129dfdb8a2e684682e12ba`
+  - `studio/http/studio-http-handlers.test.js`: `8b3d198cb0e21007a8bc12480e7e002f38a2e193`
+  - `studio/agents/worker-runtime.js`: `5cfcba6710700da67c39366aca0942a3c1e92dd4`
+  - `studio/agents/worker-runtime.test.js`: `a1ff714316961d2d68179f12ba6adab61ae670b7`
+  - `.github/workflows/office-bounded-two-task-live-validation.yml`: `e78abb3b0e55322ad55eed659ab438f696b21be5`
+- The workflow also now rechecks the approved plan ID, task IDs/order, competencies, and required tools after approval read-back; its GitHub Step Summary now uses actual newline characters.
+- PR #137 remains OPEN, DRAFT, unmerged, and mergeable. Current application/workflow branch head at this checkpoint: `88beb802b0cc3259222074c1d7e112c83195a905`; 7 changed files (workflow, two Studio handler files, two Worker Runtime files, master notebook, handoff); 459 additions, 18 deletions; 16 commits ahead, 0 behind current production base. GitHub application CI was in progress for this head at the checkpoint; do not claim it passed until the run results are read.
+- Current Neon budget re-read remains cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. No model calls, reservations, plans/tasks, merges, or production mutations were made.
+- Render latest deployment remains `dep-dbponeon74is73cp3eo0`, LIVE at source commit `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0`; no deploy/config changes were made.
+- **NOT VERIFIED:** GitHub Actions secret `OFFICE_AUDIT_TOKEN` presence and standalone workflow-YAML validation. The workflow fails closed if the secret is absent. External OpenRouter balance also remains unverified.
+- Next safe step: wait for and inspect all four CI checks on the latest code head; independently validate the workflow YAML and obtain a safe yes/no secret-presence confirmation. Do not merge, dispatch, or deploy without the separate required approval gates.
+
+
+
+## 2026-11-18 — Final PR #137 code checks passed; workspace/tool boundaries confirmed
+
+- Confirmed the actual model gateway path, not just Worker Runtime input: `openai-compatible-gateways.js` derives `allowedNames` from the specialist's runtime-scoped `allowedTools`, filters `workerTools.definitions` to `grantedTools`, and passes only those definitions to `runOpenAiToolLoop`. The tool loop rejects any model call whose name is not in the supplied definitions.
+- Confirmed production server workspace-tool configuration: reads use source branch `studio-v1-foundation`; writes use isolated branch `studio-ai-agent-workspace`; tool path policy restricts writes to `studio/agent-workspace/`. The bounded Task 1 receives only `read_repo_file` and `write_repo_file`; Task 2 receives only `read_repo_file`. Exact report-path behavior is specified by task instructions and independently checked by QA; the underlying write tool is sandboxed to the workspace prefix, not to one individual filename.
+- All four GitHub Actions workflows passed on code head `701ad1dffe71254eeeb794988b026c200e4cb81a`:
+  - AI-OFFICE unit tests — success.
+  - AI-OFFICE runtime smoke integration — success, including isolated local runtime and delegated lifecycle against a loopback mock model.
+  - AI-OFFICE PostgreSQL integration tests — success, including durable task verification across an actual runtime process restart.
+  - Universal AI Studio isolated tests — success, including Studio JavaScript syntax and unit tests.
+- PR #137 description updated with the final scope, tool gateway filtering, isolated workspace branch/prefix, global recovery skip, and current remaining gates. PR remains OPEN, DRAFT, unmerged, mergeable. Code head tested above; journal-only updates follow.
+- The workflow itself remains manual-only and was not dispatched. **NOT VERIFIED:** standalone GitHub Actions workflow-YAML lint/validation and presence of GitHub Actions secret `OFFICE_AUDIT_TOKEN`. The workflow checks the secret before making any API request and exits safely if it is missing; it never prints the value.
+- Neon budget remains cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. No model call, budget reservation, plan/task creation, or live dispatch occurred.
+- Render latest deployment remains `dep-dbponeon74is73cp3eo0`, LIVE at source commit `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0`. No deploy, production environment/config change, or production source mutation occurred.
+- One bounded live-run authorization remains unspent. PR merge, workflow dispatch, and any deployment remain separate approval gates. Do not merge or dispatch until workflow YAML and secret presence are verified and the owner separately authorizes the action.
+

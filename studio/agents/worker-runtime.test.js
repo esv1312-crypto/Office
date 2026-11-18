@@ -81,6 +81,51 @@ test("requires durable store and provider-neutral model gateway", () => {
   );
 });
 
+test("limits model tools to the task's explicit required tool scope", async () => {
+  const restrictedSpecialist = {
+    ...specialist,
+    allowedTools: ["list_repo_directory", "read_repo_file", "write_repo_file"],
+  };
+  const startResult = {
+    executionId: "execution-1",
+    task: {
+      id: "task-1", projectId: "project-1", title: "Read-only verification",
+      description: "Inspect the supplied evidence only.", status: "running",
+      assigneeSpecialistId: restrictedSpecialist.id, version: 1,
+      requiredTools: ["read_repo_file"],
+    },
+    execution: { attempt: 1, fencingToken: 1, leaseToken: "lease-1" },
+  };
+  const { runtime, calls } = fixture({ startResult });
+  const result = await runtime.execute({
+    taskId: "task-1", specialist: restrictedSpecialist, workerId: "worker-1",
+  });
+  assert.equal(result.status, "qa");
+  assert.deepEqual(calls.generated[0].specialist.allowedTools, ["read_repo_file"]);
+});
+
+test("fails closed before model invocation when a task requires an ungranted tool", async () => {
+  const readOnlySpecialist = { ...specialist, allowedTools: ["read_repo_file"] };
+  const startResult = {
+    executionId: "execution-1",
+    task: {
+      id: "task-1", projectId: "project-1", title: "Implementation",
+      description: "A write-capable task.", status: "running",
+      assigneeSpecialistId: readOnlySpecialist.id, version: 1,
+      requiredTools: ["read_repo_file", "write_repo_file"],
+    },
+    execution: { attempt: 1, fencingToken: 1, leaseToken: "lease-1" },
+  };
+  const { runtime, calls } = fixture({ startResult });
+  const result = await runtime.execute({
+    taskId: "task-1", specialist: readOnlySpecialist, workerId: "worker-1",
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(result.errorCode, "TASK_TOOL_PERMISSION_MISMATCH");
+  assert.equal(calls.generated.length, 0);
+  assert.equal(calls.failed.length, 1);
+});
+
 test("claims an assigned task, invokes the gateway, stores an artifact, and hands off to QA", async () => {
   const { runtime, calls } = fixture();
   const result = await runtime.execute({

@@ -97,10 +97,12 @@ export function createStudioHttpHandlers({ runtime, loadProject, loadPlan }) {
           status: 400, code: "INVALID_EXECUTION_BATCH_SIZE",
         });
       }
-      // Reconcile expired Worker leases before dispatch so recovered assigned
-      // tasks can be retried by the normal bounded workflow. Recovery is
-      // owner-authorized and never calls a model or dispatches work itself.
-      const recovery = await runtime.recovery.recover({ actor, limit: 50 });
+      // Lease recovery is a global maintenance sweep. Allow a bounded fresh-plan
+      // execution to skip it so unrelated expired tasks cannot be mutated as a
+      // side effect of this plan's dispatch. Default behavior remains unchanged.
+      const recovery = body.skipExpiredExecutionRecovery === true
+        ? { recovered: 0, tasks: [], skipped: true }
+        : await runtime.recovery.recover({ actor, limit: 50 });
       const result = await runtime.workflow.run({ planId, actor, maxAssignments });
       return {
         status: result.status === "completed" ? 200 : 202,

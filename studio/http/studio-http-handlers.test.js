@@ -96,6 +96,20 @@ test("executes an approved plan and returns the workflow report", async () => {
 });
 
 
+test("skips the global expired-lease recovery sweep when explicitly requested", async () => {
+  const { handlers, calls } = fixture({ planStatus: "approved" });
+  const result = await handlers.executeApprovedPlan({
+    ...ownerRequest,
+    params: { planId: "plan-1" },
+    body: { maxAssignments: 1, skipExpiredExecutionRecovery: true },
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.recovery, { recovered: 0, tasks: [], skipped: true });
+  assert.equal(calls.recover.length, 0);
+  assert.deepEqual(calls.order, ["workflow"]);
+  assert.equal(calls.execute[0].maxAssignments, 1);
+});
+
 test("allows an owner to choose a smaller execution batch but never exceed three tasks", async () => {
   const { handlers, calls } = fixture({ planStatus: "approved" });
   const result = await handlers.executeApprovedPlan({
