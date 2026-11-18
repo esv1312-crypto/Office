@@ -1120,3 +1120,28 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
 - CI was queued/in progress for the consolidated commit at this checkpoint; read its final result before declaring the current PR head green. The code tree is unchanged from the code head whose four CI workflows all passed.
 - No merge, workflow dispatch, model call, budget reservation, plan/task mutation, production deployment, or production configuration change occurred. Budget remains USD 0.936184362 internally available.
 
+
+
+## 2026-11-18 — Production artifact-writer isolation verified and regression-tested in PR #137
+
+- Investigated the remaining production-branch write risk. The normal runtime's artifactWriter is configured on branch studio-v1-foundation with allowed prefix studio/projects/; Worker Runtime calls it unless the persisted task has externalArtifact === false.
+- Confirmed the PR branch carries the full opt-out path:
+  - studio/core/create-task.js defaults normal tasks to external artifact enabled, but persists externalArtifact: false when explicitly requested.
+  - studio/contracts/task.js validates the optional flag as a boolean.
+  - studio/director/director-runtime.js applies owner-supplied constraints.externalArtifact === false to every task created under that plan.
+  - studio/storage/postgres-domain-store.js stores the complete task JSON payload; studio/storage/postgres-execution-store.js returns that payload as the claimed task. Thus the flag reaches Worker Runtime unchanged.
+  - studio/agents/worker-runtime.js checks the persisted task flag before calling the external artifact writer. Postgres task/execution artifact storage remains active.
+  - The bounded workflow sends constraints.externalArtifact: false, verifies both tasks have the flag before approval and rechecks it after approval read-back.
+- Added a Worker Runtime regression test proving an explicitly opted-out task still completes the normal Postgres QA handoff while the external GitHub artifact writer is never called.
+- Removed duplicate test blocks introduced during editing; retained the focused Director and task-construction tests.
+- Current PR #137 head: c4a494ae1cce67978cc524698ea3856d174d3725. PR is OPEN, DRAFT, unmerged, mergeable; 12 files, 616 additions, 6 deletions; branch compare is 17 commits ahead / 0 behind studio-v1-foundation.
+- All four repository CI workflows completed successfully on this exact head:
+  - Universal AI Studio isolated tests — success (run 44341483731).
+  - AI-OFFICE unit tests — success (run 44341483841).
+  - AI-OFFICE runtime smoke integration — success (run 44341483716).
+  - AI-OFFICE PostgreSQL integration tests — success (run 44341483867).
+- PR description updated to include the external artifact isolation mechanism and current gates.
+- Neon budget re-read: cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. Render latest deploy unchanged: dep-dbponeon74is73cp3eo0, LIVE at source commit 1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0.
+- No workflow dispatch, model call, reservation, plan/task mutation, PR merge, production deployment, or production configuration change occurred. The previously authorized one bounded live run remains unspent.
+- NOT VERIFIED: standalone GitHub Actions YAML lint/validation; presence of GitHub Actions secret OFFICE_AUDIT_TOKEN (GitHub connector cannot read repository secrets); external OpenRouter balance. The workflow fails closed if the secret is missing.
+- Next safe step: independently validate the workflow YAML and obtain a safe yes/no secret-presence confirmation. Then request separate explicit approval for PR merge/production deploy and workflow dispatch; these are not covered by the earlier one-run authorization.
