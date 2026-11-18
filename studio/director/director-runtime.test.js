@@ -55,6 +55,21 @@ test("turns owner request into proposed plan and draft tasks", async () => {
   assert.deepEqual(saved[1].persistedInput.plan.planningModelSnapshot, proposal.modelSnapshot);
 });
 
+test("applies owner constraints that disable external artifact writes to every task", async () => {
+  const { runtime, saved } = setup();
+  const result = await runtime.plan({
+    request: "Create a bounded isolated diagnostic",
+    project,
+    actor,
+    constraints: { externalArtifact: false },
+  });
+  assert.equal(result.tasks.length, 2);
+  assert.equal(result.tasks[0].externalArtifact, false);
+  assert.equal(result.tasks[1].externalArtifact, false);
+  assert.equal(saved[1].persistedInput.tasks[0].externalArtifact, false);
+  assert.equal(saved[1].persistedInput.tasks[1].externalArtifact, false);
+});
+
 test("rejects a plan task that omits the requiredTools declaration", async () => {
   const generated = {
     ...proposal,

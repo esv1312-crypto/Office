@@ -1,3 +1,4 @@
+import { requiredToolsForTask } from "../core/competency-matching.js";
 /**
  * Provider-neutral Worker Runtime for Universal AI Studio.
  *
@@ -148,6 +149,13 @@ export function createWorkerRuntime({
         throw new Error("Execution store did not return the claimed running task");
       }
 
+      const specialistAllowedTools = Array.isArray(specialist.allowedTools)
+        ? [...new Set(specialist.allowedTools.filter(value => typeof value === "string" && value.trim()).map(value => value.trim()))]
+        : [];
+      const taskRequiredTools = requiredToolsForTask(started.task);
+      const scopedAllowedTools = taskRequiredTools.length ? taskRequiredTools : specialistAllowedTools;
+      const missingRequiredTools = taskRequiredTools.filter(tool => !specialistAllowedTools.includes(tool));
+
       let generated;
       let leaseError = null;
       let heartbeatInFlight = null;
@@ -196,6 +204,12 @@ export function createWorkerRuntime({
       };
       let modelTimeoutTimer;
       try {
+        if (missingRequiredTools.length) {
+          throw Object.assign(
+            new Error(`Task requires tools not granted to specialist: ${missingRequiredTools.join(", ")}`),
+            { code: "TASK_TOOL_PERMISSION_MISMATCH" },
+          );
+        }
         // Confirm lease ownership immediately; do not leave the first provider call
         // running on a lease that has never been renewed by this worker.
         await renewLease();
@@ -218,7 +232,7 @@ export function createWorkerRuntime({
             role: specialist.role,
             instructions: specialist.instructions,
             competencies: specialist.competencies || [],
-            allowedTools: Array.isArray(specialist.allowedTools) ? specialist.allowedTools : [],
+            allowedTools: scopedAllowedTools,
             modelProfile: specialist.modelProfile || null,
           },
           execution: started.execution,

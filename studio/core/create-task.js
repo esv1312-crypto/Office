@@ -5,7 +5,7 @@ import { assertStudioTask } from "../contracts/task.js";
  * The caller owns ID generation, persistence, and authorization.
  */
 export function createTask({
-  id, projectId, title, description = "", requiredCompetencies = [], requiredTools = [], acceptanceCriteria = [], at,
+  id, projectId, title, description = "", requiredCompetencies = [], requiredTools = [], acceptanceCriteria = [], externalArtifact = true, at,
 }) {
   if (!Array.isArray(requiredCompetencies) ||
       requiredCompetencies.some(value => typeof value !== "string" || !value.trim())) {
@@ -18,6 +18,9 @@ export function createTask({
       acceptanceCriteria.some(value => typeof value !== "string" || !value.trim())) {
     throw new TypeError("Task acceptanceCriteria must be an array of non-empty strings");
   }
+  if (typeof externalArtifact !== "boolean") {
+    throw new TypeError("Task externalArtifact must be a boolean");
+  }
   const task = {
     id,
     projectId,
@@ -26,6 +29,7 @@ export function createTask({
     requiredCompetencies: [...requiredCompetencies],
     requiredTools: [...new Set(requiredTools.map(value => value.trim()))],
     acceptanceCriteria: [...acceptanceCriteria],
+    ...(externalArtifact === false ? { externalArtifact: false } : {}),
     status: "draft",
     assigneeSpecialistId: null,
     version: 1,
