@@ -499,7 +499,6 @@ Never write “done” merely because a request was accepted or a plan says comp
 - **Startup cleanup:** Legacy self-development, source-verification, product-pilot, owner-execution, and bootstrap-on-start triggers were disabled on the Runtime so they do not consume this master-task budget or compete with the Director.
 - **Next:** Verify that the 8,000-token planner returns valid JSON, that the new plan is persisted, and that worker execution proceeds past the former tool-call and context ceilings. Then verify QA, GitHub artifacts/PRs, and final budget totals. Do not describe the master office as completed until those checks pass.
 
-
 ### 2026-11-08 — Final worker output/context allowances and current DeepSeek run
 
 - **PR #117:** https://github.com/esv1312-crypto/Office/pull/117 — merged as `223d0fea71e29adcb56f6d3b4de9916f0b2f7f7a`. Raised worker model completion allowance from 6,000 to 12,000 tokens after a live worker completion reached exactly 6,000 tokens and returned `EMPTY_MODEL_OUTPUT`.
@@ -997,7 +996,6 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
 - No Render deploy, environment/config mutation, database/task mutation, owner execution, or paid model call was performed. A new explicit owner approval is required for any Render deployment; previous deploy authorization is exhausted.
 - Last verified internal budget remains cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362.
 
-
 ## 2026-11-11 — PR #136 deployed to Render and readiness verified
 
 - Owner explicitly authorized the Render rollout after approving the PR #136 merge.
@@ -1165,3 +1163,17 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
 - Decision: keep the current AI-OFFICE development path; do not install, integrate, deploy, or spend budget on Ruflo now.
 - Future revisit: evaluate a pinned version in an isolated sandbox against one representative end-to-end task (task decomposition, multi-agent execution, independent QA, evidence, and cost). Compare compatibility with the existing GitHub/Render/Neon/OpenRouter architecture before considering adoption.
 - Status: candidate only; no dependency, integration, or infrastructure change approved.
+
+### 2026-11-18 — PR #137 merged and bounded validation runtime deployed
+
+- Owner explicitly approved PR #137 merge, the required Render update, and one bounded two-specialist validation run with no budget increase and an incremental ceiling of USD 0.936184362.
+- Re-read this master notebook and the session handoff before acting. Reconciled current PR metadata, exact PR head, file diff, current four CI workflow runs, Render service configuration/deploy history, and Neon budget row.
+- PR #137 was marked ready for review and merged by squash. Merge commit: `b296f8b4f54b27b3836ff1472da8312e7d88872b`. PR is CLOSED/MERGED. Current merge included the bounded manual-only workflow and the task-level tool/artifact isolation and skip-global-lease-recovery changes. PR diff at merge: 12 files, 687 additions, 6 deletions.
+- Four GitHub Actions CI workflows on PR head `974cc22eb96296e71fe6532f3510d800fe31558e` returned completed/success: PostgreSQL integration (44348777309), runtime smoke integration (44348773687), Universal AI Studio isolated tests (44348773858), AI-OFFICE unit tests (44348774195).
+- Render service remains on `studio-v1-foundation`, autoDeploy `checksPass`, Free Frankfurt. No automatic deploy appeared after merge, so one manual deployment was triggered under the owner's approval.
+- Render deploy `dep-dbutu8l6e07s73em0ts0`, source commit `b296f8b4f54b27b3836ff1472da8312e7d88872b`, build and deploy both succeeded; terminal status `live` at 2026-11-18T17:24:16.944Z. Startup log confirms `node studio/server.js`, control plane listening on port 10000, database=existing-office, provider=openrouter, auth=legacy-owner-token, artifactStore=github+postgres, model=deepseek/deepseek-v4.1-flash-1017, budget=3USD. Runtime startup also confirmed the old owner task key was already claimed/complete and skipped its self-development launcher because no organization ID is configured.
+- Fresh direct HTTP readiness response from `/health/ready` is **NOT VERIFIED** in this session (the available web fetch could not access the endpoint). Render reports deploy LIVE and application startup succeeded. The manual workflow itself performs a strict readiness + DB-connected check before its first API/model request.
+- Neon budget row re-read after deployment: key `universal-ai-studio-launch-budget-v1`; cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. No budget reservation or model spend occurred during merge/deploy.
+- The GitHub Actions secret `OFFICE_AUDIT_TOKEN` remains **NOT VERIFIED**; its value was not read or exposed. Workflow exits before any API call if it is missing. External OpenRouter account balance also remains unverified.
+- The manual workflow has **NOT BEEN DISPATCHED**. The available GitHub connector in this session exposes read operations and PR merge but no workflow-dispatch action; no authenticated alternative was available. No live plan/task, model call, worker execution, or QA review was created. Owner's one-run approval remains unspent.
+- Next action: owner can open [GitHub Actions — bounded two-task validation](https://github.com/esv1312-crypto/Office/actions/workflows/office-bounded-two-task-live-validation.yml) and select **Run workflow** on `studio-v1-foundation`. If the secret is missing, it must fail closed before contacting the runtime. After a run, inspect its summary, exact task/artifact/QA IDs, and Neon spend before claiming acceptance.
