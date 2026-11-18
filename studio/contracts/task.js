@@ -15,6 +15,7 @@
  * @property {string} title
  * @property {string} [description]
  * @property {string[]} [requiredTools] Exact worker tool names required by the task.
+ * @property {boolean} [externalArtifact] Whether to persist a platform artifact to the configured external repository writer.
  * @property {TaskStatus} status
  * @property {string|null} [assigneeSpecialistId]
  * @property {number} version Monotonically increasing aggregate version.
@@ -65,6 +66,9 @@ export function assertStudioTask(task) {
   }
   if (candidate.requiredTools !== undefined && (!Array.isArray(candidate.requiredTools) || candidate.requiredTools.some(value => typeof value !== "string" || !value.trim()))) {
     throw new TypeError("Task requiredTools must be an array of non-empty strings");
+  }
+  if (candidate.externalArtifact !== undefined && typeof candidate.externalArtifact !== "boolean") {
+    throw new TypeError("Task externalArtifact must be a boolean when provided");
   }
   if (!TASK_STATUSES.includes(/** @type {string} */ (candidate.status))) {
     throw new TypeError("Task status is invalid");
