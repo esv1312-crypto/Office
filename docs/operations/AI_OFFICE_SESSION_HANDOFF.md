@@ -84,3 +84,17 @@ Review PR #137 against the current production handler response schemas and the a
 - Four CI workflows passed on the identical code tree before consolidation. Checks for the consolidated commit were queued/in progress at this checkpoint.
 - No live run or production mutation occurred. Budget remains USD 0.936184362. Do not merge or dispatch without separate approval.
 
+
+
+## 2026-11-18 — Production artifact writer is now gated per task in PR #137
+
+- The remaining write-risk was that the platform artifact writer targets production branch studio-v1-foundation. This is now explicitly disabled for the bounded validation through constraints.externalArtifact: false.
+- The PR branch carries the flag from Director constraints → createTask → persisted task JSON → Worker Runtime. Worker Runtime skips the external GitHub artifact writer when the persisted flag is false; Postgres execution/artifact persistence is retained. Normal tasks remain unchanged and external artifact writing stays enabled by default.
+- Workflow asserts externalArtifact: false for both tasks before approval and again after approval read-back.
+- Added a Worker Runtime regression test proving no external writer call occurs for an opted-out task while the task still hands off to QA. Removed duplicate tests created during editing.
+- Current PR head c4a494ae1cce67978cc524698ea3856d174d3725. PR #137 OPEN, DRAFT, unmerged, mergeable; 12 changed files; 17 ahead / 0 behind.
+- All four GitHub CI workflows passed on this exact head: run IDs 44341483731, 44341483841, 44341483716, 44341483867.
+- Budget remains cap USD 3.000000000, spent USD 2.063815638, reserved USD 0, remaining USD 0.936184362. Render latest deploy unchanged dep-dbponeon74is73cp3eo0.
+- No live workflow dispatch, model call, budget reservation, plan/task mutation, merge, deploy, or production config change occurred. One bounded live-run authorization remains unspent.
+- NOT VERIFIED: standalone workflow YAML lint, OFFICE_AUDIT_TOKEN secret presence, external OpenRouter balance.
+- Do not merge, deploy, or dispatch until YAML/secret gates are resolved and separate owner approval is obtained.
