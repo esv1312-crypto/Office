@@ -1156,3 +1156,12 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
   - AI-OFFICE unit tests: run 44341926228 — success.
 - PR #137 remains OPEN, DRAFT, unmerged, mergeable. No workflow dispatch, model call, budget reservation, plan/task mutation, merge, production deployment, or production configuration change occurred.
 - Remaining NOT VERIFIED gates are unchanged: standalone validation of the new manual GitHub Actions workflow YAML, presence of secret OFFICE_AUDIT_TOKEN, and external OpenRouter balance.
+
+
+## 2026-11-18 — Ruflo recorded as a candidate for future evaluation
+
+- Owner noticed the open-source project Ruflo (GitHub: https://github.com/ruvnet/ruflo) and asked to record it for possible future use.
+- Preliminary review indicates Ruflo is an agent-orchestration harness primarily designed to operate with Claude Code/Codex sessions, MCP tools, agent coordination, project memory, and workflow/plugin extensions. It is not a drop-in replacement for the Universal AI Studio cloud runtime.
+- Decision: keep the current AI-OFFICE development path; do not install, integrate, deploy, or spend budget on Ruflo now.
+- Future revisit: evaluate a pinned version in an isolated sandbox against one representative end-to-end task (task decomposition, multi-agent execution, independent QA, evidence, and cost). Compare compatibility with the existing GitHub/Render/Neon/OpenRouter architecture before considering adoption.
+- Status: candidate only; no dependency, integration, or infrastructure change approved.
