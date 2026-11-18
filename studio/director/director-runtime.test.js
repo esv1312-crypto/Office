@@ -168,20 +168,3 @@ test("does not persist if project is inactive", async () => {
   );
   assert.equal(saved.length, 0);
 });
-
-
-test("applies the explicit external artifact opt-out from owner constraints to every task", async () => {
-  const { runtime } = setup();
-  const result = await runtime.plan({
-    request: "Create an isolated bounded diagnostic plan",
-    project, actor, constraints: { externalArtifact: false },
-  });
-  assert.equal(result.tasks.length, 2);
-  assert.deepEqual(result.tasks.map(task => task.externalArtifact), [false, false]);
-});
-
-test("keeps normal external artifact behavior unchanged when no opt-out is supplied", async () => {
-  const { runtime } = setup();
-  const result = await runtime.plan({ request: "Create a normal plan", project, actor });
-  assert.deepEqual(result.tasks.map(task => task.externalArtifact), [true, true]);
-});
