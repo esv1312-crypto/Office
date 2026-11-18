@@ -1108,3 +1108,15 @@ Await owner decision on PR #136 merge. Do not merge or deploy without explicit a
 - Render latest deployment remains `dep-dbponeon74is73cp3eo0`, LIVE at source commit `1ba7608fe2851ce09a0db2b1a6b3dac562e2fea0`. No deploy, production environment/config change, or production source mutation occurred.
 - One bounded live-run authorization remains unspent. PR merge, workflow dispatch, and any deployment remain separate approval gates. Do not merge or dispatch until workflow YAML and secret presence are verified and the owner separately authorizes the action.
 
+
+
+## 2026-11-18 — PR #137 branch history consolidated
+
+- Consolidated the isolated PR branch history into one reviewable commit without changing its tree or production base:
+  - Commit: `e698a5c8356fd117b9d66e761c3414a529f32be3`
+  - Parent/current production base: `b369b826aee09cf05b304f4f65dacd49d9456e77`
+  - Tree: `86aff06bfbd294b5713420083e71288dea995c36`
+- Compare now shows exactly 1 commit ahead and 0 behind. PR #137 remains OPEN, DRAFT, unmerged, mergeable; diff remains 7 files (workflow, two documentation records, Worker Runtime + tests, Studio HTTP handlers + tests), 501 additions and 5 deletions.
+- CI was queued/in progress for the consolidated commit at this checkpoint; read its final result before declaring the current PR head green. The code tree is unchanged from the code head whose four CI workflows all passed.
+- No merge, workflow dispatch, model call, budget reservation, plan/task mutation, production deployment, or production configuration change occurred. Budget remains USD 0.936184362 internally available.
+
