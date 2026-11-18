@@ -92,6 +92,7 @@ jobs:
               "production_deploy": False,
               "production_configuration_changes": False,
               "legacy_task_api_used": False,
+              "production_branch_artifact_writer_disabled": True,
           }
 
           # Readiness is checked before the first model request.
@@ -142,10 +143,17 @@ jobs:
           this task's persisted output/platform QA record. Do not write files,
           list directories, run tests, browse externally, or change production.
 
-          Plan acceptance: exactly two ordered tasks; Task 1 requires both
-          read_repo_file and write_repo_file; Task 2 is read-only and requires
-          read_repo_file only. No deployment, environment, database/schema,
-          credential, branch, PR, merge, or production source changes.
+          Platform artifact persistence must be disabled for both tasks. The
+          normal artifact writer targets studio-v1-foundation and may trigger
+          Render autoDeploy. Keep the worker's Postgres artifact record, but set
+          externalArtifact=false so no platform artifact is written to the
+          production branch. The explicit report file is written only through
+          write_repo_file to studio-ai-agent-workspace.
+          
+          Plan acceptance: exactly two ordered tasks; both have externalArtifact=false;
+          Task 1 requires both read_repo_file and write_repo_file; Task 2 is
+          read-only and requires read_repo_file only. No deployment, environment,
+          database/schema, credential, branch, PR, merge, or production source changes.
           """
 
           constraints = {
@@ -155,6 +163,7 @@ jobs:
               "task1RequiredTools": ["read_repo_file", "write_repo_file"],
               "task2RequiredCompetencies": ["test coverage analysis", "platform.qa"],
               "task2RequiredTools": ["read_repo_file"],
+              "externalArtifact": False,
               "sequentialExecution": True,
               "maxAssignmentsPerExecutionCall": 1,
               "noProductionChanges": True,
@@ -196,6 +205,8 @@ jobs:
                   "Task 2 competency scope differs from the approved independent-QA scope")
           require(first.get("id") and second.get("id") and first["id"] != second["id"],
                   "Task IDs are missing or duplicated")
+          require(first.get("externalArtifact") is False and second.get("externalArtifact") is False,
+                  "Director did not disable production-branch external artifact writes for both tasks")
           evidence["plan_id"] = plan["id"]
           evidence["plan_status_before_approval"] = plan["status"]
           evidence["tasks"] = [
@@ -225,6 +236,9 @@ jobs:
           require(approved_tasks[1].get("requiredTools") == ["read_repo_file"] and
                   approved_tasks[1].get("requiredCompetencies") == ["test coverage analysis", "platform.qa"],
                   "approved Task 2 scope changed after Director validation")
+          require(approved_tasks[0].get("externalArtifact") is False and
+                  approved_tasks[1].get("externalArtifact") is False,
+                  "approved plan re-enabled production-branch external artifact writes")
           evidence["approval"] = {"status": approved_plan["status"], "task_count": len(approved_tasks),
                                   "task_ids_and_scopes_reverified": True}
 
