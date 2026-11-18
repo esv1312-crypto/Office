@@ -21,3 +21,21 @@ test("rejects malformed required tool declarations", () => {
     at: "2026-11-10T00:00:00.000Z",
   }), /requiredTools/);
 });
+
+test("preserves an explicit request to skip external artifact writes", () => {
+  const task = createTask({
+    id: "task-3", projectId: "project-1", title: "Bounded isolated task",
+    requiredTools: ["read_repo_file"],
+    externalArtifact: false,
+    at: "2026-11-10T00:00:00.000Z",
+  });
+  assert.equal(task.externalArtifact, false);
+});
+
+test("rejects a non-boolean external artifact policy", () => {
+  assert.throws(() => createTask({
+    id: "task-4", projectId: "project-1", title: "Bad external artifact policy",
+    externalArtifact: "false",
+    at: "2026-11-10T00:00:00.000Z",
+  }), /externalArtifact must be a boolean/);
+});
