@@ -280,6 +280,38 @@ test("does not hand off to QA when the lease is lost during external artifact wr
   assert.equal(calls.failed.length, 0);
 });
 
+test("does not write an external repository artifact when the task explicitly disables it", async () => {
+  const { runtime, calls } = fixture({
+    startResult: {
+      executionId: "execution-1",
+      task: {
+        id: "task-1",
+        projectId: "project-1",
+        title: "Bounded isolated diagnostic",
+        description: "Write only to the isolated workspace branch.",
+        externalArtifact: false,
+        status: "running",
+        assigneeSpecialistId: specialist.id,
+        version: 5,
+      },
+      execution: { attempt: 1, fencingToken: 1, leaseToken: "lease-1" },
+    },
+    artifactWriter: async value => ({ path: value.path, commitSha: "must-not-be-written" }),
+  });
+  const result = await runtime.execute({
+    taskId: "task-1",
+    specialist,
+    workerId: "worker-1",
+  });
+  assert.equal(result.status, "qa");
+  assert.equal(calls.generated.length, 1);
+  assert.equal(calls.artifacts.length, 0);
+  assert.equal(calls.completed.length, 1);
+  assert.equal(calls.completed[0].artifact.type, "text");
+  assert.equal(calls.completed[0].artifact.external, undefined);
+  assert.equal(result.externalArtifact, null);
+});
+
 test("persists worker output to the approved repository workspace before database QA hand-off", async () => {
   const { runtime, calls } = fixture({
     artifactWriter: async value => ({
