@@ -39,3 +39,20 @@ test("rejects a non-boolean external artifact policy", () => {
     at: "2026-11-10T00:00:00.000Z",
   }), /externalArtifact must be a boolean/);
 });
+
+
+test("preserves an explicit external artifact opt-out on the task", () => {
+  const task = createTask({
+    id: "task-3", projectId: "project-1", title: "Isolated diagnostic",
+    requiredTools: ["read_repo_file"], externalArtifact: false,
+    at: "2026-11-10T00:00:00.000Z",
+  });
+  assert.equal(task.externalArtifact, false);
+});
+
+test("rejects a non-boolean external artifact setting", () => {
+  assert.throws(() => createTask({
+    id: "task-4", projectId: "project-1", title: "Bad task",
+    externalArtifact: "false", at: "2026-11-10T00:00:00.000Z",
+  }), /externalArtifact must be a boolean/);
+});
