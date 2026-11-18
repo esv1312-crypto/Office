@@ -110,3 +110,17 @@ Review PR #137 against the current production handler response schemas and the a
 ## 2026-11-18 — Ruflo noted for later, no current action
 
 The owner asked to keep Ruflo (https://github.com/ruvnet/ruflo) in the AI-OFFICE project notes as a possible future tool. Current decision is to continue the existing Universal AI Studio work and not install or integrate Ruflo now. If revisited, test a pinned version in an isolated sandbox on one bounded end-to-end task and compare it with the existing runtime. No dependency, deployment, production configuration, or budget change is authorized by this note.
+
+
+## 2026-11-18 — PR #137 merged; Render updated; live run awaiting manual dispatch
+
+- Owner explicitly approved merge, the required Render deployment, and one bounded two-specialist run capped at the existing remaining internal budget USD 0.936184362.
+- PR #137 was marked ready and merged by squash. Merge commit: `b296f8b4f54b27b3836ff1472da8312e7d88872b`. PR URL: https://github.com/esv1312-crypto/Office/pull/137. PR closed/merged; 12 files, 687 additions, 6 deletions.
+- Four CI workflows on exact PR head `974cc22eb96296e71fe6532f3510d800fe31558e` completed successfully: PostgreSQL integration 44348777309; runtime smoke 44348773687; Universal AI Studio isolated tests 44348773858; AI-OFFICE unit tests 44348774195.
+- Render deployment `dep-dbutu8l6e07s73em0ts0` is LIVE, source commit `b296f8b4f54b27b3836ff1472da8312e7d88872b`; build and deploy succeeded at 2026-11-18T17:24:16.944Z. Startup log confirms server listening, database=existing-office, OpenRouter provider, model deepseek/deepseek-v4.1-flash-1017, budget=3USD. No production env/config changes were made.
+- Direct fresh HTTP response from `/health/ready` is NOT VERIFIED (web fetch could not access endpoint). The manual workflow performs strict readiness and DB-connected checks before any API/model request.
+- Neon ledger after deployment: cap USD 3.000000000; spent USD 2.063815638; reserved USD 0; remaining USD 0.936184362. Merge/deploy consumed no model budget.
+- GitHub Actions secret `OFFICE_AUDIT_TOKEN` presence remains NOT VERIFIED. Never reveal/request its value. Workflow checks it before any API request and fails closed if missing. External OpenRouter balance remains unverified.
+- **Live two-agent workflow NOT DISPATCHED.** Available GitHub connector tools do not expose a workflow_dispatch action, and no authenticated alternative is available in this session. No live plan/task/model call/worker/QA was started; the owner's one-run authorization remains unspent.
+- Manual next step: open https://github.com/esv1312-crypto/Office/actions/workflows/office-bounded-two-task-live-validation.yml, select branch `studio-v1-foundation`, then **Run workflow**. If the secret is absent, the workflow must stop before contacting the runtime. After it runs, inspect the run summary, plan/task IDs, persisted artifact, independent QA verdicts, and Neon budget before claiming success.
+- Do not replay the old plan `57f08bbc-85af-4639-b494-2b2914829c57`. Do not increase the cap or use another budget key.
