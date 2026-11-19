@@ -29,14 +29,24 @@ test("persists proposed plan, draft tasks, and events in one transaction", async
     createdBy: "owner-1", planningModelSnapshot: { provider: "fixture", model: "test" },
     createdAt: at, updatedAt: at,
   };
-  const tasks = [{
-    id: "task-1", projectId: "project-1", title: "Build map", description: "Create blockout",
-    requiredCompetencies: ["roblox"], acceptanceCriteria: ["Map loads"],
-    status: "draft", assigneeSpecialistId: null, version: 1, createdAt: at, updatedAt: at,
-  }];
+  const tasks = [
+    {
+      id: "task-z", projectId: "project-1", title: "Implementation", description: "Build report",
+      requiredCompetencies: ["implementation"], acceptanceCriteria: ["Report exists"],
+      status: "draft", assigneeSpecialistId: null, version: 1, createdAt: at, updatedAt: at,
+    },
+    {
+      id: "task-a", projectId: "project-1", title: "Independent QA", description: "Review report",
+      requiredCompetencies: ["platform.qa"], acceptanceCriteria: ["Review exists"],
+      status: "draft", assigneeSpecialistId: null, version: 1, createdAt: at, updatedAt: at,
+    },
+  ];
   const result = await store.createPlanWithTasks({ plan, tasks });
   assert.equal(result.plan.id, "plan-1");
-  assert.equal(result.tasks.length, 1);
+  assert.equal(result.tasks.length, 2);
+  assert.deepEqual(result.plan.taskIds, ["task-z", "task-a"]);
+  const persistedPlan = calls.find(call => call.sql.includes("INSERT INTO studio.plans"));
+  assert.deepEqual(JSON.parse(persistedPlan.params[2]).taskIds, ["task-z", "task-a"]);
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.plans")));
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.tasks") && call.sql.includes("plan_id")));
   assert.ok(calls.some(call => call.sql.includes("plan.created")));
