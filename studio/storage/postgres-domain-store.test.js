@@ -90,14 +90,17 @@ test("approval transaction locks only a plan owned by the authenticated active o
       if (sql.includes("FROM studio.plans pl") && sql.includes("m.role = 'owner'")) {
         return { rows: [{
           id: "plan-1", project_id: "project-1", organization_id: "org-1",
-          status: "proposed", version: 1, payload: { id: "plan-1", title: "Pilot" },
+          status: "proposed", version: 1,
+          payload: { id: "plan-1", title: "Pilot", taskIds: ["task-z", "task-a"] },
         }] };
       }
       if (sql.includes("SELECT id, status, version, payload FROM studio.tasks")) {
-        return { rows: [{
-          id: "task-1", status: "draft", version: 1,
-          payload: { id: "task-1", title: "Build lobby" },
-        }] };
+        return { rows: [
+          { id: "task-a", status: "draft", version: 1,
+            payload: { id: "task-a", title: "Independent QA" } },
+          { id: "task-z", status: "draft", version: 1,
+            payload: { id: "task-z", title: "Implementation" } },
+        ] };
       }
       return { rows: [], rowCount: 1 };
     },
@@ -117,7 +120,9 @@ test("approval transaction locks only a plan owned by the authenticated active o
   assert.match(lock.sql, /m\.status = 'active'/);
   assert.match(lock.sql, /o\.status = 'active'/);
   assert.equal(result.plan.status, "approved");
-  assert.equal(result.tasks[0].status, "planned");
+  assert.deepEqual(result.tasks.map(task => task.id), ["task-z", "task-a"]);
+  assert.ok(calls.some(call => call.sql.includes("plan.approved") &&
+    JSON.parse(call.params[4]).taskIds.join(",") === "task-z,task-a"));
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.outbox_events")));
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
