@@ -37,7 +37,7 @@ jobs:
           PROJECT_ID = "d8a125e7-bacb-41a5-854a-cc34fe97e516"
           BUDGET_KEY = "universal-ai-studio-launch-budget-v1"
           HARD_CAP_USD = Decimal("3.000000000")
-          APPROVED_REMAINING_USD = Decimal("0.936184362")
+          APPROVED_REMAINING_USD = Decimal("0.926708782")
           IMPLEMENTER_ID = "993751a5-f825-4f7b-9a65-4f9166af5326"
           QUALITY_ENGINEER_ID = "d812b95b-5752-4f79-ac2c-73c873282325"
           SOURCE = "studio/agent-workspace/ai-office-self-development/retry-watchdog-source-reference.md"
