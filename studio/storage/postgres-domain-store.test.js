@@ -90,14 +90,17 @@ test("approval transaction locks only a plan owned by the authenticated active o
       if (sql.includes("FROM studio.plans pl") && sql.includes("m.role = 'owner'")) {
         return { rows: [{
           id: "plan-1", project_id: "project-1", organization_id: "org-1",
-          status: "proposed", version: 1, payload: { id: "plan-1", title: "Pilot" },
+          status: "proposed", version: 1,
+          payload: { id: "plan-1", title: "Pilot", taskIds: ["task-z", "task-a"] },
         }] };
       }
       if (sql.includes("SELECT id, status, version, payload FROM studio.tasks")) {
-        return { rows: [{
-          id: "task-1", status: "draft", version: 1,
-          payload: { id: "task-1", title: "Build lobby" },
-        }] };
+        return { rows: [
+          { id: "task-a", status: "draft", version: 1,
+            payload: { id: "task-a", title: "Independent QA" } },
+          { id: "task-z", status: "draft", version: 1,
+            payload: { id: "task-z", title: "Implementation" } },
+        ] };
       }
       return { rows: [], rowCount: 1 };
     },
@@ -117,7 +120,9 @@ test("approval transaction locks only a plan owned by the authenticated active o
   assert.match(lock.sql, /m\.status = 'active'/);
   assert.match(lock.sql, /o\.status = 'active'/);
   assert.equal(result.plan.status, "approved");
-  assert.equal(result.tasks[0].status, "planned");
+  assert.deepEqual(result.tasks.map(task => task.id), ["task-z", "task-a"]);
+  assert.ok(calls.some(call => call.sql.includes("plan.approved") &&
+    JSON.parse(call.params[4]).taskIds.join(",") === "task-z,task-a"));
   assert.ok(calls.some(call => call.sql.includes("INSERT INTO studio.outbox_events")));
   assert.equal(calls.at(-1).sql, "COMMIT");
 });
@@ -301,4 +306,41 @@ test("does not exceed the configured failed-task retry limit", async () => {
   );
   assert.equal(calls.some(call => call.sql.includes("UPDATE studio.tasks SET status = 'assigned'")), false);
   assert.equal(calls.at(-1).sql, "ROLLBACK");
+});
+
+
+test("loads approved tasks for dispatch in the Director's persisted order", async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes("FROM studio.plans pl JOIN studio.projects pr")) {
+        return { rows: [{
+          id: "plan-1", project_id: "project-1", status: "approved", version: 2,
+          organization_id: "org-1", project_status: "active",
+          payload: { id: "plan-1", taskIds: ["task-z", "task-a"] },
+        }] };
+      }
+      if (sql.includes("FROM studio.tasks WHERE plan_id = $1 ORDER BY id")) {
+        return { rows: [
+          { id: "task-a", project_id: "project-1", status: "planned",
+            assignee_specialist_id: null, version: 2,
+            payload: { id: "task-a", title: "Independent QA" } },
+          { id: "task-z", project_id: "project-1", status: "planned",
+            assignee_specialist_id: null, version: 2,
+            payload: { id: "task-z", title: "Implementation" } },
+        ] };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const store = createPostgresDomainStore({
+    pool: { async connect() { return client; } },
+    createId: () => "event-1",
+  });
+  const loaded = await store.loadApprovedPlanForDispatch({ planId: "plan-1" });
+  assert.deepEqual(loaded.tasks.map(task => task.id), ["task-z", "task-a"]);
+  assert.equal(calls.at(-1).sql.includes("ORDER BY id"), true,
+    "database lock/read order remains deterministic while returned dispatch order follows the plan");
 });

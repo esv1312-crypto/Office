@@ -35,6 +35,18 @@ function eventId(createId) {
   return required(createId(), "generated eventId");
 }
 
+// PostgreSQL row locks are acquired in a stable ID order to avoid deadlocks,
+// but execution order must follow the Director's original task sequence.
+function orderTaskRows(rows, planPayload) {
+  const taskIds = Array.isArray(planPayload?.taskIds) ? planPayload.taskIds : [];
+  const positions = new Map(taskIds.map((id, index) => [id, index]));
+  return [...rows].sort((a, b) =>
+    (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+      (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER) ||
+    String(a.id).localeCompare(String(b.id))
+  );
+}
+
 export function createPostgresDomainStore({ pool, createId }) {
   if (!pool || typeof pool.connect !== "function") throw new TypeError("A pg-compatible pool is required");
   if (typeof createId !== "function") throw new TypeError("createId is required");
@@ -144,6 +156,7 @@ export function createPostgresDomainStore({ pool, createId }) {
         }
         return task;
       });
+      const persistedPlan = { ...plan, taskIds: tasks.map(task => task.id) };
       return transaction(pool, async client => {
         const projectResult = await client.query(
           "SELECT organization_id FROM studio.projects WHERE id = $1 AND status = 'active' FOR SHARE",
@@ -154,7 +167,7 @@ export function createPostgresDomainStore({ pool, createId }) {
           `INSERT INTO studio.plans
              (id, project_id, status, version, payload, created_at, updated_at)
            VALUES ($1,$2,'proposed',1,$3::jsonb,$4,$5)`,
-          [planId, projectId, JSON.stringify(plan), at, timestamp(plan.updatedAt)]);
+          [planId, projectId, JSON.stringify(persistedPlan), at, timestamp(plan.updatedAt)]);
         for (const task of tasks) {
           await client.query(
             `INSERT INTO studio.tasks
@@ -181,7 +194,7 @@ export function createPostgresDomainStore({ pool, createId }) {
               JSON.stringify({ title: task.title, planId, requiredCompetencies: task.requiredCompetencies, requiredTools: task.requiredTools || [] }), at]);
           await insertOutboxEvent(client, { eventId: eventIdValue, organizationId: project.organization_id, projectId, aggregateType: "task", aggregateId: task.id, eventType: "task.created", payload: { title: task.title, planId, requiredCompetencies: task.requiredCompetencies, requiredTools: task.requiredTools || [] }, occurredAt: at });
         }
-        return { plan, tasks, eventId: createdEventId };
+        return { plan: persistedPlan, tasks, eventId: createdEventId };
       });
     },
 
@@ -228,7 +241,7 @@ export function createPostgresDomainStore({ pool, createId }) {
           "UPDATE studio.plans SET status = 'approved', version = $2, payload = $3::jsonb, updated_at = $4 WHERE id = $1",
           [id, nextPlan.version, JSON.stringify(nextPlan), approvedAt]);
         const approvedTasks = [];
-        for (const row of taskResult.rows) {
+        for (const row of orderTaskRows(taskResult.rows, planRow.payload)) {
           const nextTask = {
             ...(row.payload || {}), status: "planned",
             version: Number(row.version) + 1, updatedAt: approvedAt,
@@ -277,7 +290,7 @@ export function createPostgresDomainStore({ pool, createId }) {
         return {
           plan: { ...(row.payload || {}), id: row.id, projectId: row.project_id, status: row.status, version: Number(row.version) },
           organizationId: row.organization_id,
-          tasks: taskResult.rows.map(task => ({
+          tasks: orderTaskRows(taskResult.rows, row.payload).map(task => ({
             ...(task.payload || {}), id: task.id, projectId: task.project_id,
             status: task.status, assigneeSpecialistId: task.assignee_specialist_id,
             version: Number(task.version),
